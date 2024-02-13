@@ -1,0 +1,67 @@
+﻿<?xml version='1.0' encoding='utf-8'?>
+<Organisations>
+  <UrFace Name="Депозит">
+    <Services>
+      <Service Name="Пустая обязательная категория"/>
+      <Service Name="Депозит"/>
+    </Services>
+  </UrFace>
+  <UrFace Name="Карты">
+    <Services>
+      <Service Name="Пустая обязательная категория"/>
+      <Service Name="Карты"/>
+    </Services>
+  </UrFace>
+  <UrFace Name="ONLINE">
+    <Services>
+      <Service Name="Пустая обязательная категория"/>
+      <Service Name="ONLINE"/>
+    </Services>
+  </UrFace>
+  <UrFace Name="Основные тарифы">
+    <Services>
+      <Service Name="Пустая обязательная категория"/>
+      <Service Name="Билеты аквапарка"/>
+      <Service Name="Термозона"/>
+    </Services>
+  </UrFace>
+  <UrFace Name="Корпоративные тарифы">
+    <Services>
+      <Service Name="Пустая обязательная категория"/>
+      <Service Name="Билеты аквапарка КОРП"/>
+      <Service Name="Термозона КОРП"/>
+      <Service Name="Билеты РЕГ"/>
+      <Service Name="Термозона РЕГ"/>
+    </Services>
+  </UrFace>
+  <UrFace Name="Общепит">
+    <Services>
+      <Service Name="Пустая обязательная категория"/>
+      <Service Name="Общепит"/>
+    </Services>
+  </UrFace>
+  <UrFace Name="Прочие доходы">
+    <Services>
+      <Service Name="Пустая обязательная категория"/>
+      <Service Name="Прочее"/>
+    </Services>
+  </UrFace>
+  <UrFace Name="Продажа сопутствующих услуг">
+    <Services>
+      <Service Name="Пустая обязательная категория"/>
+      <Service Name="Сопутствующие товары"/>
+    </Services>
+  </UrFace>
+  <UrFace Name="ИТОГО">
+    <Services>
+      <Service Name="Пустая обязательная категория"/>
+      <Service Name="ИТОГО"/>
+    </Services>
+  </UrFace>
+  <UrFace Name="Дата">
+    <Services>
+      <Service Name="Пустая обязательная категория"/>
+      <Service Name="Дата"/>
+    </Services>
+  </UrFace>
+</Organisations>
