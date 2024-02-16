@@ -39,6 +39,8 @@ fabric.properties
 ### General
 # IntelliJ project files
 .idea
+.idea/
+.env
 *.iml
 out
 gen
