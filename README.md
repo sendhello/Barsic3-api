@@ -43,3 +43,18 @@ docker compose up --build
 | POSTGRES_DB              | barsic                                     | Имя БД Postgres                                                                         |
 | POSTGRES_USER            | app                                        | Имя пользователя Postgres                                                               |
 | POSTGRES_PASSWORD        | 123qwe                                     | Пароль пользователя Postgres                                                            |
+
+### Запуск тестовой среды с локальной БД
+
+1. Положить бекапы баз в папку dev/backup. 
+Имена файлов должны совпадать с именами оригинальных БД (Beach.bak и т.п.)
+
+2. Запустить тестовую среду:
+    ```commandline
+    docker compose -f docker-compose-dev.yml up
+    ```
+
+3. Скачать и запустить менеджер БД, 
+например Azure Data Studio[https://docs.microsoft.com/en-us/sql/azure-data-studio/download-azure-data-studio?view=sql-server-ver15]
+
+4. Восстановить все БД

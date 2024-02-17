@@ -42,9 +42,10 @@ services:
       - barsic_pg:/var/lib/postgresql/data/
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
 
   redis:
     container_name: redis
@@ -58,6 +59,40 @@ services:
       - "6379:6379"
     networks:
       - network
+
+  mssql:
+    container_name: mssql
+    hostname: mssql
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    environment:
+      ACCEPT_EULA: ${ACCEPT_EULA}
+      MSSQL_USER: ${MSSQL_USER}
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+      MSSQL_PID: ${MSSQL_PID}
+    volumes:
+      - azure-sql-storage:/var/opt/mssql
+      - ./dev/backup/:/var/opt/backup
+    ports:
+      - "1433:1433"
+    networks:
+      - network
+
+#  sqlcmd:
+#    image: mcr.microsoft.com/mssql-tools:latest
+#    command: /opt/mssql_scripts/restore.sh
+#    stdin_open: true
+#    environment:
+#      MSSQL_HOST: ${MSSQL_HOST}
+#      MSSQL_PORT: ${MSSQL_PORT}
+#      MSSQL_USER: ${MSSQL_USER}
+#      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+#    volumes:
+#      - ./dev/mssql_scripts/:/opt/mssql_scripts
+#    networks:
+#      - network
+#    depends_on:
+#      mssql:
+#        condition: service_started
 
   nginx:
     container_name: nginx
@@ -76,6 +111,7 @@ services:
 volumes:
   barsic_pg:
   barsic_redis:
+  azure-sql-storage:
 
 networks:
   network:
