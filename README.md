@@ -58,3 +58,10 @@ docker compose up --build
 например Azure Data Studio[https://docs.microsoft.com/en-us/sql/azure-data-studio/download-azure-data-studio?view=sql-server-ver15]
 
 4. Восстановить все БД
+
+### Установка Microsoft ODBC 18 на MacOS
+```commandline
+brew tap microsoft/mssql-release https://github.com/Microsoft/homebrew-mssql-release
+brew update
+HOMEBREW_ACCEPT_EULA=Y brew install msodbcsql18 mssql-tools18
+```

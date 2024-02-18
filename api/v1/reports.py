@@ -1,24 +1,13 @@
-from fastapi import APIRouter, HTTPException
-from fastapi.encoders import jsonable_encoder
-from sqlalchemy.exc import IntegrityError
-from starlette import status
+from fastapi import APIRouter, Depends
 
-from models import User
-from schemas import UserCreated
+from legacy.barsicreport2 import get_legacy_service, BarsicReport2Service
 
 router = APIRouter()
 
 
-@router.post("/signup", response_model=UserCreated, status_code=status.HTTP_201_CREATED)
-async def create_user(user_create: UserCreated) -> UserCreated:
-    user_dto = jsonable_encoder(user_create)
-    try:
-        raw_user = await User.create(**user_dto)
+@router.post("/client_count", response_model=dict)
+async def client_count(legacy_service: BarsicReport2Service = Depends(get_legacy_service)) -> dict:
+    """Количество людей в зоне."""
 
-    except IntegrityError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="User with such login is registered already",
-        )
-
-    return raw_user
+    client_count = legacy_service.count_clients_print()
+    return client_count

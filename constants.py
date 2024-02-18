@@ -10,5 +10,6 @@ GOOGLE_SCOPES = [
 ]
 
 
-class Service(str, Enum):
-    async_api = "async_api"
+class MssqlDriverType(str, Enum):
+    MICROSOFT_ODBC_18 = '{ODBC Driver 18 for SQL Server}'  # Microsoft ODBC driver for SQL Server (Linux)
+    SQL_SERVER = '{SQL Server}'  # Windows Driver

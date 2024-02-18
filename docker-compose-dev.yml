@@ -16,6 +16,39 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      # AppSettings
+      MSSQL_DRIVER_TYPE: ${MSSQL_DRIVER_TYPE}
+      MSSQL_SERVER: ${MSSQL_SERVER}
+      MSSQL_USER: ${MSSQL_USER}
+      MSSQL_PWD: ${MSSQL_PWD}
+      MSSQL_DATABASE1: ${MSSQL_DATABASE1}
+      MSSQL_DATABASE2: ${MSSQL_DATABASE2}
+      MSSQL_DATABASE_BITRIX: ${MSSQL_DATABASE_BITRIX}
+      MSSQL_SERVER_RK: ${MSSQL_SERVER_RK}
+      MSSQL_USER_RK: ${MSSQL_USER_RK}
+      MSSQL_PWD_RK: ${MSSQL_PWD_RK}
+      MSSQL_DATABASE_RK: ${MSSQL_DATABASE_RK}
+      REPORT_XML: ${REPORT_XML}
+      AGENT_XML: ${AGENT_XML}
+      TOTAL_REPORT_XML: ${TOTAL_REPORT_XML}
+      LOCAL_FOLDER: ${LOCAL_FOLDER}
+      PATH: ${PATH}
+      CREDENTIALS_FILE: ${CREDENTIALS_FILE}
+      LIST_GOOGLE_DOCS: ${LIST_GOOGLE_DOCS}
+      YADISK_TOKEN: ${YADISK_TOKEN}
+      TELEGRAM_TOKEN: ${TELEGRAM_TOKEN}
+      TELEGRAM_CHANEL_ID: ${TELEGRAM_CHANEL_ID}
+      TELEGRAM_PROXY_USE: ${TELEGRAM_PROXY_USE}
+      TELEGRAM_PROXY_TYPE: ${TELEGRAM_PROXY_TYPE}
+      TELEGRAM_PROXY_IP: ${TELEGRAM_PROXY_IP}
+      TELEGRAM_PROXY_PORT: ${TELEGRAM_PROXY_PORT}
+      TELEGRAM_PROXY_AUTH: ${TELEGRAM_PROXY_AUTH}
+      TELEGRAM_PROXY_USERNAME: ${TELEGRAM_PROXY_USERNAME}
+      TELEGRAM_PROXY_PASSWORD: ${TELEGRAM_PROXY_PASSWORD}
+      GOOGLE_ALL_READ: ${GOOGLE_ALL_READ}
+      GOOGLE_READER_LIST: ${GOOGLE_READER_LIST}
+      GOOGLE_WRITER_LIST: ${GOOGLE_WRITER_LIST}
+    entrypoint: "sh barsic_web-dev.sh"
     networks:
       - network
     ports:
@@ -64,6 +97,8 @@ services:
     container_name: mssql
     hostname: mssql
     image: mcr.microsoft.com/azure-sql-edge:latest
+    cap_add:
+      - SYS_PTRACE
     environment:
       ACCEPT_EULA: ${ACCEPT_EULA}
       MSSQL_USER: ${MSSQL_USER}
@@ -73,7 +108,7 @@ services:
       - azure-sql-storage:/var/opt/mssql
       - ./dev/backup/:/var/opt/backup
     ports:
-      - "1433:1433"
+      - "1444:1433"
     networks:
       - network
 
