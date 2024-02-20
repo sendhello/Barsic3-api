@@ -1,14 +1,19 @@
+from datetime import date, datetime, timedelta
+
 from fastapi import APIRouter, Depends
-from datetime import datetime, timezone, timedelta, date
-from legacy.barsicreport2 import get_legacy_service, BarsicReport2Service
-from gateways.telegram import send_message
+
 from core.settings import settings
+from gateways.telegram import send_message
+from legacy.barsicreport2 import BarsicReport2Service, get_legacy_service
+
 
 router = APIRouter()
 
 
 @router.post("/client_count", response_model=dict)
-async def client_count(legacy_service: BarsicReport2Service = Depends(get_legacy_service)) -> dict:
+async def client_count(
+    legacy_service: BarsicReport2Service = Depends(get_legacy_service),
+) -> dict:
     """Количество людей в зоне."""
 
     client_count = legacy_service.count_clients_print()
@@ -17,11 +22,12 @@ async def client_count(legacy_service: BarsicReport2Service = Depends(get_legacy
 
 @router.post("/create_reports", response_model=dict)
 async def create_reports(
-        date_from: datetime = datetime.combine(date.today(), datetime.min.time()),
-        date_to: datetime = datetime.combine(date.today(), datetime.min.time()) + timedelta(days=1),
-        use_yadisk: bool = False,
-        telegram_report: bool = False,
-        legacy_service: BarsicReport2Service = Depends(get_legacy_service)
+    date_from: datetime = datetime.combine(date.today(), datetime.min.time()),
+    date_to: datetime = datetime.combine(date.today(), datetime.min.time())
+    + timedelta(days=1),
+    use_yadisk: bool = False,
+    telegram_report: bool = False,
+    legacy_service: BarsicReport2Service = Depends(get_legacy_service),
 ) -> dict:
     """Создание всех отчетов."""
 
@@ -39,15 +45,14 @@ async def create_reports(
 
     return {
         "ok": True,
-        "Google Report": legacy_service.spreadsheet['spreadsheetUrl'],
-        "Telegram Message": message.text if message else None
+        "Google Report": legacy_service.spreadsheet["spreadsheetUrl"],
+        "Telegram Message": message.text if message else None,
     }
 
 
 @router.post("/send_telegram", response_model=dict)
-async def client_count(
-        message: str,
-        legacy_service: BarsicReport2Service = Depends(get_legacy_service)
+async def send_telegram(
+    message: str, legacy_service: BarsicReport2Service = Depends(get_legacy_service)
 ) -> dict:
     """Отправить сообщение в телеграм."""
 

@@ -2,9 +2,10 @@ import uuid
 from datetime import datetime
 from typing import Self
 
-from db.postgres import async_session
 from sqlalchemy import Column, DateTime, select
 from sqlalchemy.dialects.postgresql import UUID
+
+from db.postgres import async_session
 
 
 class CRUDMixin:

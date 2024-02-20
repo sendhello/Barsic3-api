@@ -1,9 +1,10 @@
 from typing import Self
 
-from db.postgres import Base, async_session
 from sqlalchemy import Column, ForeignKey, String, select
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import joinedload, relationship
+
+from db.postgres import Base, async_session
 
 from .mixins import CRUDMixin, IDMixin
 
@@ -23,7 +24,9 @@ class User(Base, IDMixin, CRUDMixin):
     @classmethod
     async def get_by_login(cls, username: str) -> Self:
         async with async_session() as session:
-            request = select(cls).options(joinedload(cls.role)).where(cls.login == username)
+            request = (
+                select(cls).options(joinedload(cls.role)).where(cls.login == username)
+            )
             result = await session.execute(request)
             user = result.scalars().first()
 
@@ -32,7 +35,9 @@ class User(Base, IDMixin, CRUDMixin):
     @classmethod
     async def get_by_email(cls, email: str) -> Self:
         async with async_session() as session:
-            request = select(cls).options(joinedload(cls.role)).where(cls.email == email)
+            request = (
+                select(cls).options(joinedload(cls.role)).where(cls.email == email)
+            )
             result = await session.execute(request)
             user = result.scalars().first()
 
@@ -41,7 +46,12 @@ class User(Base, IDMixin, CRUDMixin):
     @classmethod
     async def get_all(cls, page: int = 1, page_size: int = 20) -> list[Self]:
         async with async_session() as session:
-            request = select(cls).options(joinedload(cls.role)).limit(page_size).offset((page - 1) * page_size)
+            request = (
+                select(cls)
+                .options(joinedload(cls.role))
+                .limit(page_size)
+                .offset((page - 1) * page_size)
+            )
             result = await session.execute(request)
             users = result.scalars().all()
 

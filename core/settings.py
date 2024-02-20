@@ -1,9 +1,9 @@
-from datetime import timedelta
 from logging import config as logging_config
 
-from core.logger import LOGGING
-from pydantic import Field, PostgresDsn
+from pydantic import Field
 from pydantic_settings import BaseSettings
+
+from core.logger import LOGGING
 
 
 # Применяем настройки логирования
@@ -70,6 +70,7 @@ class AppSettings(BaseSettings):
 
 class Settings(PostgresSettings, RedisSettings, AppSettings):
     """Все настройки."""
+
     pass
 
 

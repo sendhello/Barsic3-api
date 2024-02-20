@@ -1,9 +1,7 @@
 import pyodbc
 
-import subprocess
-import getpass
-from core.settings import settings
 from constants import MssqlDriverType
+from core.settings import settings
 
 
 class MsSqlConnection:
@@ -16,14 +14,14 @@ class MsSqlConnection:
 
     def connect(self):
         return pyodbc.connect(
-            f'DRIVER={self.driver};'
-            f'SERVER={self.server};'
-            f'PORT=1433;'
-            f'DATABASE={self.database};'
-            f'UID={self.uid};'
-            f'PWD={self.pwd};'
-            f'TrustServerCertificate=yes;'
-            f'Encrypt=no'
+            f"DRIVER={self.driver};"
+            f"SERVER={self.server};"
+            f"PORT=1433;"
+            f"DATABASE={self.database};"
+            f"UID={self.uid};"
+            f"PWD={self.pwd};"
+            f"TrustServerCertificate=yes;"
+            f"Encrypt=no"
         )
 
 

@@ -11,5 +11,5 @@ GOOGLE_SCOPES = [
 
 
 class MssqlDriverType(str, Enum):
-    MICROSOFT_ODBC_18 = '{ODBC Driver 18 for SQL Server}'  # Microsoft ODBC driver for SQL Server (Linux)
-    SQL_SERVER = '{SQL Server}'  # Windows Driver
+    MICROSOFT_ODBC_18 = "{ODBC Driver 18 for SQL Server}"  # Microsoft ODBC driver for SQL Server (Linux)
+    SQL_SERVER = "{SQL Server}"  # Windows Driver

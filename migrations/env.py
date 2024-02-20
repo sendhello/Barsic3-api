@@ -2,12 +2,13 @@ import asyncio
 from logging.config import fileConfig
 
 from alembic import context
-from core.settings import settings
-from db.postgres import Base
-from models import *  # noqa
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
+
+from core.settings import settings
+from db.postgres import Base
+from models import *  # noqa
 
 
 # this is the Alembic Config object, which provides

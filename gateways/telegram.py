@@ -1,8 +1,7 @@
-import asyncio
-import types
-from aiogram import Bot, types
-from core.settings import settings
+from aiogram import Bot
 from aiogram.types import Message
+
+from core.settings import settings
 
 
 bot = Bot(token=settings.telegram_token)
