@@ -7,6 +7,9 @@ import webbrowser
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Dict, List, Any
+
+import requests
+
 from legacy import functions
 import apiclient
 from core.settings import settings
@@ -14,7 +17,6 @@ import httplib2
 import pyodbc
 import socks
 from db.mssql import get_mssql_connection
-import telepot
 import yadisk
 from dateutil.relativedelta import relativedelta
 from lxml import etree, objectify
@@ -33,10 +35,6 @@ class BarsicReport2Service:
     Функционал предыдущей версии.
     """
     def __init__(self):
-
-        self.date_from = datetime.strptime(datetime.now().strftime('%Y-%m-%d'), '%Y-%m-%d')
-        self.date_to = self.date_from + timedelta(1)
-
         self.org1 = None
         self.org2 = None
         self.org3 = None
@@ -65,19 +63,10 @@ class BarsicReport2Service:
         self.agentXML = settings.agentXML
         self.itogreportXML = settings.itogreportXML
         self.local_folder = settings.local_folder
-        self.path = settings.path
+        self.report_path = settings.report_path
         self.CREDENTIALS_FILE = settings.credentials_file
         self.list_google_docs = settings.list_google_docs
         self.yadisk_token = settings.yadisk_token
-        self.telegram_token = settings.telegram_token
-        self.telegram_chanel_id = settings.telegram_chanel_id
-        self.telegram_proxy_use = settings.telegram_proxy_use
-        self.telegram_proxy_type = settings.telegram_proxy_type
-        self.telegram_proxy_ip = settings.telegram_proxy_ip
-        self.telegram_proxy_port = settings.telegram_proxy_port
-        self.telegram_proxy_auth = settings.telegram_proxy_auth
-        self.telegram_proxy_username = settings.telegram_proxy_username
-        self.telegram_proxy_password = settings.telegram_proxy_password
         self.google_all_read = settings.google_all_read
         self.google_reader_list = settings.google_reader_list
         self.google_writer_list = settings.google_writer_list
@@ -582,7 +571,6 @@ class BarsicReport2Service:
                          database,
                          user,
                          pwd,
-                         driver,
                          date_from,
                          date_to,
                          ):
@@ -754,7 +742,7 @@ class BarsicReport2Service:
         except IOError:
             pass
 
-    def agentservice(self):
+    def agentservice(self, date_from):
         self.agent_dict = self.read_reportgroup(self.agentXML)
         self.find_new_agentservice(self.itog_report_org1, self.agent_dict)
         self.find_new_agentservice(self.itog_report_org1_lastyear, self.agent_dict)
@@ -766,7 +754,12 @@ class BarsicReport2Service:
         self.find_new_agentservice(self.itog_report_org5_lastyear, self.agent_dict)
         if self.itog_report_month:
             self.find_new_agentservice(self.itog_report_month, self.agent_dict)
-        self.distibution_agentservice()
+
+        if self.new_agentservice:
+            logger.warning(f"Найдены новые сервисы: {self.new_agentservice}")
+
+        logger.warning(f"POS3")
+        self.save_reports(date_from)
 
     def find_new_agentservice(self, service_dict, orgs_dict):
         """
@@ -1186,297 +1179,7 @@ class BarsicReport2Service:
                           f"({self.agentreport_dict_month['Контрольная сумма']['Cумма'][0][1]}: "
                           f"{self.agentreport_dict_month['Контрольная сумма']['Cумма'][0][2]})")
 
-    def export_fin_report(self):
-        """
-        Сохраняет Финансовый отчет в виде Excel-файла в локальную директорию
-        """
-        # определяем стили
-        h1 = Font(name='Times New Roman',
-                  size=18,
-                  bold=True,
-                  italic=False,
-                  vertAlign=None,
-                  underline='none',
-                  strike=False,
-                  color='FF000000')
-        font = Font(name='Times New Roman',
-                    size=9,
-                    bold=False,
-                    italic=False,
-                    vertAlign=None,
-                    underline='none',
-                    strike=False,
-                    color='FF000000')
-        font_bold = Font(name='Times New Roman',
-                         size=9,
-                         bold=True,
-                         italic=False,
-                         vertAlign=None,
-                         underline='none',
-                         strike=False,
-                         color='FF000000')
-        fill = PatternFill(fill_type='solid',
-                           start_color='c1c1c1',
-                           end_color='c2c2c2')
-        table_color = PatternFill(fill_type='solid',
-                                  start_color='e2e2e2',
-                                  end_color='e9e9e9')
-        align_top = Alignment(horizontal='general',
-                              vertical='top',
-                              text_rotation=0,
-                              wrap_text=False,
-                              shrink_to_fit=False,
-                              indent=0,
-                              )
-        align_top_center = Alignment(horizontal='center',
-                              vertical='top',
-                              text_rotation=0,
-                              wrap_text=False,
-                              shrink_to_fit=False,
-                              indent=0,
-                              )
-        border = Border(left=Side(border_style='thin',
-                                  color='FF000000'),
-                        right=Side(border_style='thin',
-                                   color='FF000000'),
-                        top=Side(border_style='thin',
-                                 color='FF000000'),
-                        bottom=Side(border_style='thin',
-                                    color='FF000000'),
-                        diagonal=Side(border_style='thin',
-                                      color='FF000000'),
-                        diagonal_direction=0,
-                        outline=Side(border_style='thin',
-                                     color='FF000000'),
-                        vertical=Side(border_style='thin',
-                                      color='FF000000'),
-                        horizontal=Side(border_style='thin',
-                                        color='FF000000')
-                        )
-        align_left = Alignment(horizontal='left',
-                               vertical='bottom',
-                               text_rotation=0,
-                               wrap_text=False,
-                               shrink_to_fit=False,
-                               indent=0)
-        number_format = 'General'
-        protection = Protection(locked=True,
-                                hidden=False)
-
-        column = ['', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S',
-                  'T', 'U', 'V', 'W', 'X', 'Y', 'Z']
-
-        self.row = '0'
-
-        def next_row():
-            self.row = str(int(self.row) + 1)
-            return self.row
-
-        # объект
-        wb = Workbook()
-
-        # активный лист
-        ws = wb.active
-
-        # название страницы
-        # ws = wb.create_sheet('первая страница', 0)
-        ws.title = 'Финансовый отчет'
-        # шрифты
-        ws['A1'].font = h1
-        # выравнивание
-        ws['A1'].alignment = align_left
-
-        # Ширина стролбцов
-        ws.column_dimensions['A'].width = 1 / 7 * 67
-        ws.column_dimensions['B'].width = 1 / 7 * 95
-        ws.column_dimensions['C'].width = 1 / 7 * 87
-        ws.column_dimensions['D'].width = 1 / 7 * 87
-        ws.column_dimensions['E'].width = 1 / 7 * 47
-        ws.column_dimensions['F'].width = 1 / 7 * 87
-        ws.column_dimensions['G'].width = 1 / 7 * 87
-        ws.column_dimensions['H'].width = 1 / 7 * 47
-        ws.column_dimensions['I'].width = 1 / 7 * 87
-        ws.column_dimensions['J'].width = 1 / 7 * 87
-        ws.column_dimensions['K'].width = 1 / 7 * 47
-        ws.column_dimensions['L'].width = 1 / 7 * 87
-        ws.column_dimensions['M'].width = 1 / 7 * 87
-        ws.column_dimensions['N'].width = 1 / 7 * 47
-        ws.column_dimensions['O'].width = 1 / 7 * 87
-        ws.column_dimensions['P'].width = 1 / 7 * 87
-        ws.column_dimensions['Q'].width = 1 / 7 * 47
-        ws.column_dimensions['R'].width = 1 / 7 * 87
-        ws.column_dimensions['S'].width = 1 / 7 * 87
-        ws.column_dimensions['T'].width = 1 / 7 * 47
-        ws.column_dimensions['U'].width = 1 / 7 * 87
-        ws.column_dimensions['V'].width = 1 / 7 * 47
-        ws.column_dimensions['W'].width = 1 / 7 * 87
-        ws.column_dimensions['X'].width = 1 / 7 * 87
-        ws.column_dimensions['Y'].width = 1 / 7 * 87
-        ws.column_dimensions['Z'].width = 1 / 7 * 87
-
-        # значение ячейки
-        # ws['A1'] = "Hello!"
-
-        ws[column[1] + next_row()] = 'Финансовый отчет'
-        ws.merge_cells(start_row=self.row, start_column=1, end_row=self.row, end_column=len(column) - 1)
-        # шрифты
-        ws[column[1] + self.row].font = h1
-        # выравнивание
-        ws[column[1] + self.row].alignment = align_left
-        # Высота строк
-        ws.row_dimensions[1].height = 24
-
-        ws[column[1] + next_row()] = 'За период с:'
-        ws[column[1] + self.row].font = font
-        ws[column[1] + self.row].alignment = align_top
-        ws[column[2] + self.row] = (self.finreport_dict["Дата"][0]).strftime("%d.%m.%Y")
-        ws[column[2] + self.row].font = font_bold
-        ws[column[2] + self.row].alignment = align_top
-        ws[column[3] + self.row] = 'по'
-        ws[column[3] + self.row].font = font
-        ws[column[3] + self.row].alignment = align_top
-        ws[column[4] + self.row] = (self.finreport_dict["Дата"][1] - timedelta(1)).strftime("%d.%m.%Y")
-        ws[column[4] + self.row].font = font_bold
-        ws[column[4] + self.row].alignment = align_top
-
-        # ТАБЛИЦА
-        self.color = False
-        def merge_table():
-            # ws.merge_cells(start_row=self.row, start_column=1, end_row=self.row, end_column=4)
-            for b in range(1, 27):
-                ws[column[b] + self.row].font = font
-                ws[column[b] + self.row].alignment = align_top
-                if b not in (1, 2, 5, 8, 11, 14, 17, 20, 22):
-                    ws[column[b] + self.row].number_format = '#,##0.00 ₽'
-                ws[column[b] + self.row].border = border
-            if self.color:
-                b = 1
-                while b < len(column):
-                    ws[column[b] + self.row].fill = table_color
-                    b += 1
-                self.color = False
-            else:
-                self.color = True
-
-        ws[column[1] + next_row()] = 'Дата'
-        ws.merge_cells(start_row=self.row, start_column=1, end_row=str(int(self.row) + 1), end_column=1)
-        ws[column[2] + self.row] = 'Кол-во проходов'
-        ws.merge_cells(start_row=self.row, start_column=2, end_row=str(int(self.row) + 1), end_column=2)
-        ws[column[3] + self.row] = 'Общая сумма'
-        ws.merge_cells(start_row=self.row, start_column=3, end_row=str(int(self.row) + 1), end_column=3)
-        ws[column[4] + self.row] = 'Сумма KPI'
-        ws.merge_cells(start_row=self.row, start_column=4, end_row=str(int(self.row) + 1), end_column=4)
-        ws[column[5] + self.row] = 'Билеты'
-        ws.merge_cells(start_row=self.row, start_column=5, end_row=self.row, end_column=7)
-        ws[column[8] + self.row] = 'Билеты КОРП'
-        ws.merge_cells(start_row=self.row, start_column=8, end_row=self.row, end_column=10)
-        ws[column[11] + self.row] = 'Термозона'
-        ws.merge_cells(start_row=self.row, start_column=11, end_row=self.row, end_column=13)
-        ws[column[14] + self.row] = 'Термозона КОРП'
-        ws.merge_cells(start_row=self.row, start_column=14, end_row=self.row, end_column=16)
-        ws[column[17] + self.row] = 'Общепит'
-        ws.merge_cells(start_row=self.row, start_column=17, end_row=self.row, end_column=19)
-        ws[column[20] + self.row] = 'Прочее'
-        ws.merge_cells(start_row=self.row, start_column=20, end_row=self.row, end_column=21)
-        ws[column[22] + self.row] = 'Online Продажи'
-        ws.merge_cells(start_row=self.row, start_column=22, end_row=self.row, end_column=24)
-        ws[column[25] + self.row] = 'Сумма безнал'
-        ws.merge_cells(start_row=self.row, start_column=25, end_row=str(int(self.row) + 1), end_column=25)
-        ws[column[26] + self.row] = 'Фотоуслуги'
-        ws.merge_cells(start_row=self.row, start_column=26, end_row=str(int(self.row) + 1), end_column=26)
-        # раскрвшивание фона для заголовков
-        b = 1
-        while b < len(column):
-            ws[column[b] + self.row].fill = fill
-            b += 1
-        for b in range(1, 27):
-            ws[column[b] + self.row].font = font
-            ws[column[b] + self.row].alignment = align_top_center
-            ws[column[b] + self.row].border = border
-
-        ws[column[5] + next_row()] = 'Кол-во'
-        ws[column[6] + self.row] = 'Сумма'
-        ws[column[7] + self.row] = 'Средний чек'
-        ws[column[8] + self.row] = 'Кол-во'
-        ws[column[9] + self.row] = 'Сумма'
-        ws[column[10] + self.row] = 'Средний чек'
-        ws[column[11] + self.row] = 'Кол-во'
-        ws[column[12] + self.row] = 'Сумма'
-        ws[column[13] + self.row] = 'Средний чек'
-        ws[column[14] + self.row] = 'Кол-во'
-        ws[column[15] + self.row] = 'Сумма'
-        ws[column[16] + self.row] = 'Средний чек'
-        ws[column[17] + self.row] = 'Кол-во'
-        ws[column[18] + self.row] = 'Сумма'
-        ws[column[19] + self.row] = 'Средний чек'
-        ws[column[20] + self.row] = 'Кол-во'
-        ws[column[21] + self.row] = 'Сумма'
-        ws[column[22] + self.row] = 'Кол-во'
-        ws[column[23] + self.row] = 'Сумма'
-        ws[column[24] + self.row] = 'Средний чек'
-        # раскрвшивание фона для заголовков
-        b = 1
-        while b < len(column):
-            ws[column[b] + self.row].fill = fill
-            b += 1
-        for b in range(1, 27):
-            ws[column[b] + self.row].font = font
-            ws[column[b] + self.row].alignment = align_top_center
-            ws[column[b] + self.row].border = border
-
-        if self.finreport_dict['Дата'][0] == self.finreport_dict['Дата'][1] - timedelta(1):
-            date_ = datetime.strftime(self.finreport_dict["Дата"][0], "%Y-%m-%d")
-        else:
-            date_ = f'{datetime.strftime(self.finreport_dict["Дата"][0], "%Y-%m-%d")} - ' \
-                    f'{datetime.strftime(self.finreport_dict["Дата"][1] - timedelta(1), "%Y-%m-%d")}'
-
-        ws[column[1] + next_row()] = date_
-        ws[column[2] + self.row] = self.finreport_dict['Кол-во проходов'][0]
-        ws[column[3] + self.row] = self.finreport_dict['ИТОГО'][1]
-        ws[column[4] + self.row] = f'=C{self.row}-U{self.row}+W{self.row}+Y{self.row}+Z{self.row}'
-        ws[column[5] + self.row] = self.finreport_dict['Билеты аквапарка'][0]
-        ws[column[6] + self.row] = self.finreport_dict['Билеты аквапарка'][1]
-        ws[column[7] + self.row] = f'=ЕСЛИОШИБКА(F{self.row}/E{self.row},0)'
-        ws[column[8] + self.row] = self.finreport_dict['Билеты аквапарка КОРП'][0]
-        ws[column[9] + self.row] = self.finreport_dict['Билеты аквапарка КОРП'][0]
-        ws[column[10] + self.row] = f'=ЕСЛИОШИБКА(I{self.row}/H{self.row},0)'
-        ws[column[11] + self.row] = self.finreport_dict['Термозона'][0]
-        ws[column[12] + self.row] = self.finreport_dict['Термозона'][1]
-        ws[column[13] + self.row] = f'=ЕСЛИОШИБКА(L{self.row}/K{self.row},0)'
-        ws[column[14] + self.row] = self.finreport_dict['Термозона КОРП'][0]
-        ws[column[15] + self.row] = self.finreport_dict['Термозона КОРП'][1]
-        ws[column[16] + self.row] = f'=ЕСЛИОШИБКА(O{self.row}/N{self.row},0)'
-        ws[column[17] + self.row] = self.finreport_dict['Общепит'][0]
-        ws[column[18] + self.row] = self.finreport_dict['Общепит'][1]
-        ws[column[19] + self.row] = f'=ЕСЛИОШИБКА(R{self.row}/Q{self.row},0)'
-        ws[column[20] + self.row] = self.finreport_dict['Прочее'][0]
-        ws[column[21] + self.row] = self.finreport_dict['Прочее'][1]
-        ws[column[22] + self.row] = self.finreport_dict['Online Продажи'][0]
-        ws[column[23] + self.row] = self.finreport_dict['Online Продажи'][1]
-        ws[column[24] + self.row] = f'=ЕСЛИОШИБКА(W{self.row}/V{self.row},0)'
-        ws[column[25] + self.row] = 0
-        ws[column[26] + self.row] = 0
-        merge_table()
-
-        # увеличиваем все строки по высоте
-        max_row = ws.max_row
-        i = 2
-        while i <= max_row:
-            rd = ws.row_dimensions[i]
-            rd.height = 18
-            i += 1
-        if self.finreport_dict['Дата'][0] == self.finreport_dict["Дата"][1] - timedelta(1):
-            date_ = datetime.strftime(self.finreport_dict["Дата"][0], "%Y-%m-%d")
-        else:
-            date_ = f'{datetime.strftime(self.finreport_dict["Дата"][0], "%Y-%m-%d")} - ' \
-                    f'{datetime.strftime(self.finreport_dict["Дата"][1], "%Y-%m-%d")}'
-        path = self.local_folder + self.path + date_ + f' Финансовый отчет' + ".xlsx"
-        logging.info(f'{__name__}: {str(datetime.now())[:-7]}:    Сохранение финансового отчета в {path}')
-        path = self.create_path(path)
-        self.save_file(path, wb)
-        return path
-
-    def export_agent_report(self, agentreport_dict):
+    def export_agent_report(self, agentreport_dict, date_from):
         """
         Сохраняет отчет платежного агента в виде Excel-файла в локальную директорию
         """
@@ -1681,14 +1384,17 @@ class BarsicReport2Service:
         else:
             date_ = f'{datetime.strftime(agentreport_dict["Дата"][0], "%Y-%m-%d")} - ' \
                     f'{datetime.strftime(agentreport_dict["Дата"][1], "%Y-%m-%d")}'
-        path = self.local_folder + self.path + date_ + f' Отчет платежного агента {agentreport_dict["Организация"][1]}' + ".xlsx"
+        logger.warning(f"{self.local_folder=}")
+        logger.warning(f"{self.report_path=}")
+        logger.warning(f"{date_=}")
+        path = self.local_folder + self.report_path + date_ + f' Отчет платежного агента {agentreport_dict["Организация"][1]}' + ".xlsx"
         logging.info(f'{__name__}: {str(datetime.now())[:-7]}:    Сохранение отчета платежного агента '
                      f'{agentreport_dict["Организация"][1]} в {path}')
-        path = self.create_path(path)
+        path = self.create_path(path, date_from)
         self.save_file(path, wb)
         return path
 
-    def create_path(self, path):
+    def create_path(self, path, date_from):
         """
         Проверяет наличие указанного пути. В случае отсутствия каких-либо папок создает их
         """
@@ -1698,8 +1404,8 @@ class BarsicReport2Service:
         end_path = ''
         if list_path[-1][-4:] == '.xls' or list_path[-1]:
             end_path = list_path.pop()
-        list_path.append(self.date_from.strftime('%Y'))
-        list_path.append(self.date_from.strftime('%m') + '-' + self.date_from.strftime('%B'))
+        list_path.append(date_from.strftime('%Y'))
+        list_path.append(date_from.strftime('%m') + '-' + date_from.strftime('%B'))
         directory = os.getcwd()
         for folder in list_path:
             if folder not in os.listdir():
@@ -1726,7 +1432,7 @@ class BarsicReport2Service:
                              f'Файл "{path}" занят другим процессом.\nДля повтора попытки закройте это сообщение',
                              func=self.save_file, path=path, file=file)
 
-    def sync_to_yadisk(self, path_list, token):
+    def sync_to_yadisk(self, path_list, token, date_from):
         """
         Копирует локальные файлы в Яндекс Диск
         """
@@ -1736,8 +1442,8 @@ class BarsicReport2Service:
                 logging.info(f'{__name__}: {str(datetime.now())[:-7]}:    Соединение с YaDisk...')
                 self.yadisk = yadisk.YaDisk(token=token)
                 if self.yadisk.check_token():
-                    path = '' + self.path
-                    remote_folder = self.create_path_yadisk(path)
+                    path = '' + self.report_path
+                    remote_folder = self.create_path_yadisk(path, date_from)
                     for local_path in path_list:
                         remote_path = remote_folder + local_path.split('/')[-1]
                         logging.info(f'{__name__}: {str(datetime.now())[:-7]}:    Отправка файла "{local_path.split("/")[-1]}" в YaDisk...')
@@ -1763,7 +1469,7 @@ class BarsicReport2Service:
         else:
             logging.info(f'{__name__}: {str(datetime.now())[:-7]}:    Нет ни одного отчета для отправки в Yandex.Disk')
 
-    def create_path_yadisk(self, path):
+    def create_path_yadisk(self, path, date_from):
         """
         Проверяет наличие указанного пути в Яндекс Диске. В случае отсутствия каких-либо папок создает их
         :param path:
@@ -1775,8 +1481,8 @@ class BarsicReport2Service:
         end_path = ''
         if list_path[-1][-4:] == '.xls' or list_path[-1] == '':
             end_path = list_path.pop()
-        list_path.append(self.date_from.strftime('%Y'))
-        list_path.append(self.date_from.strftime('%m') + '-' + self.date_from.strftime('%B'))
+        list_path.append(date_from.strftime('%Y'))
+        list_path.append(date_from.strftime('%m') + '-' + date_from.strftime('%B'))
         directory = '/'
         list_path_yandex = []
         for folder in list_path:
@@ -1799,7 +1505,7 @@ class BarsicReport2Service:
         path = list_path_yandex[-1] + '/'
         return path
 
-    def export_to_google_sheet(self):
+    def export_to_google_sheet(self, date_from):
         """
         Формирование и заполнение google-таблицы
         """
@@ -1868,26 +1574,27 @@ class BarsicReport2Service:
                         self.google_links[line[0]].append(line[2])
                     else:
                         self.google_links[line[0]].append(0)
-            if self.date_from.strftime('%Y-%m') in self.google_links:
-                if int(self.google_links[self.date_from.strftime('%Y-%m')][1]) == self.doc_version:
-                    self.google_doc = (self.date_from.strftime('%Y-%m'),
-                                       self.google_links[self.date_from.strftime('%Y-%m')][0])
+            if date_from.strftime('%Y-%m') in self.google_links:
+                if int(self.google_links[date_from.strftime('%Y-%m')][1]) == self.doc_version:
+                    self.google_doc = (date_from.strftime('%Y-%m'),
+                                       self.google_links[date_from.strftime('%Y-%m')][0])
                 else:
                     logging.error(f"{__name__}: {str(datetime.now())[:-7]}:    "
                                   f"Версия Финансового отчета ("
-                                     f"{self.google_links[self.date_from.strftime('%Y-%m')][1]}) "
+                                     f"{self.google_links[date_from.strftime('%Y-%m')][1]}) "
                                      f"не соответствует текущей ({self.doc_version}).\n"
                                      f"Необходимо сначала удалить строку с ссылкой на старую версию из файла "
                                      f"\"list_google_docs.csv\" затем заново сформировать отчет с начала месяца."
                                   )
                     logger.info("Несоответствие версий финансового отчета",
                                      f"Версия Финансового отчета ("
-                                     f"{self.google_links[self.date_from.strftime('%Y-%m')][1]}) "
+                                     f"{self.google_links[date_from.strftime('%Y-%m')][1]}) "
                                      f"не соответствует текущей ({self.doc_version}).\n"
                                      f"Необходимо сначала удалить строку с ссылкой на старую версию из файла "
                                      f"\"list_google_docs.csv\" затем заново сформировать отчет с начала месяца.")
                     return None
             else:
+                logger.warning("POS_10")
                 self.google_doc = None
                 # Создание документа
                 self.google_kwote_timer = datetime.now()
@@ -2608,7 +2315,7 @@ class BarsicReport2Service:
 
                 ss.runPrepared()
 
-                self.google_doc = (self.date_from.strftime('%Y-%m'), self.spreadsheet['spreadsheetId'])
+                self.google_doc = (date_from.strftime('%Y-%m'), self.spreadsheet['spreadsheetId'])
                 self.google_links[self.google_doc[0]] = [self.google_doc[1], self.doc_version]
                 links = []
                 for docid in self.google_links:
@@ -2645,15 +2352,7 @@ class BarsicReport2Service:
                 try:
                     if line_table['values'][0]['formattedValue'] == datetime.strftime(self.finreport_dict['Дата'][0],
                                                                                       '%d.%m.%Y'):
-                        if self.root.ids.report.ids.split_by_days.active:
-                            self.rewrite_google_sheet()
-                        else:
-                            logger.info_variant(f'Перезаписать эту строку?',
-                                                     f'Строка за '
-                                                     f'{datetime.strftime(self.finreport_dict["Дата"][0], "%d.%m.%Y")} '
-                                                     f'уже существует в таблице!',
-                                                     self.rewrite_google_sheet,
-                                                     )
+                        self.rewrite_google_sheet()
                         self.reprint = 0
                         break
                     elif line_table['values'][0]['formattedValue'] == "ИТОГО":
@@ -4074,21 +3773,7 @@ class BarsicReport2Service:
                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0}}}})
         ss.runPrepared()
 
-
-    def open_googlesheet(self):
-        """
-        Открывает браузер с текущей гугл-таблицей
-        """
-        if not self.open_browser:
-            logging.info(f'{__name__}: {str(datetime.now())[:-7]}:    Открытие файла-отчета в браузере...')
-            logger.info_variant(f'Открыть Google-отчет?',
-                                     'Открыть Google-отчет?',
-                                     webbrowser.open,
-                                     self.spreadsheet['spreadsheetUrl']
-                                     )
-            self.open_browser = True
-
-    def sms_report(self):
+    def sms_report(self, date_from):
         """
         Составляет текстовую версию финансового отчета
         :return: str
@@ -4141,47 +3826,11 @@ class BarsicReport2Service:
 
         resporse += f'Без ЧП.'
 
-        with open(f'reports/{self.date_from.strftime("%Y.%m.%d")}_sms.txt', 'w', encoding='utf-8') as f:
+        with open(f'reports/{date_from.strftime("%Y.%m.%d")}_sms.txt', 'w', encoding='utf-8') as f:
             f.write(resporse)
         return resporse
 
-    def send_message_to_telegram(self):
-        """
-        Отправка отчета в telegram
-        """
-        logging.info(f'{__name__}: {str(datetime.now())[:-7]}:    Отправка SMS-отчета в Telegram-канал...')
-        if self.telegram_proxy_use:
-            logging.info(f'{__name__}: {str(datetime.now())[:-7]}:    Соединение с прокси-сервером {self.telegram_proxy_ip}...')
-            if self.telegram_proxy_auth:
-                socks.setdefaultproxy(
-                    proxy_type=getattr(socks, self.telegram_proxy_type),
-                    addr=self.telegram_proxy_ip,
-                    port=int(self.telegram_proxy_port),
-                    rdns=True,
-                    username=self.telegram_proxy_username,
-                    password=self.telegram_proxy_password,
-                )
-            else:
-                socks.setdefaultproxy(
-                    proxy_type=getattr(socks, self.telegram_proxy_type),
-                    addr=self.telegram_proxy_ip,
-                    port=int(self.telegram_proxy_port),
-                )
-            socket.socket = socks.socksocket
-        bot = telepot.Bot(self.telegram_token)
-        for line in self.sms_report_list:
-            logging.info(
-                f'{__name__}: {str(datetime.now())[:-7]}:    '
-                f'Отправка сообщения {self.sms_report_list.index(line) + 1} из {len(self.sms_report_list)}'
-            )
-            bot.sendMessage(self.telegram_chanel_id, line)
-        if self.telegram_proxy_use:
-            logging.info(
-                f'{__name__}: {str(datetime.now())[:-7]}:    Разъединение с прокси-сервером {self.telegram_proxy_ip}...')
-            socks.setdefaultproxy()
-            socket.socket = socks.socksocket
-
-    def save_organisation_total(self, itog_report):
+    def save_organisation_total(self, itog_report, date_from):
         """
         Сохраняет Итоговый отчет в Excel
         """
@@ -4566,15 +4215,15 @@ class BarsicReport2Service:
         else:
             date_ = f'{datetime.strftime(itog_report["Дата"][0], "%Y-%m-%d")} - ' \
                     f'{datetime.strftime(itog_report["Дата"][1] - timedelta(1), "%Y-%m-%d")}'
-        path = self.local_folder + self.path + date_ + \
+        path = self.local_folder + self.report_path + date_ + \
                f' Итоговый отчет по {organisation_total["Организация"]["Организация"][0][0]} ' + ".xlsx"
         logging.info(f'{__name__}: {str(datetime.now())[:-7]}:    Сохранение Итогового отчета '
                      f'по {organisation_total["Организация"]["Организация"][0][0]} в {path}')
-        path = self.create_path(path)
+        path = self.create_path(path, date_from)
         self.save_file(path, wb)
         return path
 
-    def save_cashdesk_report(self, cashdesk_report):
+    def save_cashdesk_report(self, cashdesk_report, date_from):
         """
         Сохраняет Суммовой отчет в Excel
         """
@@ -4912,14 +4561,14 @@ class BarsicReport2Service:
         else:
             date_ = f'{datetime.strftime(cashdesk_report["Дата"][0][0], "%Y-%m-%d")} - ' \
                     f'{datetime.strftime(cashdesk_report["Дата"][0][1] - timedelta(1), "%Y-%m-%d")}'
-        path = self.local_folder + self.path + date_ + f' Суммовой отчет по {cashdesk_report["Организация"][0][0]}' + ".xlsx"
+        path = self.local_folder + self.report_path + date_ + f' Суммовой отчет по {cashdesk_report["Организация"][0][0]}' + ".xlsx"
         logging.info(f'{__name__}: {str(datetime.now())[:-7]}:    Сохранение Суммового отчета '
                      f'по {cashdesk_report["Организация"][0][0]} в {path}')
-        path = self.create_path(path)
+        path = self.create_path(path, date_from)
         self.save_file(path, wb)
         return path
 
-    def save_client_count_totals(self, client_count_totals_org):
+    def save_client_count_totals(self, client_count_totals_org, date_from):
         """
         Сохраняет отчет по количеству клиентов за день в Excel
         """
@@ -5104,10 +4753,10 @@ class BarsicReport2Service:
         else:
             date_ = f'{datetime.strftime(client_count_totals_org[1][0], "%Y-%m-%d")} - ' \
                     f'{datetime.strftime(client_count_totals_org[-2][0], "%Y-%m-%d")}'
-        path = self.local_folder + self.path + date_ + f' Количество клиентов за день по {client_count_totals_org[0][0]}' + ".xlsx"
+        path = self.local_folder + self.report_path + date_ + f' Количество клиентов за день по {client_count_totals_org[0][0]}' + ".xlsx"
         logging.info(f'{__name__}: {str(datetime.now())[:-7]}:    Сохранение отчета по количеству клиентов '
                      f'по {client_count_totals_org[0][0]} в {path}')
-        path = self.create_path(path)
+        path = self.create_path(path, date_from)
         self.save_file(path, wb)
         return path
 
@@ -5303,49 +4952,48 @@ class BarsicReport2Service:
             self.root.ids.report.ids.finreport_google_text.disabled = False
             self.root.ids.report.ids.finreport_google.disabled = False
 
-    def save_reports(self):
+    def save_reports(self, date_from):
         """
         Функция управления
         """
+        logger.warning(f"POS4")
         self.fin_report()
         self.agent_report()
-        if self.finreport_xls:
-            self.path_list.append(self.export_fin_report())
-        if self.agentreport_xls:
-            self.path_list.append(self.export_agent_report(self.agentreport_dict))
-        if self.finreport_google:
-            self.fin_report_lastyear()
-            self.fin_report_beach()
-            if self.itog_report_month:
-                self.fin_report_month()
-                self.agent_report_month()
-            if self.export_to_google_sheet():
-                self.open_googlesheet()
-        if self.finreport_telegram:
-            self.sms_report_list.append(self.sms_report())
-        if self.check_itogreport_xls:
-            if self.itog_report_org1['Итого по отчету'][1]:
-                self.path_list.append(self.save_organisation_total(self.itog_report_org1))
-            if self.itog_report_org2['Итого по отчету'][1]:
-                self.path_list.append(self.save_organisation_total(self.itog_report_org2))
-            if self.itog_report_org3['Итого по отчету'][1]:
-                self.path_list.append(self.save_organisation_total(self.itog_report_org3))
-            if self.itog_report_org4['Итого по отчету'][1]:
-                self.path_list.append(self.save_organisation_total(self.itog_report_org4))
-            if self.itog_report_org5['Итого по отчету'][1]:
-                self.path_list.append(self.save_organisation_total(self.itog_report_org5))
-        if self.check_cashreport_xls:
-            if self.cashdesk_report_org1['Итого'][0][1]:
-                self.path_list.append(self.save_cashdesk_report(self.cashdesk_report_org1))
-            if self.cashdesk_report_org2['Итого'][0][1]:
-                self.path_list.append(self.save_cashdesk_report(self.cashdesk_report_org2))
-        if self.check_client_count_total_xls:
-            if self.client_count_totals_org1[-1][1]:
-                self.path_list.append(self.save_client_count_totals(self.client_count_totals_org1))
-            if self.client_count_totals_org2[-1][1]:
-                self.path_list.append(self.save_client_count_totals(self.client_count_totals_org2))
+        # agentreport_xls
+        self.path_list.append(self.export_agent_report(self.agentreport_dict, date_from))
+        # finreport_google
+        self.fin_report_lastyear()
+        self.fin_report_beach()
+        if self.itog_report_month:
+            self.fin_report_month()
+            self.agent_report_month()
+        self.export_to_google_sheet(date_from)
+        # finreport_telegram:
+        self.sms_report_list.append(self.sms_report(date_from))
+        # check_itogreport_xls:
+        if self.itog_report_org1['Итого по отчету'][1]:
+            self.path_list.append(self.save_organisation_total(self.itog_report_org1, date_from))
+        if self.itog_report_org2['Итого по отчету'][1]:
+            self.path_list.append(self.save_organisation_total(self.itog_report_org2, date_from))
+        if self.itog_report_org3['Итого по отчету'][1]:
+            self.path_list.append(self.save_organisation_total(self.itog_report_org3, date_from))
+        if self.itog_report_org4['Итого по отчету'][1]:
+            self.path_list.append(self.save_organisation_total(self.itog_report_org4, date_from))
+        if self.itog_report_org5['Итого по отчету'][1]:
+            self.path_list.append(self.save_organisation_total(self.itog_report_org5, date_from))
+        # check_cashreport_xls:
+        if self.cashdesk_report_org1['Итого'][0][1]:
+            self.path_list.append(self.save_cashdesk_report(self.cashdesk_report_org1, date_from))
+        if self.cashdesk_report_org2['Итого'][0][1]:
+            self.path_list.append(self.save_cashdesk_report(self.cashdesk_report_org2, date_from))
+        # check_client_count_total_xls:
+        if self.client_count_totals_org1[-1][1]:
+            self.path_list.append(self.save_client_count_totals(self.client_count_totals_org1, date_from))
+        if self.client_count_totals_org2[-1][1]:
+            self.path_list.append(self.save_client_count_totals(self.client_count_totals_org2, date_from))
+        logger.warning(f"POS5")
 
-    def load_report(self):
+    def load_report(self, date_from, date_to):
         """Выполнить отчеты"""
 
         self.itog_report_org1 = None
@@ -5362,18 +5010,16 @@ class BarsicReport2Service:
             database=self.database_bitrix,
             user=self.user,
             pwd=self.pwd,
-            driver=self.driver,
-            date_from=self.date_from,
-            date_to=self.date_to,
+            date_from=date_from,
+            date_to=date_to,
         )
         self.report_bitrix_lastyear = self.read_bitrix_base(
             server=self.server,
             database=self.database_bitrix,
             user=self.user,
             pwd=self.pwd,
-            driver=self.driver,
-            date_from=self.date_from - relativedelta(years=1),
-            date_to=self.date_to - relativedelta(years=1),
+            date_from=date_from - relativedelta(years=1),
+            date_to=date_to - relativedelta(years=1),
         )
         self.report_rk = self.rk_report_request(
             server=self.server_rk,
@@ -5382,8 +5028,8 @@ class BarsicReport2Service:
             pwd=self.pwd_rk,
             driver=self.driver,
             cash_id=15033,
-            date_from=self.date_from,
-            date_to=self.date_to,
+            date_from=date_from,
+            date_to=date_to,
         )
         self.report_rk_lastyear = self.rk_report_request(
             server=self.server_rk,
@@ -5392,8 +5038,8 @@ class BarsicReport2Service:
             pwd=self.pwd_rk,
             driver=self.driver,
             cash_id=15033,
-            date_from=self.date_from - relativedelta(years=1),
-            date_to=self.date_to - relativedelta(years=1),
+            date_from=date_from - relativedelta(years=1),
+            date_to=date_to - relativedelta(years=1),
         )
 
         if self.org1:
@@ -5405,8 +5051,8 @@ class BarsicReport2Service:
                 pwd=self.pwd,
                 org=self.org1[0],
                 org_name=self.org1[1],
-                date_from=self.date_from,
-                date_to=self.date_to,
+                date_from=date_from,
+                date_to=date_to,
             )
             self.itog_report_org1_lastyear = self.itog_report(
                 server=self.server,
@@ -5416,8 +5062,8 @@ class BarsicReport2Service:
                 pwd=self.pwd,
                 org=self.org1[0],
                 org_name=self.org1[1],
-                date_from=self.date_from - relativedelta(years=1),
-                date_to=self.date_to - relativedelta(years=1),
+                date_from=date_from - relativedelta(years=1),
+                date_to=date_to - relativedelta(years=1),
             )
             self.itog_report_org3 = self.itog_report(
                 server=self.server,
@@ -5427,8 +5073,8 @@ class BarsicReport2Service:
                 pwd=self.pwd,
                 org=self.org3[0],
                 org_name=self.org3[1],
-                date_from=self.date_from,
-                date_to=self.date_to,
+                date_from=date_from,
+                date_to=date_to,
             )
             self.itog_report_org3_lastyear = self.itog_report(
                 server=self.server,
@@ -5438,8 +5084,8 @@ class BarsicReport2Service:
                 pwd=self.pwd,
                 org=self.org3[0],
                 org_name=self.org3[1],
-                date_from=self.date_from - relativedelta(years=1),
-                date_to=self.date_to - relativedelta(years=1),
+                date_from=date_from - relativedelta(years=1),
+                date_to=date_to - relativedelta(years=1),
             )
             self.itog_report_org4 = self.itog_report(
                 server=self.server,
@@ -5449,8 +5095,8 @@ class BarsicReport2Service:
                 pwd=self.pwd,
                 org=self.org4[0],
                 org_name=self.org4[1],
-                date_from=self.date_from,
-                date_to=self.date_to,
+                date_from=date_from,
+                date_to=date_to,
             )
             self.itog_report_org4_lastyear = self.itog_report(
                 server=self.server,
@@ -5460,8 +5106,8 @@ class BarsicReport2Service:
                 pwd=self.pwd,
                 org=self.org4[0],
                 org_name=self.org4[1],
-                date_from=self.date_from - relativedelta(years=1),
-                date_to=self.date_to - relativedelta(years=1),
+                date_from=date_from - relativedelta(years=1),
+                date_to=date_to - relativedelta(years=1),
             )
             self.itog_report_org5 = self.itog_report(
                 server=self.server,
@@ -5471,8 +5117,8 @@ class BarsicReport2Service:
                 pwd=self.pwd,
                 org=self.org5[0],
                 org_name=self.org5[1],
-                date_from=self.date_from,
-                date_to=self.date_to,
+                date_from=date_from,
+                date_to=date_to,
             )
             self.itog_report_org5_lastyear = self.itog_report(
                 server=self.server,
@@ -5482,10 +5128,10 @@ class BarsicReport2Service:
                 pwd=self.pwd,
                 org=self.org5[0],
                 org_name=self.org5[1],
-                date_from=self.date_from - relativedelta(years=1),
-                date_to=self.date_to - relativedelta(years=1),
+                date_from=date_from - relativedelta(years=1),
+                date_to=date_to - relativedelta(years=1),
             )
-            if int((self.date_to - timedelta(1)).strftime('%y%m')) < int(self.date_to.strftime('%y%m')):
+            if int((date_to - timedelta(1)).strftime('%y%m')) < int(date_to.strftime('%y%m')):
                 self.itog_report_month = self.itog_report(
                     server=self.server,
                     database=self.database1,
@@ -5494,8 +5140,8 @@ class BarsicReport2Service:
                     pwd=self.pwd,
                     org=self.org1[0],
                     org_name=self.org1[1],
-                    date_from=datetime.strptime('01' + (self.date_to - timedelta(1)).strftime('%m%y'), '%d%m%y'),
-                    date_to=self.date_to,
+                    date_from=datetime.strptime('01' + (date_to - timedelta(1)).strftime('%m%y'), '%d%m%y'),
+                    date_to=date_to,
                 )
                 self.report_rk_month = self.rk_report_request(
                     server=self.server_rk,
@@ -5504,8 +5150,8 @@ class BarsicReport2Service:
                     pwd=self.pwd_rk,
                     driver=self.driver,
                     cash_id=15033,
-                    date_from=datetime.strptime('01' + (self.date_to - timedelta(1)).strftime('%m%y'), '%d%m%y'),
-                    date_to=self.date_to,
+                    date_from=datetime.strptime('01' + (date_to - timedelta(1)).strftime('%m%y'), '%d%m%y'),
+                    date_to=date_to,
                 )
             else:
                 self.itog_report_month = None
@@ -5516,8 +5162,8 @@ class BarsicReport2Service:
                 driver=self.driver,
                 user=self.user,
                 pwd=self.pwd,
-                date_from=self.date_from,
-                date_to=self.date_to,
+                date_from=date_from,
+                date_to=date_to,
             )
             self.cashdesk_report_org1_lastyear = self.cashdesk_report(
                 server=self.server,
@@ -5525,8 +5171,8 @@ class BarsicReport2Service:
                 driver=self.driver,
                 user=self.user,
                 pwd=self.pwd,
-                date_from=self.date_from - relativedelta(years=1),
-                date_to=self.date_to - relativedelta(years=1),
+                date_from=date_from - relativedelta(years=1),
+                date_to=date_to - relativedelta(years=1),
             )
             self.client_count_totals_org1 = self.client_count_totals_period(
                 server=self.server,
@@ -5536,8 +5182,8 @@ class BarsicReport2Service:
                 pwd=self.pwd,
                 org=self.org1[0],
                 org_name=self.org1[1],
-                date_from=self.date_from,
-                date_to=self.date_to,
+                date_from=date_from,
+                date_to=date_to,
             )
         if self.org2:
             self.itog_report_org2 = self.itog_report(
@@ -5548,8 +5194,8 @@ class BarsicReport2Service:
                 pwd=self.pwd,
                 org=self.org2[0],
                 org_name=self.org2[1],
-                date_from=self.date_from,
-                date_to=self.date_to,
+                date_from=date_from,
+                date_to=date_to,
             )
             self.cashdesk_report_org2 = self.cashdesk_report(
                 server=self.server,
@@ -5557,8 +5203,8 @@ class BarsicReport2Service:
                 driver=self.driver,
                 user=self.user,
                 pwd=self.pwd,
-                date_from=self.date_from,
-                date_to=self.date_to,
+                date_from=date_from,
+                date_to=date_to,
             )
             self.client_count_totals_org2 = self.client_count_totals_period(
                 server=self.server,
@@ -5568,9 +5214,11 @@ class BarsicReport2Service:
                 pwd=self.pwd,
                 org=self.org2[0],
                 org_name=self.org2[1],
-                date_from=self.date_from,
-                date_to=self.date_to,
+                date_from=date_from,
+                date_to=date_to,
             )
+
+        logger.warning(f"POS1")
         # Чтение XML с привязкой групп услуг к услугам
         self.orgs_dict = self.read_reportgroup(self.reportXML)
         self.itogreport_group_dict = self.read_reportgroup(self.itogreportXML)
@@ -5585,40 +5233,35 @@ class BarsicReport2Service:
         self.find_new_service(self.itog_report_org5_lastyear, self.orgs_dict)
         if self.itog_report_month:
             self.find_new_service(self.itog_report_month, self.orgs_dict)
-        self.distibution_service()
 
-    def run_report(self):
-        self.open_browser = False
+        if self.new_service:
+            logger.warning(f"Найдены новые сервисы: {self.new_service}")
+
+        logger.warning(f"POS2")
+        self.agentservice(date_from)
+
+    def run_report(self, date_from, date_to, use_yadisk: bool = False):
         self.path_list = []
         self.sms_report_list = []
 
-        if self.date_switch:
-            self.load_report()
-        else:
-            if self.split_by_days:
-                period = []
-                while True:
-                    period.append(self.date_from)
-                    if self.date_from + timedelta(1) == self.date_to:
-                        break
-                    else:
-                        self.date_from = self.date_from + timedelta(1)
-                for date in period:
-                    self.date_from = date
-                    self.date_to = date + timedelta(1)
-                    self.load_report()
-                self.date_from = datetime.strptime(self.root.ids.report.ids.date_from.text, "%Y-%m-%d")
+        period = []
+        while True:
+            period.append(date_from)
+            if date_from + timedelta(1) == date_to:
+                break
             else:
-                self.load_report()
+                date_from = date_from + timedelta(1)
+
+        for date in period:
+            date_from = date
+            date_to = date + timedelta(1)
+            self.load_report(date_from, date_to)
+
         # Отправка в яндекс диск
-        if self.use_yadisk:
+        if use_yadisk:
             self.path_list = filter(lambda x: x is not None, self.path_list)
-            self.sync_to_yadisk(self.path_list, self.yadisk_token)
+            self.sync_to_yadisk(self.path_list, self.yadisk_token, date_from)
             self.path_list = []
-        # Отправка в телеграмм
-        if self.finreport_telegram:
-            self.send_message_to_telegram()
-            self.sms_report_list = []
 
 
 def get_legacy_service() -> BarsicReport2Service:

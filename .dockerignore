@@ -246,7 +246,10 @@ src
 .env
 .env.example
 .gitignore
+docker-compose-dev-without-app.yml
 docker-compose-dev.yml
 docker-compose.yml
 Dockerfile
 README.md
+.isort.cfg
+.flake8
