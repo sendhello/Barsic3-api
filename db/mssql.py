@@ -1,36 +1,69 @@
-import pyodbc
+import logging
+from typing import Optional
+
+from pyodbc import Connection, connect
 
 from constants import MssqlDriverType
 from core.settings import settings
 
 
-class MsSqlConnection:
-    def __init__(self, driver, server, database, uid, pwd):
-        self.driver = driver
-        self.server = server
-        self.database = database
-        self.uid = uid
-        self.pwd = pwd
+logger = logging.getLogger(__name__)
 
-    def connect(self):
-        return pyodbc.connect(
-            f"DRIVER={self.driver};"
-            f"SERVER={self.server};"
-            f"PORT=1433;"
-            f"DATABASE={self.database};"
-            f"UID={self.uid};"
-            f"PWD={self.pwd};"
+
+class MsSqlDatabase:
+    def __init__(
+        self, server: str, database: str, user: str, password: str, port: int = 1433
+    ):
+        self._server = server
+        self._port = port
+        self._database = database
+        self._user = user
+        self._password = password
+        self._connection: Optional[Connection] = None
+
+    @property
+    def _driver(self) -> str:
+        return getattr(MssqlDriverType, settings.mssql_driver_type).value
+
+    def _connect(self):
+        self._connection = connect(
+            f"DRIVER={self._driver};"
+            f"SERVER={self._server};"
+            f"PORT={self._port};"
+            f"DATABASE={self._database};"
+            f"UID={self._user};"
+            f"PWD={self._password};"
             f"TrustServerCertificate=yes;"
             f"Encrypt=no"
         )
 
+    def disconnect(self):
+        if self._connection is not None:
+            self._connection.close()
+            self._connection = None
 
-def get_mssql_connection(server, database, uid, pwd):
-    mssql_connection = MsSqlConnection(
-        driver=getattr(MssqlDriverType, settings.mssql_driver_type).value,
+    def connect(self) -> Connection:
+        if self._connection is None:
+            try:
+                self._connect()
+
+            except Exception as e:
+                logger.error(f"Connection error with MsSqlDB: {e}")
+                raise e
+
+        return self._connection
+
+    def __enter__(self) -> Connection:
+        return self.connect()
+
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+        self.disconnect()
+
+
+def mssql_connection(server, database, user, password) -> Connection:
+    return MsSqlDatabase(
         server=server,
         database=database,
-        uid=uid,
-        pwd=pwd,
-    )
-    return mssql_connection.connect()
+        user=user,
+        password=password,
+    ).connect()

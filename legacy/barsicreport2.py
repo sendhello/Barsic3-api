@@ -1,4 +1,3 @@
-import csv
 import logging
 import os
 import re
@@ -11,14 +10,19 @@ import httplib2
 import pyodbc
 import yadisk
 from dateutil.relativedelta import relativedelta
-from lxml import etree, objectify
+from fastapi.exceptions import HTTPException
 from oauth2client.service_account import ServiceAccountCredentials
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Protection, Side
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from starlette import status
 
 from core.settings import settings
-from db.mssql import get_mssql_connection
-from legacy import functions, to_google_sheets
+from db.mssql import mssql_connection
+from legacy import functions
+from legacy.to_google_sheets import Spreadsheet, create_new_google_doc
+from schemas.google_report_ids import GoogleReportIdCreate
+from services.report_config import ReportConfigService, get_report_config_service
+from services.settings import SettingsService, get_settings_service
 
 
 logger = logging.getLogger("barsicreport2")
@@ -38,7 +42,6 @@ class BarsicReport2Service:
 
         self.count_sql_error = 0
         self.org_for_finreport = {}
-        self.new_service = []
         self.orgs = []
         self.new_agentservice = []
         self.agentorgs = []
@@ -53,39 +56,32 @@ class BarsicReport2Service:
         self.user_rk = settings.mssql_user_rk
         self.pwd_rk = settings.mssql_pwd_rk
         self.database_rk = settings.mssql_database_rk
-        self.reportXML = settings.reportXML
-        self.agentXML = settings.agentXML
-        self.itogreportXML = settings.itogreportXML
         self.local_folder = settings.local_folder
         self.report_path = settings.report_path
-        self.CREDENTIALS_FILE = settings.credentials_file
-        self.list_google_docs = settings.list_google_docs
         self.yadisk_token = settings.yadisk_token
-        self.google_all_read = settings.google_all_read
-        self.google_reader_list = settings.google_reader_list
-        self.google_writer_list = settings.google_writer_list
+
+        self.doc_version = 12
+
+        self._report_config_service: ReportConfigService = get_report_config_service()
+        self._settings_service: SettingsService = get_settings_service()
 
     def count_clients(
         self,
         server,
         database,
-        uid,
-        pwd,
+        user,
+        password,
     ):
         """Количество человек в зоне"""
 
-        logging.info(
-            f'{__name__}: {str(datetime.now())[:-7]}:    Выполнение функции "count_clients"'
-        )
+        logging.info('Выполнение функции "count_clients"')
 
         result = []
 
         try:
-            logging.info(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Попытка соединения с {server}"
-            )
-            cnxn = get_mssql_connection(
-                server=server, database=database, uid=uid, pwd=pwd
+            logging.info(f"Попытка соединения с {server}")
+            cnxn = mssql_connection(
+                server=server, database=database, user=user, password=password
             )
             cursor = cnxn.cursor()
 
@@ -121,22 +117,16 @@ class BarsicReport2Service:
                     result.append(row)
                 else:
                     break
-            logging.info(
-                f'{__name__}: {str(datetime.now())[:-7]}:    Результат функции "count_clients": {result}'
-            )
+            logging.info(f'Результат функции "count_clients": {result}')
             if not result:
                 result.append(("Пусто", 488, "", "0003"))
 
         except pyodbc.OperationalError as e:
-            logging.error(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Ошибка {repr(e)}"
-            )
+            logging.error(f"Ошибка {repr(e)}")
             result.append(("Нет данных", 488, "Ошибка соединения", repr(e)))
             logger.info(f"Ошибка соединения с {server}: {database}", repr(e))
         except pyodbc.ProgrammingError as e:
-            logging.error(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Ошибка {repr(e)}"
-            )
+            logging.error(f"Ошибка {repr(e)}")
             result.append(("Нет данных", 488, "Ошибка соединения", repr(e)))
             logger.info(f"Невозможно открыть {database}", repr(e))
         return result
@@ -145,8 +135,8 @@ class BarsicReport2Service:
         in_zone = self.count_clients(
             server=self.server,
             database=self.database1,
-            uid=self.user,
-            pwd=self.pwd,
+            user=self.user,
+            password=self.pwd,
         )
         self.click_select_org()
         try:
@@ -155,7 +145,7 @@ class BarsicReport2Service:
                     server=self.server,
                     database=self.database1,
                     user=self.user,
-                    pwd=self.pwd,
+                    password=self.pwd,
                     org=self.org1[0],
                     org_name=self.org1[1],
                     date_from=datetime.now(),
@@ -169,7 +159,7 @@ class BarsicReport2Service:
                 server=self.server,
                 database=self.database1,
                 user=self.user,
-                pwd=self.pwd,
+                password=self.pwd,
                 org=self.org1[0],
                 date_from=datetime.now(),
                 date_to=datetime.now() + timedelta(1),
@@ -189,14 +179,14 @@ class BarsicReport2Service:
         org_list1 = self.list_organisation(
             server=self.server,
             database=self.database1,
-            uid=self.user,
-            pwd=self.pwd,
+            user=self.user,
+            password=self.pwd,
         )
         org_list2 = self.list_organisation(
             server=self.server,
             database=self.database2,
-            uid=self.user,
-            pwd=self.pwd,
+            user=self.user,
+            password=self.pwd,
         )
         for org in org_list1:
             if org[0] == 36:
@@ -211,33 +201,24 @@ class BarsicReport2Service:
         logging.warning(f"{org_list1=}")
         logging.warning(f"{org_list2=}")
         self.org2 = (org_list2[0][0], org_list2[0][2])
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Выбраны организации {org_list1[0][2]} и {org_list2[0][2]}"
-        )
+        logging.info(f"Выбраны организации {org_list1[0][2]} и {org_list2[0][2]}")
 
     def list_organisation(
         self,
         server,
         database,
-        uid,
-        pwd,
+        user,
+        password,
     ):
-        """Функция делает запрос в базу Барс и возвращает список заведенных в базе организаций в виде списка кортежей
+        """Функция делает запрос в базу Барс и возвращает список заведенных
+        в базе организаций в виде списка кортежей."""
 
-        :param server: str - Путь до MS-SQL сервера, например 'SQLEXPRESS\BASE'
-        :param database: str - Имя базы данных Барса, например 'SkiBars2'
-        :param uid: str - Имя пользователя базы данных, например 'sa'
-        :param pwd: str - Пароль пользователя базы данных, например 'pass'
-        :return: list = Список организаций, каджая из которых - кортеж с параметрами организации
-        """
-        logging.info(f"{__name__}: {str(datetime.now())[:-7]}:    Поиск организаций...")
+        logging.info("Поиск организаций...")
         result = []
         try:
-            logging.info(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Попытка соединения с {server}"
-            )
-            cnxn = get_mssql_connection(
-                server=server, database=database, uid=uid, pwd=pwd
+            logging.info(f"Попытка соединения с {server}")
+            cnxn = mssql_connection(
+                server=server, database=database, user=user, password=password
             )
             cursor = cnxn.cursor()
 
@@ -245,10 +226,12 @@ class BarsicReport2Service:
             cursor.execute(
                 f"""
                 SELECT
-                    SuperAccountId, Type, Descr, CanRegister, CanPass, IsStuff, IsBlocked, BlockReason, DenyReturn, 
-                    ClientCategoryId, DiscountCard, PersonalInfoId, Address, Inn, ExternalId, RegisterTime,LastTransactionTime, 
-                    LegalEntityRelationTypeId, SellServicePointId, DepositServicePointId, AllowIgnoreStoredPledge, Email, 
-                    Latitude, Longitude, Phone, WebSite, TNG_ProfileId
+                    SuperAccountId, Type, Descr, CanRegister, CanPass, IsStuff, IsBlocked, 
+                    BlockReason, DenyReturn, ClientCategoryId, DiscountCard, PersonalInfoId, 
+                    Address, Inn, ExternalId, RegisterTime,LastTransactionTime, 
+                    LegalEntityRelationTypeId, SellServicePointId, DepositServicePointId, 
+                    AllowIgnoreStoredPledge, Email, Latitude, Longitude, Phone, WebSite, 
+                    TNG_ProfileId
                 FROM
                     SuperAccount
                 WHERE
@@ -262,15 +245,11 @@ class BarsicReport2Service:
                 else:
                     break
         except pyodbc.OperationalError as e:
-            logging.error(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Ошибка {repr(e)}"
-            )
+            logging.error(f"Ошибка {repr(e)}")
             logger.info(f"Ошибка соединения с {server}: {database}", repr(e))
             raise e
         except pyodbc.ProgrammingError as e:
-            logging.error(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Ошибка {repr(e)}"
-            )
+            logging.error(f"Ошибка {repr(e)}")
             logger.info(f"Невозможно открыть {database}", repr(e))
             raise e
         return result
@@ -284,7 +263,7 @@ class BarsicReport2Service:
         server,
         database,
         user,
-        pwd,
+        password,
         org,
         org_name,
         date_from,
@@ -293,21 +272,11 @@ class BarsicReport2Service:
         hide_internal="1",
         hide_discount="0",
     ):
-        """Делает запрос в базу Барс и возвращает итоговый отчет за запрашиваемый период
+        """Делает запрос в базу Барс и возвращает итоговый отчет за запрашиваемый период."""
 
-        :param server: str - Путь до MS-SQL сервера, например 'SQLEXPRESS\BASE'
-        :param database: str - Имя базы данных Барса, например 'SkiBars2'
-        :param uid: str - Имя пользователя базы данных, например 'sa'
-        :param pwd: str - Пароль пользователя базы данных, например 'pass'
-        :param sa: str - Id организации в Барсе
-        :param date_from: str - Начало отчетного периода в формате: 'YYYYMMDD 00:00:00'
-        :param date_to:  str - Конец отчетного периода в формате: 'YYYYMMDD 00:00:00'
-        :param hide_zeroes: 0 or 1 - Скрывать нулевые позиции?
-        :param hide_internal: 0 or 1 - Скрывать внутренние точки обслуживания?
-        :param hide_discount: 0 or 1 - Скрывать бонусы?
-        :return: Итоговый отчет
-        """
-        cnxn = get_mssql_connection(server=server, database=database, uid=user, pwd=pwd)
+        cnxn = mssql_connection(
+            server=server, database=database, user=user, password=password
+        )
         date_from = date_from.strftime("%Y%m%d 00:00:00")
         date_to = date_to.strftime("%Y%m%d 00:00:00")
         cursor = cnxn.cursor()
@@ -335,7 +304,7 @@ class BarsicReport2Service:
         report.append((0, 0, 0, 0, str(org), 0, "ID организации", "ID организации"))
         if len(report) > 1:
             logging.info(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Итоговый отчет сформирован ID организации = {org}, "
+                f"Итоговый отчет сформирован ID организации = {org}, "
                 f"Период: {date_from[:8]}-{date_to[:8]}, Скрывать нули = {hide_zeroes}, "
                 f"Скрывать внутренние точки обслуживания: {hide_internal}, Cкрывать бонусы: {hide_discount})"
             )
@@ -346,12 +315,14 @@ class BarsicReport2Service:
         server,
         database,
         user,
-        pwd,
+        password,
         org,
         date_from,
         date_to,
     ):
-        cnxn = get_mssql_connection(server=server, database=database, uid=user, pwd=pwd)
+        cnxn = mssql_connection(
+            server=server, database=database, user=user, password=password
+        )
         date_from = date_from.strftime("%Y%m%d 00:00:00")
         date_to = date_to.strftime("%Y%m%d 00:00:00")
         cursor = cnxn.cursor()
@@ -367,7 +338,7 @@ class BarsicReport2Service:
                 break
         if len(report) > 1:
             logging.info(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Отчет по количеству посетителей сформирован "
+                f"Отчет по количеству посетителей сформирован "
                 f"ID организации = {org}, Период: {date_from[:8]}-{date_to[:8]}"
             )
         return report
@@ -377,7 +348,7 @@ class BarsicReport2Service:
         server,
         database,
         user,
-        pwd,
+        password,
         org,
         org_name,
         date_from,
@@ -401,7 +372,7 @@ class BarsicReport2Service:
                 server=server,
                 database=database,
                 user=user,
-                pwd=pwd,
+                password=password,
                 org=org,
                 date_from=first_day,
                 date_to=first_day + timedelta(1),
@@ -420,22 +391,15 @@ class BarsicReport2Service:
         server,
         database,
         user,
-        pwd,
+        password,
         date_from,
         date_to,
     ):
-        """Делает запрос в базу Барс и возвращает суммовой отчет за запрашиваемый период
+        """Делает запрос в базу Барс и возвращает суммовой отчет за запрашиваемый период."""
 
-        :param server: str - Путь до MS-SQL сервера, например 'SQLEXPRESS\BASE'
-        :param database: str - Имя базы данных Барса, например 'SkiBars2'
-        :param uid: str - Имя пользователя базы данных, например 'sa'
-        :param pwd: str - Пароль пользователя базы данных, например 'pass'
-        :param sa: str - Id организации в Барсе
-        :param date_from: str - Начало отчетного периода в формате: 'YYYYMMDD 00:00:00'
-        :param date_to:  str - Конец отчетного периода в формате: 'YYYYMMDD 00:00:00'
-        :return: Суммовой отчет
-        """
-        cnxn = get_mssql_connection(server=server, database=database, uid=user, pwd=pwd)
+        cnxn = mssql_connection(
+            server=server, database=database, user=user, password=password
+        )
         date_from = date_from.strftime("%Y%m%d 00:00:00")
         date_to = date_to.strftime("%Y%m%d 00:00:00")
         cursor = cnxn.cursor()
@@ -451,8 +415,7 @@ class BarsicReport2Service:
                 break
         if len(report) > 1:
             logging.info(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Суммовой отчет сформирован, "
-                f"Период: {date_from[:8]}-{date_to[:8]}"
+                f"Суммовой отчет сформирован, " f"Период: {date_from[:8]}-{date_to[:8]}"
             )
         return report
 
@@ -461,25 +424,20 @@ class BarsicReport2Service:
         server,
         database,
         user,
-        pwd,
+        password,
     ):
-        """Делает запрос в базу Барс и возвращает список рабочих мест
+        """Делает запрос в базу Барс и возвращает список рабочих мест."""
 
-        :param server: str - Путь до MS-SQL сервера, например 'SQLEXPRESS\BASE'
-        :param database: str - Имя базы данных Барса, например 'SkiBars2'
-        :param uid: str - Имя пользователя базы данных, например 'sa'
-        :param pwd: str - Пароль пользователя базы данных, например 'pass'
-        :param sa: str - Id организации в Барсе
-        :return: Суммовой отчет
-        """
-        cnxn = get_mssql_connection(server=server, database=database, uid=user, pwd=pwd)
+        cnxn = mssql_connection(
+            server=server, database=database, user=user, password=password
+        )
         cursor = cnxn.cursor()
         cursor.execute(
-            f"""
-            SELECT
-                ServicePointId, Name, SuperAccountId, Type, Code, IsInternal
-            FROM 
-                ServicePoint
+            """
+                SELECT
+                    ServicePointId, Name, SuperAccountId, Type, Code, IsInternal
+                FROM 
+                    ServicePoint
             """
         )
         report = []
@@ -490,9 +448,7 @@ class BarsicReport2Service:
             else:
                 break
         if len(report) > 1:
-            logging.info(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Список рабочих мест сформирован."
-            )
+            logging.info("Список рабочих мест сформирован.")
         return report
 
     def cashdesk_report(
@@ -500,7 +456,7 @@ class BarsicReport2Service:
         server,
         database,
         user,
-        pwd,
+        password,
         date_from,
         date_to,
     ):
@@ -512,7 +468,7 @@ class BarsicReport2Service:
             server=server,
             database=database,
             user=user,
-            pwd=pwd,
+            password=password,
             date_from=date_from,
             date_to=date_to,
         )
@@ -520,7 +476,7 @@ class BarsicReport2Service:
             server=server,
             database=database,
             user=user,
-            pwd=pwd,
+            password=password,
         )
         service_point_dict = {}
         for point in service_point:
@@ -591,27 +547,19 @@ class BarsicReport2Service:
         server,
         database,
         user,
-        pwd,
+        password,
         date_from,
         date_to,
     ):
-        """Функция делает запрос в базу и возвращает список продаж за указанную дату
+        """Функция делает запрос в базу и возвращает список продаж за указанную дату."""
 
-        :param server: str - Путь до MS-SQL сервера, например 'SQLEXPRESS\BASE'
-        :param database: str - Имя базы данных Барса, например 'SkiBars2'
-        :param uid: str - Имя пользователя базы данных, например 'sa'
-        :param pwd: str - Пароль пользователя базы данных, например 'pass'
-        :param date_from: str - Начало отчетного периода в формате: 'YYYYMMDD 00:00:00'
-        :param date_to:  str - Конец отчетного периода в формате: 'YYYYMMDD 00:00:00'
-        :return: list = Список организаций, каджая из которых - кортеж с параметрами организации
-        """
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Чтение online-продаж..."
-        )
+        logging.info("Чтение online-продаж...")
         date_from = date_from.strftime("%Y%m%d") + " 00:00:00"
         date_to = date_to.strftime("%Y%m%d") + " 00:00:00"
 
-        cnxn = get_mssql_connection(server=server, database=database, uid=user, pwd=pwd)
+        cnxn = mssql_connection(
+            server=server, database=database, user=user, password=password
+        )
         cursor = cnxn.cursor()
         cursor.execute(
             f"""
@@ -635,52 +583,23 @@ class BarsicReport2Service:
             summ += float(order[6])
         return len(orders), summ
 
-    def read_reportgroup(self, XML):
-        """
-        Чтение XML с привязкой групп услуг к услугам
-        :param path:
-        :return:
-        """
-        with open(XML, encoding="utf-8") as f:
-            xml = f.read()
-
-        root = objectify.fromstring(xml)
-        orgs_dict = {}
-
-        for org in root.UrFace:
-            orgs_dict[org.get("Name")] = []
-            for serv in org.Services.Service:
-                if serv.get("Name") != "Пустая обязательная категория":
-                    orgs_dict[org.get("Name")].append(serv.get("Name"))
-
-        return orgs_dict
-
     @staticmethod
     def rk_report_request(
         server: str,
         database: str,
         user: str,
-        pwd: str,
+        password: str,
         cash_id: int,
         date_from: datetime,
         date_to: datetime,
     ) -> List[Dict[str, Any]]:
         """
-        Делает запрос в базу R-Keeper и возвращает продажи кассы cash_id за запрашиваемый период
-        :param server: str - Путь до MS-SQL сервера, например 'SQLEXPRESS\BASE'
-        :param database: str - Имя базы данных R-Keeper, например 'RK7'
-        :param user: str - Имя пользователя базы данных, например 'sa'
-        :param pwd: str - Пароль пользователя базы данных, например 'pass'
-        :param cash_id: int - Id кассы R-Keeper
-        :param date_from: datetime - Начало отчетного периода в формате: 'YYYYMMDD 00:00:00'
-        :param date_to:  datetime - Конец отчетного периода в формате: 'YYYYMMDD 00:00:00'
-        :return: {
-            'station_id': int,
-            'open_time': datetime(...),
-            'paid_sum': Decimal()
-        }
+        Делает запрос в базу R-Keeper и возвращает продажи кассы cash_id за запрашиваемый период.
         """
-        cnxn = get_mssql_connection(server=server, database=database, uid=user, pwd=pwd)
+
+        cnxn = mssql_connection(
+            server=server, database=database, user=user, password=password
+        )
         date_from = date_from.strftime("%Y%m%d 00:00:00")
         date_to = date_to.strftime("%Y%m%d 00:00:00")
         cursor = cnxn.cursor()
@@ -696,147 +615,16 @@ class BarsicReport2Service:
             for row in rows
         ]
         logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    "
             f"Отчет по P-Keeper сфомирован, Период: {date_from[:8]}-{date_to[:8]}"
         )
         return report
-
-    def find_new_service(self, service_dict, orgs_dict):
-        """
-        Поиск новых услуг и организаций из XML
-        :param service_dict: Итоговый отчет
-        :param orgs_dict: словарь из XML-файла
-        :return:
-        """
-        servise_set = set()
-
-        for key in orgs_dict:
-            for s in orgs_dict[key]:
-                servise_set.add(s)
-
-        for org in service_dict:
-            if org not in servise_set and org not in self.new_service:
-                self.new_service.append(org)
-                servise_set.add(org)
-
-        for key in orgs_dict:
-            if key not in self.orgs:
-                self.orgs.append(key)
-
-    def create_new_org(self, name, service):
-        """
-        Добавляет новую организацию в список организаций self.orgs, словарь self.orgs_dict и XML конфигурацию.
-        Возвращает изьятую ранее услугу в список новых услуг с помощью функции self.readd_org
-        """
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Добавление новой группы - {name}"
-        )
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Добавление услуги {service} в группу {name}"
-        )
-        self.orgs.append(name)
-        self.orgs_dict[name] = []
-        self.readd_org(service)
-        with open(self.reportXML, encoding="utf-8") as f:
-            xml = f.read()
-        root = objectify.fromstring(xml)
-        # Добавляем новые организации
-        new_org = objectify.SubElement(root, "UrFace")
-        new_org.set("Name", name)
-        new_servs = objectify.SubElement(new_org, "Services")
-        new_serv = objectify.SubElement(new_servs, "Service")
-        new_serv.set("Name", "Пустая обязательная категория")
-        # удаляем аннотации.
-        objectify.deannotate(root)
-        etree.cleanup_namespaces(root)
-        obj_xml = etree.tostring(
-            root, encoding="utf-8", pretty_print=True, xml_declaration=True
-        )
-        # сохраняем данные в файл.
-        try:
-            with open(self.reportXML, "w", encoding="utf_8_sig") as xml_writer:
-                xml_writer.write(obj_xml.decode("utf-8"))
-        except IOError:
-            pass
-
-    def agentservice(self, date_from):
-        self.agent_dict = self.read_reportgroup(self.agentXML)
-        self.find_new_agentservice(self.itog_report_org1, self.agent_dict)
-        self.find_new_agentservice(self.itog_report_org1_lastyear, self.agent_dict)
-        self.find_new_agentservice(self.itog_report_org3, self.agent_dict)
-        self.find_new_agentservice(self.itog_report_org3_lastyear, self.agent_dict)
-        self.find_new_agentservice(self.itog_report_org4, self.agent_dict)
-        self.find_new_agentservice(self.itog_report_org4_lastyear, self.agent_dict)
-        self.find_new_agentservice(self.itog_report_org5, self.agent_dict)
-        self.find_new_agentservice(self.itog_report_org5_lastyear, self.agent_dict)
-        if self.itog_report_month:
-            self.find_new_agentservice(self.itog_report_month, self.agent_dict)
-
-        if self.new_agentservice:
-            logger.warning(f"Найдены новые сервисы: {self.new_agentservice}")
-
-        self.save_reports(date_from)
-
-    def find_new_agentservice(self, service_dict, orgs_dict):
-        """
-        Поиск новых услуг и организаций из XML
-        :param service_dict: Итоговый отчет
-        :param orgs_dict: словарь из XML-файла
-        :return:
-        """
-        servise_set = set()
-
-        for key in orgs_dict:
-            for s in orgs_dict[key]:
-                servise_set.add(s)
-
-        for org in service_dict:
-            if org not in servise_set and org not in self.new_agentservice:
-                self.new_agentservice.append(org)
-                servise_set.add(org)
-
-        for key in orgs_dict:
-            if key not in self.agentorgs:
-                self.agentorgs.append(key)
-
-    def create_new_agentorg(self, name, service):
-        """
-        Добавляет новую организацию в список организаций self.orgs, словарь self.orgs_dict и XML конфигурацию.
-        Возвращает изьятую ранее услугу в список новых услуг с помощью функции self.readd_org
-        """
-        self.agentorgs.append(name)
-        self.agent_dict[name] = []
-        self.readd_agentorg(service)
-        with open(self.agentXML, encoding="utf-8") as f:
-            xml = f.read()
-        root = objectify.fromstring(xml)
-        # Добавляем новые организации
-        new_org = objectify.SubElement(root, "UrFace")
-        new_org.set("Name", name)
-        new_servs = objectify.SubElement(new_org, "Services")
-        new_serv = objectify.SubElement(new_servs, "Service")
-        new_serv.set("Name", "Пустая обязательная категория")
-        # удаляем аннотации.
-        objectify.deannotate(root)
-        etree.cleanup_namespaces(root)
-        obj_xml = etree.tostring(
-            root, encoding="utf-8", pretty_print=True, xml_declaration=True
-        )
-        # сохраняем данные в файл.
-        try:
-            with open(self.agentXML, "w", encoding="utf_8_sig") as xml_writer:
-                xml_writer.write(obj_xml.decode("utf-8"))
-        except IOError:
-            pass
 
     def fin_report(self):
         """
         Форминует финансовый отчет в установленном формате
         :return - dict
         """
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Формирование финансового отчета"
-        )
+        logging.info("Формирование финансового отчета")
         self.finreport_dict = {}
         is_aquazona = None
         for org, services in self.orgs_dict.items():
@@ -931,9 +719,7 @@ class BarsicReport2Service:
         Форминует финансовый отчет за предыдущий год в установленном формате
         :return - dict
         """
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Формирование финансового отчета за прошлый год"
-        )
+        logging.info("Формирование финансового отчета за прошлый год")
         self.finreport_dict_lastyear = {}
         is_aquazona = None
         for org, services in self.orgs_dict.items():
@@ -1033,9 +819,7 @@ class BarsicReport2Service:
         Форминует финансовый отчет за месяц в установленном формате
         :return - dict
         """
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Формирование финансового отчета за месяц"
-        )
+        logging.info("Формирование финансового отчета за месяц")
         self.finreport_dict_month = {}
         control_sum_group = self.finreport_dict_month.setdefault(
             "Контрольная сумма", {}
@@ -1089,18 +873,15 @@ class BarsicReport2Service:
                             continue
 
                 except KeyError as e:
-                    logger.info(
-                        "Несоответствие конфигураций XML-файлов",
-                        f"Группа {oldgroup} не существует!\n" f"KeyError: {e}",
-                    )
                     logging.error(
-                        f"{__name__}: {str(datetime.now())[:-7]}:    Несоответствие конфигураций XML-файлов\n"
+                        f"Несоответствие конфигураций XML-файлов\n"
                         f"Группа {oldgroup} не существует! \nKeyError: {e}"
                     )
 
                 if oldgroup == "Общепит":
                     product_group = finreport_group.setdefault(
-                        "Общепит ------------------------------------------------------------------------------ ИП Салахова",
+                        "Общепит ----------------------------------------------------------------"
+                        "-------------- ИП Салахова",
                         [["Итого по папке", 0, 0.0]],
                     )
                     product_group.append(["Смайл", smile[0], smile[1]])
@@ -1128,7 +909,7 @@ class BarsicReport2Service:
                 f"({control_sum[0][1]}: {control_sum[0][2]})",
             )
             logging.error(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Несоответствие Контрольных сумм. "
+                f"Несоответствие Контрольных сумм. "
                 f"Итого по отчету ({self.finreport_dict_month['ИТОГО'][''][1][1]}: "
                 f"{self.finreport_dict_month['ИТОГО'][''][1][2]}) не равно Контрольной сумме услуг"
                 f"({control_sum[0][1]}: {control_sum[0][2]})"
@@ -1139,9 +920,7 @@ class BarsicReport2Service:
         Форминует финансовый отчет по пляжу в установленном формате
         :return - dict
         """
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Формирование финансового отчета по пляжу"
-        )
+        logging.info("Формирование финансового отчета по пляжу")
         self.finreport_dict_beach = {
             "Депозит": (0, 0),
             "Товары": (0, 0),
@@ -1183,9 +962,7 @@ class BarsicReport2Service:
         Форминует отчет платежного агента в установленном формате
         :return - dict
         """
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Формирование отчета платежного агента"
-        )
+        logging.info("Формирование отчета платежного агента")
         self.agentreport_dict = {}
         self.agentreport_dict["Организация"] = [self.org1[0], self.org1[1]]
         for org, services in self.agent_dict.items():
@@ -1227,9 +1004,7 @@ class BarsicReport2Service:
         Форминует отчет платежного агента за месяц в установленном формате
         :return - dict
         """
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Формирование отчета платежного агента за месяц"
-        )
+        logging.info("Формирование отчета платежного агента за месяц")
         self.agentreport_dict_month = {}
         self.agentreport_dict_month["Контрольная сумма"] = {}
         self.agentreport_dict_month["Контрольная сумма"]["Cумма"] = [["Сумма", 0, 0.0]]
@@ -1383,7 +1158,7 @@ class BarsicReport2Service:
                 f"{self.agentreport_dict_month['Контрольная сумма']['Cумма'][0][2]})",
             )
             logging.error(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Несоответствие Контрольных сумм. "
+                f"Несоответствие Контрольных сумм. "
                 f"Итого по отчету ({self.agentreport_dict_month['ИТОГО'][''][1][1]}: "
                 f"{self.agentreport_dict_month['ИТОГО'][''][1][2]}) не равно Контрольной сумме услуг"
                 f"({self.agentreport_dict_month['Контрольная сумма']['Cумма'][0][1]}: "
@@ -1456,8 +1231,6 @@ class BarsicReport2Service:
             shrink_to_fit=False,
             indent=0,
         )
-        number_format = "General"
-        protection = Protection(locked=True, hidden=False)
 
         column = ["", "A", "B", "C", "D", "E"]
 
@@ -1593,13 +1366,13 @@ class BarsicReport2Service:
         ws[column[1] + next_row()] = "Итого"
         if itog_sum != agentreport_dict["ИТОГО"][1]:
             logging.error(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Ошибка. Отчет платежного агента: сумма строк "
+                f"Ошибка. Отчет платежного агента: сумма строк "
                 f"({itog_sum}) не равна строке ИТОГО "
                 f'({agentreport_dict["ИТОГО"][1]})'
             )
             logger.info(
-                f"Ошибка. Отчет платежного агента",
-                f"Ошибка. Отчет платежного агента: сумма строк "
+                "Ошибка. Отчет платежного агента",
+                "Ошибка. Отчет платежного агента: сумма строк "
                 f"({itog_sum}) не равна строке ИТОГО "
                 f'({agentreport_dict["ИТОГО"][1]})',
             )
@@ -1629,7 +1402,7 @@ class BarsicReport2Service:
             + ".xlsx"
         )
         logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Сохранение отчета платежного агента "
+            f"Сохранение отчета платежного агента "
             f'{agentreport_dict["Организация"][1]} в {path}'
         )
         path = self.create_path(path, date_from)
@@ -1640,9 +1413,7 @@ class BarsicReport2Service:
         """
         Проверяет наличие указанного пути. В случае отсутствия каких-либо папок создает их
         """
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Проверка локальных путей сохранения файлов..."
-        )
+        logging.info("Проверка локальных путей сохранения файлов...")
         list_path = path.split("/")
         path = ""
         end_path = ""
@@ -1655,7 +1426,7 @@ class BarsicReport2Service:
             if folder not in os.listdir():
                 os.mkdir(folder)
                 logging.warning(
-                    f'{__name__}: {str(datetime.now())[:-7]}:    В директории "{os.getcwd()}" создана папка "{folder}"'
+                    f'В директории "{os.getcwd()}" создана папка "{folder}"'
                 )
                 os.chdir(folder)
             else:
@@ -1673,38 +1444,23 @@ class BarsicReport2Service:
         try:
             file.save(path)
         except PermissionError as e:
-            logging.error(
-                f'{__name__}: {str(datetime.now())[:-7]}:    Файл "{path}" занят другим процессом.\n{repr(e)}'
-            )
-            logger.info(
-                f"Ошибка записи файла",
-                f'Файл "{path}" занят другим процессом.\nДля повтора попытки закройте это сообщение',
-                func=self.save_file,
-                path=path,
-                file=file,
-            )
+            logging.error(f'Файл "{path}" занят другим процессом.\n{repr(e)}')
 
-    def sync_to_yadisk(self, path_list, token, date_from):
-        """
-        Копирует локальные файлы в Яндекс Диск
-        """
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Копирование отчетов в Яндекс.Диск..."
-        )
+    def sync_to_yadisk(self, path_list, token, date_from, use_yadisk):
+        """Копирует локальные файлы в Яндекс Диск."""
+
+        logging.info("Копирование отчетов в Яндекс.Диск...")
         if path_list:
-            if self.use_yadisk:
-                logging.info(
-                    f"{__name__}: {str(datetime.now())[:-7]}:    Соединение с YaDisk..."
-                )
+            if use_yadisk:
+                logging.info("Соединение с YaDisk...")
                 self.yadisk = yadisk.YaDisk(token=token)
                 if self.yadisk.check_token():
                     path = "" + self.report_path
                     remote_folder = self.create_path_yadisk(path, date_from)
                     for local_path in path_list:
                         remote_path = remote_folder + local_path.split("/")[-1]
-                        logging.info(
-                            f'{__name__}: {str(datetime.now())[:-7]}:    Отправка файла "{local_path.split("/")[-1]}" в YaDisk...'
-                        )
+                        file_name = f"'{local_path.split('/')[-1]}'"
+                        logging.info(f"Отправка файла {file_name} в YaDisk...")
                         files_list_yandex = list(self.yadisk.listdir(remote_folder))
                         files_list = []
                         for key in files_list_yandex:
@@ -1712,43 +1468,31 @@ class BarsicReport2Service:
                                 files_list.append(remote_folder + key["name"])
                         if remote_path in files_list:
                             logging.warning(
-                                f"{__name__}: {str(datetime.now())[:-7]}:    "
-                                f'Файл "{local_path.split("/")[-1]}" уже существует в "{remote_folder}" и будет заменен!'
+                                f"Файл {file_name} уже существует в '{remote_folder}' и будет заменен!"
                             )
                             self.yadisk.remove(remote_path, permanently=True)
                         self.yadisk.upload(local_path, remote_path)
                         logging.info(
-                            f"{__name__}: {str(datetime.now())[:-7]}:    "
-                            f'Файл "{local_path.split("/")[-1]}" отправлен в "{remote_folder}" YaDisk...'
+                            f"Файл '{file_name}' отправлен в '{remote_folder}' YaDisk..."
                         )
                 else:
-                    logging.error(
-                        f"{__name__}: {str(datetime.now())[:-7]}:    Ошибка YaDisk: token не валиден"
-                    )
-                    logger.info(
-                        "Ошибка соединения с Yandex.Disc",
-                        f"\nОтчеты сохранены в папке {self.local_folder} "
-                        f"и не будут отправлены на Yandex.Disc.",
+                    error_message = "Ошибка YaDisk: token не валиден"
+                    logging.error(error_message)
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST, detail=error_message
                     )
         else:
-            logging.info(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Нет ни одного отчета для отправки в Yandex.Disk"
-            )
+            logging.warning("Нет ни одного отчета для отправки в Yandex.Disk")
 
     def create_path_yadisk(self, path, date_from):
+        """Проверяет наличие указанного пути в Яндекс Диске.
+
+        В случае отсутствия каких-либо папок создает их.
         """
-        Проверяет наличие указанного пути в Яндекс Диске. В случае отсутствия каких-либо папок создает их
-        :param path:
-        :return:
-        """
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Проверка путей сохранения файлов на Яндекс.Диске..."
-        )
+        logging.info("Проверка путей сохранения файлов на Яндекс.Диске...")
         list_path = path.split("/")
-        path = ""
-        end_path = ""
         if list_path[-1][-4:] == ".xls" or list_path[-1] == "":
-            end_path = list_path.pop()
+            list_path.pop()
         list_path.append(date_from.strftime("%Y"))
         list_path.append(date_from.strftime("%m") + "-" + date_from.strftime("%B"))
         directory = "/"
@@ -1764,61 +1508,33 @@ class BarsicReport2Service:
             for key in folders_list_yandex:
                 if not key["file"]:
                     folders_list.append(directory + key["name"])
+
+            logger.warning(f"{folder=}, {folders_list=}")
             if folder not in folders_list:
                 self.yadisk.mkdir(folder)
-                logging.info(
-                    f'{__name__}: {str(datetime.now())[:-7]}:    Создание новой папки в YandexDisk - "{folder}"'
-                )
+                logging.info(f'Создание новой папки в YandexDisk - "{folder}"')
                 directory = folder + "/"
             else:
                 directory = folder + "/"
         path = list_path_yandex[-1] + "/"
         return path
 
-    def export_to_google_sheet(self, date_from):
+    async def export_to_google_sheet(self, date_from, http_auth, googleservice):
         """
         Формирование и заполнение google-таблицы
         """
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    "
-            f"Сохранение Финансового отчета в Google-таблицах..."
-        )
-
-        self.doc_version = 12
-
+        logging.info("Сохранение Финансового отчета в Google-таблицах...")
         self.sheet_width = 35
         self.sheet2_width = 3
         self.sheet3_width = 14
         self.sheet4_width = 3
         self.sheet5_width = 3
         self.sheet6_width = 16
-        self.height = 40
+        self.sheet_height = 40
         self.sheet2_height = 40
         self.sheet4_height = 300
         self.sheet5_height = 300
         self.sheet6_height = 40
-
-        # self.CREDENTIALS_FILE # имя файла с закрытым ключом
-        credentials = ServiceAccountCredentials.from_json_keyfile_name(
-            self.CREDENTIALS_FILE,
-            [
-                "https://www.googleapis.com/auth/spreadsheets",
-                "https://www.googleapis.com/auth/drive",
-            ],
-        )
-        httpAuth = credentials.authorize(httplib2.Http())
-        try:
-            logging.info(
-                f"{__name__}: {str(datetime.now())[:-7]}:    "
-                f"Попытка авторизации с Google-документами ..."
-            )
-            self.googleservice = apiclient.discovery.build(
-                "sheets", "v4", http=httpAuth
-            )
-        except IndexError as e:
-            logging.error(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Ошибка {repr(e)}"
-            )
 
         self.data_report = datetime.strftime(self.finreport_dict["Дата"][0], "%m")
         month = [
@@ -1847,1635 +1563,59 @@ class BarsicReport2Service:
             self.finreport_dict["Дата"][0] + timedelta(1)
             != self.finreport_dict["Дата"][1]
         ):
-            logging.info(
-                f"{__name__}: {str(datetime.now())[:-7]}:    "
-                f"Экспорт отчета в Google Sheet за несколько дней невозможен!"
-            )
+            logging.info("Экспорт отчета в Google Sheet за несколько дней невозможен!")
             logger.info(
                 "Ошибка экспорта в Google.Sheet",
                 "Экспорт отчета в Google Sheet за несколько дней невозможен!",
             )
         else:
-            with open(self.list_google_docs, "r", encoding="utf-8") as f:
-                links = csv.reader(f, delimiter=";")
-                self.google_links = {}
-                for line in links:
-                    self.google_links[line[0]] = [
-                        line[1],
-                    ]
-                    if len(line) > 2:
-                        self.google_links[line[0]].append(line[2])
-                    else:
-                        self.google_links[line[0]].append(0)
-            if date_from.strftime("%Y-%m") in self.google_links:
-                if (
-                    int(self.google_links[date_from.strftime("%Y-%m")][1])
-                    == self.doc_version
-                ):
-                    self.google_doc = (
-                        date_from.strftime("%Y-%m"),
-                        self.google_links[date_from.strftime("%Y-%m")][0],
-                    )
-                else:
-                    logging.error(
-                        f"{__name__}: {str(datetime.now())[:-7]}:    "
-                        f"Версия Финансового отчета ("
-                        f"{self.google_links[date_from.strftime('%Y-%m')][1]}) "
-                        f"не соответствует текущей ({self.doc_version}).\n"
-                        f"Необходимо сначала удалить строку с ссылкой на старую версию из файла "
-                        f'"list_google_docs.csv" затем заново сформировать отчет с начала месяца.'
-                    )
-                    logger.info(
-                        "Несоответствие версий финансового отчета",
-                        f"Версия Финансового отчета ("
-                        f"{self.google_links[date_from.strftime('%Y-%m')][1]}) "
-                        f"не соответствует текущей ({self.doc_version}).\n"
-                        f"Необходимо сначала удалить строку с ссылкой на старую версию из файла "
-                        f'"list_google_docs.csv" затем заново сформировать отчет с начала месяца.',
-                    )
-                    return None
-            else:
-                self.google_doc = None
-                # Создание документа
-                self.google_kwote_timer = datetime.now()
-                logging.info(
-                    f"{__name__}: {str(datetime.now())[:-7]}:    "
-                    f"Создание Google-документа..."
+            google_doc_id = await self._report_config_service.get_google_doc_id_by_date(
+                date_from
+            )
+            if google_doc_id is None:
+                google_doc = create_new_google_doc(
+                    googleservice=googleservice,
+                    doc_name=doc_name,
+                    data_report=self.data_report,
+                    finreport_dict=self.finreport_dict,
+                    http_auth=http_auth,
+                    date_from=date_from,
+                    sheet_width=self.sheet_width,
+                    sheet2_width=self.sheet2_width,
+                    sheet3_width=self.sheet3_width,
+                    sheet4_width=self.sheet4_width,
+                    sheet5_width=self.sheet5_width,
+                    sheet6_width=self.sheet6_width,
+                    sheet_height=self.sheet_height,
+                    sheet2_height=self.sheet2_height,
+                    sheet4_height=self.sheet4_height,
+                    sheet5_height=self.sheet5_height,
+                    sheet6_height=self.sheet6_height,
                 )
-                self.spreadsheet = (
-                    self.googleservice.spreadsheets()
-                    .create(
-                        body={
-                            "properties": {"title": doc_name, "locale": "ru_RU"},
-                            "sheets": [
-                                {
-                                    "properties": {
-                                        "sheetType": "GRID",
-                                        "sheetId": 0,
-                                        "title": "Сводный",
-                                        "gridProperties": {
-                                            "rowCount": self.height,
-                                            "columnCount": self.sheet_width,
-                                        },
-                                    }
-                                },
-                                {
-                                    "properties": {
-                                        "sheetType": "GRID",
-                                        "sheetId": 1,
-                                        "title": "Смайл",
-                                        "gridProperties": {
-                                            "rowCount": self.sheet2_height,
-                                            "columnCount": self.sheet2_width,
-                                        },
-                                    }
-                                },
-                                {
-                                    "properties": {
-                                        "sheetType": "GRID",
-                                        "sheetId": 2,
-                                        "title": "План",
-                                        "gridProperties": {
-                                            "rowCount": self.height,
-                                            "columnCount": self.sheet3_width,
-                                        },
-                                    }
-                                },
-                                {
-                                    "properties": {
-                                        "sheetType": "GRID",
-                                        "sheetId": 3,
-                                        "title": "Итоговый",
-                                        "gridProperties": {
-                                            "rowCount": self.sheet4_height,
-                                            "columnCount": self.sheet4_width,
-                                        },
-                                    }
-                                },
-                                {
-                                    "properties": {
-                                        "sheetType": "GRID",
-                                        "sheetId": 4,
-                                        "title": "Итоговый ПА",
-                                        "gridProperties": {
-                                            "rowCount": self.sheet5_height,
-                                            "columnCount": self.sheet5_width,
-                                        },
-                                    }
-                                },
-                                {
-                                    "properties": {
-                                        "sheetType": "GRID",
-                                        "sheetId": 5,
-                                        "title": "Пляж",
-                                        "gridProperties": {
-                                            "rowCount": self.sheet6_height,
-                                            "columnCount": self.sheet6_width,
-                                        },
-                                    }
-                                },
-                            ],
-                        }
-                    )
-                    .execute()
+                google_report_id = GoogleReportIdCreate(
+                    month=google_doc[0],
+                    doc_id=google_doc[1],
+                    version=self.doc_version,
+                )
+                await self._report_config_service.add_google_report_id(google_report_id)
+                logging.info(f"Создана новая таблица с Id: {google_report_id.doc_id}")
+
+            if google_doc_id.version != self.doc_version:
+                error_message = (
+                    f"Версия Финансового отчета ({google_doc_id.doc_id}) не соответствует текущей "
+                    f"({self.doc_version}).\nНеобходимо сначала удалить ссылку на старую версию, "
+                    f"затем заново сформировать отчет с начала месяца."
+                )
+                logging.error(error_message)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=error_message,
                 )
 
-                # Доступы к документу
-                logging.info(
-                    f"{__name__}: {str(datetime.now())[:-7]}:    "
-                    f"Настройка доступов к файлу GoogleSheets..."
-                )
-                self.google_reader_list = self.google_reader_list.split(",")
-                self.google_writer_list = self.google_writer_list.split(",")
-                driveService = apiclient.discovery.build("drive", "v3", http=httpAuth)
-                if self.google_all_read:
-                    shareRes = (
-                        driveService.permissions()
-                        .create(
-                            fileId=self.spreadsheet["spreadsheetId"],
-                            body={
-                                "type": "anyone",
-                                "role": "reader",
-                            },  # доступ на чтение кому угодно
-                            fields="id",
-                        )
-                        .execute()
-                    )
-                # Возможные значения writer, commenter, reader
-                # доступ на Чтение определенным пользователоям
-                for adress in self.google_reader_list:
-                    shareRes = (
-                        driveService.permissions()
-                        .create(
-                            fileId=self.spreadsheet["spreadsheetId"],
-                            body={
-                                "type": "user",
-                                "role": "reader",
-                                "emailAddress": adress,
-                            },
-                            fields="id",
-                        )
-                        .execute()
-                    )
-                # доступ на Запись определенным пользователоям
-                for adress in self.google_writer_list:
-                    shareRes = (
-                        driveService.permissions()
-                        .create(
-                            fileId=self.spreadsheet["spreadsheetId"],
-                            body={
-                                "type": "user",
-                                "role": "writer",
-                                "emailAddress": adress,
-                            },
-                            fields="id",
-                        )
-                        .execute()
-                    )
-
-                # ЛИСТ 1
-                logging.info(
-                    f"{__name__}: {str(datetime.now())[:-7]}:    "
-                    f"Создание листа 1 в файле GoogleSheets..."
-                )
-                sheetId = 0
-                # Ширина столбцов
-                ss = to_google_sheets.Spreadsheet(
-                    self.spreadsheet["spreadsheetId"],
-                    sheetId,
-                    self.googleservice,
-                    self.spreadsheet["sheets"][sheetId]["properties"]["title"],
-                )
-                ss.prepare_setColumnsWidth(0, 1, 105)
-                ss.prepare_setColumnsWidth(2, 9, 120)
-                ss.prepare_setColumnWidth(10, 65)
-                ss.prepare_setColumnWidth(11, 120)
-                ss.prepare_setColumnWidth(12, 100)
-                ss.prepare_setColumnsWidth(13, 14, 100)
-                ss.prepare_setColumnWidth(15, 65)
-                ss.prepare_setColumnWidth(16, 120)
-                ss.prepare_setColumnWidth(17, 100)
-                ss.prepare_setColumnWidth(18, 65)
-                ss.prepare_setColumnWidth(19, 120)
-                ss.prepare_setColumnWidth(20, 100)
-                ss.prepare_setColumnWidth(21, 65)
-                ss.prepare_setColumnWidth(22, 120)
-                ss.prepare_setColumnWidth(23, 100)
-                ss.prepare_setColumnWidth(24, 65)
-                ss.prepare_setColumnWidth(25, 120)
-                ss.prepare_setColumnWidth(26, 100)
-                ss.prepare_setColumnWidth(27, 65)
-                ss.prepare_setColumnWidth(28, 120)
-                ss.prepare_setColumnWidth(29, 65)
-                ss.prepare_setColumnWidth(30, 120)
-                ss.prepare_setColumnWidth(31, 100)
-                ss.prepare_setColumnWidth(32, 120)
-                ss.prepare_setColumnWidth(33, 120)
-                ss.prepare_setColumnWidth(34, 120)
-
-                # Объединение ячеек
-                ss.prepare_mergeCells("A1:A2")
-                ss.prepare_mergeCells("B1:B2")
-                ss.prepare_mergeCells("C1:C2")
-                ss.prepare_mergeCells("D1:D2")
-                ss.prepare_mergeCells("E1:E2")
-                ss.prepare_mergeCells("F1:F2")
-                ss.prepare_mergeCells("G1:G2")
-                ss.prepare_mergeCells("H1:H2")
-                ss.prepare_mergeCells("I1:I2")
-                ss.prepare_mergeCells("J1:J2")
-                ss.prepare_mergeCells("K1:M1")
-                ss.prepare_mergeCells("N1:N2")
-                ss.prepare_mergeCells("O1:O2")
-                ss.prepare_mergeCells("P1:R1")
-                ss.prepare_mergeCells("S1:U1")
-                ss.prepare_mergeCells("V1:X1")
-                ss.prepare_mergeCells("Y1:AA1")
-                ss.prepare_mergeCells("AB1:AC1")
-                ss.prepare_mergeCells("AD1:AF1")
-                ss.prepare_mergeCells("AG1:AG2")
-                ss.prepare_mergeCells("AH1:AH2")
-                ss.prepare_mergeCells("AI1:AI2")
-
-                # Задание параметров группе ячеек
-                # Жирный, по центру
-                ss.prepare_setCellsFormat(
-                    "A1:AI2",
-                    {"horizontalAlignment": "CENTER", "textFormat": {"bold": True}},
-                )
-                # ss.prepare_setCellsFormat('E4:E8', {'numberFormat': {'pattern': '[h]:mm:ss', 'type': 'TIME'}},
-                #                           fields='userEnteredFormat.numberFormat')
-
-                # Заполнение таблицы
-                ss.prepare_setValues(
-                    "A1:AI2",
-                    [
-                        [
-                            "Дата",
-                            "День недели",
-                            "Кол-во проходов \nПЛАН",
-                            "Кол-во проходов \nФАКТ",
-                            f"Кол-во проходов \n{self.data_report} "
-                            f"{datetime.strftime(self.finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
-                            "Общая сумма \nПЛАН",
-                            "Общая сумма \nФАКТ",
-                            "Средний чек \nФАКТ",
-                            "Бонусы",
-                            f"Общая сумма \n{self.data_report} "
-                            f"{datetime.strftime(self.finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
-                            "Билеты",
-                            "",
-                            "",
-                            "Депозит",
-                            "Штраф",
-                            "Общепит ПЛАН",
-                            "",
-                            "",
-                            "Общепит ФАКТ",
-                            "",
-                            "",
-                            f"Общепит {self.data_report} "
-                            f"{datetime.strftime(self.finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
-                            "",
-                            "",
-                            "Билеты КОРП",
-                            "",
-                            "",
-                            "Прочее",
-                            "",
-                            "Online Продажи",
-                            "",
-                            "",
-                            "Сумма безнал",
-                            "Фотоуслуги",
-                            "Онлайн прочее",
-                        ],
-                        [
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "Кол-во",
-                            "Сумма",
-                            "Средний чек",
-                            "",
-                            "",
-                            "Кол-во",
-                            "Сумма",
-                            "Средний чек",
-                            "Кол-во",
-                            "Сумма",
-                            "Средний чек",
-                            "Кол-во",
-                            "Сумма",
-                            "Средний чек",
-                            "Кол-во",
-                            "Сумма",
-                            "Средний чек",
-                            "Кол-во",
-                            "Сумма",
-                            "Кол-во",
-                            "Сумма",
-                            "Средний чек",
-                            "",
-                            "",
-                            "",
-                        ],
-                    ],
-                    "ROWS",
-                )
-                # ss.prepare_setValues("D5:E6", [["This is D5", "This is D6"], ["This is E5", "=5+5"]], "COLUMNS")
-
-                # Цвет фона ячеек
-                ss.prepare_setCellsFormat(
-                    "A1:AI2",
-                    {"backgroundColor": functions.htmlColorToJSON("#f7cb4d")},
-                    fields="userEnteredFormat.backgroundColor",
-                )
-
-                # Бордер
-                for i in range(2):
-                    for j in range(self.sheet_width):
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": i,
-                                        "endRowIndex": i + 1,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "top": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {"red": 0, "green": 0, "blue": 0},
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": i,
-                                        "endRowIndex": i + 1,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "right": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": i,
-                                        "endRowIndex": i + 1,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "left": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-
-                ss.runPrepared()
-
-                # ЛИСТ 2
-                logging.info(
-                    f"{__name__}: {str(datetime.now())[:-7]}:    "
-                    f"Создание листа 2 в файле GoogleSheets..."
-                )
-                sheetId = 1
-                # Ширина столбцов
-                ss = to_google_sheets.Spreadsheet(
-                    self.spreadsheet["spreadsheetId"],
-                    sheetId,
-                    self.googleservice,
-                    self.spreadsheet["sheets"][sheetId]["properties"]["title"],
-                )
-                ss.prepare_setColumnsWidth(0, 2, 105)
-
-                # Объединение ячеек
-                ss.prepare_mergeCells("A1:C1")
-
-                # Задание параметров группе ячеек
-                # Жирный, по центру
-                ss.prepare_setCellsFormat(
-                    "A1:C2",
-                    {"horizontalAlignment": "CENTER", "textFormat": {"bold": True}},
-                )
-                # ss.prepare_setCellsFormat('E4:E8', {'numberFormat': {'pattern': '[h]:mm:ss', 'type': 'TIME'}},
-                #                           fields='userEnteredFormat.numberFormat')
-
-                # Заполнение таблицы
-                ss.prepare_setValues(
-                    "A1:C2", [["Смайл", "", ""], ["Дата", "Кол-во", "Сумма"]], "ROWS"
-                )
-                # ss.prepare_setValues("D5:E6", [["This is D5", "This is D6"], ["This is E5", "=5+5"]], "COLUMNS")
-
-                # Цвет фона ячеек
-                ss.prepare_setCellsFormat(
-                    "A1:C2",
-                    {"backgroundColor": functions.htmlColorToJSON("#f7cb4d")},
-                    fields="userEnteredFormat.backgroundColor",
-                )
-
-                # Бордер
-                for i in range(2):
-                    for j in range(self.sheet2_width):
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": i,
-                                        "endRowIndex": i + 1,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "top": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {"red": 0, "green": 0, "blue": 0},
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": i,
-                                        "endRowIndex": i + 1,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "right": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": i,
-                                        "endRowIndex": i + 1,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "left": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-
-                ss.runPrepared()
-
-                # ЛИСТ 3
-                logging.info(
-                    f"{__name__}: {str(datetime.now())[:-7]}:    "
-                    f"Создание листа 3 в файле GoogleSheets..."
-                )
-                sheetId = 2
-                # Ширина столбцов
-                ss = to_google_sheets.Spreadsheet(
-                    self.spreadsheet["spreadsheetId"],
-                    sheetId,
-                    self.googleservice,
-                    self.spreadsheet["sheets"][sheetId]["properties"]["title"],
-                )
-                ss.prepare_setColumnsWidth(0, 1, 100)
-                ss.prepare_setColumnsWidth(2, 7, 120)
-                ss.prepare_setColumnWidth(8, 65)
-                ss.prepare_setColumnWidth(9, 120)
-                ss.prepare_setColumnWidth(10, 100)
-                ss.prepare_setColumnWidth(8, 65)
-                ss.prepare_setColumnWidth(9, 120)
-                ss.prepare_setColumnWidth(10, 100)
-
-                # Объединение ячеек
-                ss.prepare_mergeCells("A1:A2")
-                ss.prepare_mergeCells("B1:B2")
-                ss.prepare_mergeCells("C1:C2")
-                ss.prepare_mergeCells("D1:D2")
-                ss.prepare_mergeCells("E1:E2")
-                ss.prepare_mergeCells("F1:F2")
-                ss.prepare_mergeCells("G1:G2")
-                ss.prepare_mergeCells("H1:H2")
-                ss.prepare_mergeCells("I1:K1")
-                ss.prepare_mergeCells("L1:N1")
-
-                # Задание параметров группе ячеек
-                # Жирный, по центру
-                ss.prepare_setCellsFormat(
-                    "A1:N2",
-                    {"horizontalAlignment": "CENTER", "textFormat": {"bold": True}},
-                )
-                # ss.prepare_setCellsFormat('E4:E8', {'numberFormat': {'pattern': '[h]:mm:ss', 'type': 'TIME'}},
-                #                           fields='userEnteredFormat.numberFormat')
-
-                # Заполнение таблицы
-                ss.prepare_setValues(
-                    "A1:N2",
-                    [
-                        [
-                            "Дата",
-                            "День недели",
-                            "Кол-во проходов \nПРОГНОЗ",
-                            "Кол-во проходов \nФАКТ",
-                            "Общая сумма \nПРОГНОЗ",
-                            "Общая сумма \nФАКТ",
-                            "Средний чек \nПРОГНОЗ",
-                            "Средний чек \nФАКТ",
-                            "Общепит ПЛАН",
-                            "",
-                            "",
-                            "Пляж ПЛАН",
-                            "",
-                            "",
-                        ],
-                        [
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "Кол-во",
-                            "Сумма",
-                            "Средний чек",
-                            "Трафик",
-                            "Общая сумма",
-                            "Средний чек",
-                        ],
-                    ],
-                    "ROWS",
-                )
-                # ss.prepare_setValues("D5:E6", [["This is D5", "This is D6"], ["This is E5", "=5+5"]], "COLUMNS")
-
-                # Цвет фона ячеек
-                ss.prepare_setCellsFormat(
-                    "A1:N2",
-                    {"backgroundColor": functions.htmlColorToJSON("#f7cb4d")},
-                    fields="userEnteredFormat.backgroundColor",
-                )
-
-                # Бордер
-                for i in range(2):
-                    for j in range(self.sheet3_width):
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": i,
-                                        "endRowIndex": i + 1,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "top": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {"red": 0, "green": 0, "blue": 0},
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": i,
-                                        "endRowIndex": i + 1,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "right": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": i,
-                                        "endRowIndex": i + 1,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "left": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                # ss.runPrepared()
-
-                # Заполнение таблицы 2
-                logging.info(
-                    f"{__name__}: {str(datetime.now())[:-7]}:    "
-                    f"Заполнение листа 2 в файле GoogleSheets..."
-                )
-                # ss = to_google_sheets.Spreadsheet(self.spreadsheet['spreadsheetId'], sheetId, self.googleservice,
-                #                                   self.spreadsheet['sheets'][sheetId]['properties']['title'])
-
-                # Заполнение строки с данными
-                weekday_rus = [
-                    "Понедельник",
-                    "Вторник",
-                    "Среда",
-                    "Четверг",
-                    "Пятница",
-                    "Суббота",
-                    "Воскресенье",
-                ]
-
-                start_date = datetime.strptime(
-                    f"01{self.finreport_dict['Дата'][0].strftime('%m%Y')}", "%d%m%Y"
-                )
-                enddate = start_date + relativedelta(months=1)
-                dateline = start_date
-                self.sheet2_line = 3
-                while dateline < enddate:
-                    ss.prepare_setValues(
-                        f"A{self.sheet2_line}:N{self.sheet2_line}",
-                        [
-                            [
-                                datetime.strftime(dateline, "%d.%m.%Y"),
-                                weekday_rus[dateline.weekday()],
-                                "",
-                                f"=IF(OR('Сводный'!A{self.sheet2_line} = \"ИТОГО\";LEFT('Сводный'!A{self.sheet2_line}; 10) = \"Выполнение\");\"\";'Сводный'!D{self.sheet2_line})",
-                                "",
-                                f"=IF(OR('Сводный'!A{self.sheet2_line} = \"ИТОГО\";LEFT('Сводный'!A{self.sheet2_line}; 10) = \"Выполнение\");\"\";'Сводный'!G{self.sheet2_line})",
-                                f"=IFERROR(E{self.sheet2_line}/C{self.sheet2_line};0)",
-                                f"=IFERROR(F{self.sheet2_line}/D{self.sheet2_line};0)",
-                                "",
-                                "",
-                                f"=IFERROR(J{self.sheet2_line}/I{self.sheet2_line};0)",
-                                "",
-                                "",
-                                f"=IFERROR(M{self.sheet2_line}/L{self.sheet2_line};0)",
-                            ]
-                        ],
-                        "ROWS",
-                    )
-
-                    # Задание форматы вывода строки
-                    ss.prepare_setCellsFormats(
-                        f"A{self.sheet2_line}:N{self.sheet2_line}",
-                        [
-                            [
-                                {
-                                    "numberFormat": {
-                                        "type": "DATE",
-                                        "pattern": "dd.mm.yyyy",
-                                    }
-                                },
-                                {"numberFormat": {}},
-                                {"numberFormat": {}},
-                                {"numberFormat": {}},
-                                {
-                                    "numberFormat": {
-                                        "type": "CURRENCY",
-                                        "pattern": "#,##0.00[$ ₽]",
-                                    }
-                                },
-                                {
-                                    "numberFormat": {
-                                        "type": "CURRENCY",
-                                        "pattern": "#,##0.00[$ ₽]",
-                                    }
-                                },
-                                {
-                                    "numberFormat": {
-                                        "type": "CURRENCY",
-                                        "pattern": "#,##0.00[$ ₽]",
-                                    }
-                                },
-                                {
-                                    "numberFormat": {
-                                        "type": "CURRENCY",
-                                        "pattern": "#,##0.00[$ ₽]",
-                                    }
-                                },
-                                {"numberFormat": {}},
-                                {
-                                    "numberFormat": {
-                                        "type": "CURRENCY",
-                                        "pattern": "#,##0.00[$ ₽]",
-                                    }
-                                },
-                                {
-                                    "numberFormat": {
-                                        "type": "CURRENCY",
-                                        "pattern": "#,##0.00[$ ₽]",
-                                    }
-                                },
-                                {"numberFormat": {}},
-                                {
-                                    "numberFormat": {
-                                        "type": "CURRENCY",
-                                        "pattern": "#,##0.00[$ ₽]",
-                                    }
-                                },
-                                {
-                                    "numberFormat": {
-                                        "type": "CURRENCY",
-                                        "pattern": "#,##0.00[$ ₽]",
-                                    }
-                                },
-                            ]
-                        ],
-                    )
-                    # Цвет фона ячеек
-                    if self.sheet2_line % 2 != 0:
-                        ss.prepare_setCellsFormat(
-                            f"A{self.sheet2_line}:N{self.sheet2_line}",
-                            {"backgroundColor": functions.htmlColorToJSON("#fef8e3")},
-                            fields="userEnteredFormat.backgroundColor",
-                        )
-
-                    # Бордер
-                    for j in range(self.sheet3_width):
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.sheet2_line - 1,
-                                        "endRowIndex": self.sheet2_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "top": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {"red": 0, "green": 0, "blue": 0},
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.sheet2_line - 1,
-                                        "endRowIndex": self.sheet2_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "right": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.sheet2_line - 1,
-                                        "endRowIndex": self.sheet2_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "left": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.sheet2_line - 1,
-                                        "endRowIndex": self.sheet2_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "bottom": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                    # ss.runPrepared()
-                    self.sheet2_line += 1
-                    dateline += timedelta(1)
-
-                # ИТОГО
-                ss.prepare_setValues(
-                    f"A{self.sheet2_line}:N{self.sheet2_line}",
-                    [
-                        [
-                            "ИТОГО",
-                            "",
-                            f"=SUM(C3:C{self.sheet2_line - 1})",
-                            f"=SUM(D3:D{self.sheet2_line - 1})",
-                            f"=SUM(E3:E{self.sheet2_line - 1})",
-                            f"=SUM(F3:F{self.sheet2_line - 1})",
-                            f"=IFERROR(E{self.sheet2_line}/C{self.sheet2_line};0)",
-                            f"=IFERROR(F{self.sheet2_line}/D{self.sheet2_line};0)",
-                            f"=SUM(I3:I{self.sheet2_line - 1})",
-                            f"=SUM(J3:J{self.sheet2_line - 1})",
-                            f"=IFERROR(J{self.sheet2_line}/I{self.sheet2_line};0)",
-                            f"=SUM(L3:L{self.sheet2_line - 1})",
-                            f"=SUM(M3:M{self.sheet2_line - 1})",
-                            f"=IFERROR(M{self.sheet2_line}/L{self.sheet2_line};0)",
-                        ]
-                    ],
-                    "ROWS",
-                )
-
-                # Задание форматы вывода строки
-                ss.prepare_setCellsFormats(
-                    f"A{self.sheet2_line}:N{self.sheet2_line}",
-                    [
-                        [
-                            {
-                                "numberFormat": {
-                                    "type": "DATE",
-                                    "pattern": "dd.mm.yyyy",
-                                },
-                                "horizontalAlignment": "RIGHT",
-                                "textFormat": {"bold": True},
-                            },
-                            {
-                                "numberFormat": {},
-                                "horizontalAlignment": "RIGHT",
-                                "textFormat": {"bold": True},
-                            },
-                            {
-                                "numberFormat": {},
-                                "horizontalAlignment": "RIGHT",
-                                "textFormat": {"bold": True},
-                            },
-                            {
-                                "numberFormat": {},
-                                "horizontalAlignment": "RIGHT",
-                                "textFormat": {"bold": True},
-                            },
-                            {
-                                "numberFormat": {
-                                    "type": "CURRENCY",
-                                    "pattern": "#,##0.00[$ ₽]",
-                                },
-                                "horizontalAlignment": "RIGHT",
-                                "textFormat": {"bold": True},
-                            },
-                            {
-                                "numberFormat": {
-                                    "type": "CURRENCY",
-                                    "pattern": "#,##0.00[$ ₽]",
-                                },
-                                "horizontalAlignment": "RIGHT",
-                                "textFormat": {"bold": True},
-                            },
-                            {
-                                "numberFormat": {
-                                    "type": "CURRENCY",
-                                    "pattern": "#,##0.00[$ ₽]",
-                                },
-                                "horizontalAlignment": "RIGHT",
-                                "textFormat": {"bold": True},
-                            },
-                            {
-                                "numberFormat": {
-                                    "type": "CURRENCY",
-                                    "pattern": "#,##0.00[$ ₽]",
-                                },
-                                "horizontalAlignment": "RIGHT",
-                                "textFormat": {"bold": True},
-                            },
-                            {
-                                "numberFormat": {},
-                                "horizontalAlignment": "RIGHT",
-                                "textFormat": {"bold": True},
-                            },
-                            {
-                                "numberFormat": {
-                                    "type": "CURRENCY",
-                                    "pattern": "#,##0.00[$ ₽]",
-                                },
-                                "horizontalAlignment": "RIGHT",
-                                "textFormat": {"bold": True},
-                            },
-                            {
-                                "numberFormat": {
-                                    "type": "CURRENCY",
-                                    "pattern": "#,##0.00[$ ₽]",
-                                },
-                                "horizontalAlignment": "RIGHT",
-                                "textFormat": {"bold": True},
-                            },
-                            {
-                                "numberFormat": {},
-                                "horizontalAlignment": "RIGHT",
-                                "textFormat": {"bold": True},
-                            },
-                            {
-                                "numberFormat": {
-                                    "type": "CURRENCY",
-                                    "pattern": "#,##0.00[$ ₽]",
-                                },
-                                "horizontalAlignment": "RIGHT",
-                                "textFormat": {"bold": True},
-                            },
-                            {
-                                "numberFormat": {
-                                    "type": "CURRENCY",
-                                    "pattern": "#,##0.00[$ ₽]",
-                                },
-                                "horizontalAlignment": "RIGHT",
-                                "textFormat": {"bold": True},
-                            },
-                        ]
-                    ],
-                )
-                # Цвет фона ячеек
-                ss.prepare_setCellsFormat(
-                    f"A{self.sheet2_line}:N{self.sheet2_line}",
-                    {"backgroundColor": functions.htmlColorToJSON("#fce8b2")},
-                    fields="userEnteredFormat.backgroundColor",
-                )
-
-                # Бордер
-                for j in range(self.sheet3_width):
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.sheet2_line - 1,
-                                    "endRowIndex": self.sheet2_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "top": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {"red": 0, "green": 0, "blue": 0},
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.sheet2_line - 1,
-                                    "endRowIndex": self.sheet2_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "right": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.sheet2_line - 1,
-                                    "endRowIndex": self.sheet2_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "left": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.sheet2_line - 1,
-                                    "endRowIndex": self.sheet2_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "bottom": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                ss.runPrepared()
-
-                # ЛИСТ 4
-                logging.info(
-                    f"{__name__}: {str(datetime.now())[:-7]}:    "
-                    f"Создание листа 4 в файле GoogleSheets..."
-                )
-                sheetId = 3
-                # Ширина столбцов
-                ss = to_google_sheets.Spreadsheet(
-                    self.spreadsheet["spreadsheetId"],
-                    sheetId,
-                    self.googleservice,
-                    self.spreadsheet["sheets"][sheetId]["properties"]["title"],
-                )
-                ss.prepare_setColumnWidth(0, 300)
-                ss.prepare_setColumnsWidth(1, 2, 160)
-
-                ss.prepare_setValues(
-                    "A1:C1",
-                    [
-                        [
-                            '=JOIN(" ";"Итоговый отчет будет сформирован через";DATEDIF(TODAY();DATE(YEAR(TODAY());'
-                            'MONTH(TODAY())+1;1)-1;"D");IF(MOD(DATEDIF(TODAY();DATE(YEAR(TODAY());MONTH(TODAY())+1;1)-1;'
-                            '"D");10)<5;"дня";"дней"))',
-                            "",
-                            "",
-                        ],
-                    ],
-                    "ROWS",
-                )
-                # ss.prepare_setValues("D5:E6", [["This is D5", "This is D6"], ["This is E5", "=5+5"]], "COLUMNS")
-
-                ss.prepare_setCellsFormats(
-                    f"A1:C1",
-                    [
-                        [
-                            {"textFormat": {"bold": True}},
-                            {"textFormat": {"bold": True}},
-                            {
-                                "textFormat": {"bold": True},
-                                "horizontalAlignment": "RIGHT",
-                                "numberFormat": {
-                                    "type": "CURRENCY",
-                                    "pattern": "#,##0.00%",
-                                },
-                            },
-                        ]
-                    ],
-                )
-                # Цвет фона ячеек
-                ss.prepare_setCellsFormat(
-                    "A1:C1",
-                    {"backgroundColor": functions.htmlColorToJSON("#f7cb4d")},
-                    fields="userEnteredFormat.backgroundColor",
-                )
-
-                # Бордер
-                i = 0
-                for j in range(self.sheet4_width):
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": i,
-                                    "endRowIndex": i + 1,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "top": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {"red": 0, "green": 0, "blue": 0},
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": i,
-                                    "endRowIndex": i + 1,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "right": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": i,
-                                    "endRowIndex": i + 1,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "left": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": i,
-                                    "endRowIndex": i + 1,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "bottom": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                ss.runPrepared()
-
-                # ЛИСТ 5
-                logging.info(
-                    f"{__name__}: {str(datetime.now())[:-7]}:    "
-                    f"Создание листа 5 в файле GoogleSheets..."
-                )
-                sheetId = 4
-                # Ширина столбцов
-                ss = to_google_sheets.Spreadsheet(
-                    self.spreadsheet["spreadsheetId"],
-                    sheetId,
-                    self.googleservice,
-                    self.spreadsheet["sheets"][sheetId]["properties"]["title"],
-                )
-                ss.prepare_setColumnWidth(0, 300)
-                ss.prepare_setColumnsWidth(1, 2, 160)
-
-                ss.prepare_setValues(
-                    "A1:C1",
-                    [
-                        [
-                            '=JOIN(" ";"Итоговый отчет платежного агента будет сформирован через";DATEDIF(TODAY();DATE(YEAR(TODAY());'
-                            'MONTH(TODAY())+1;1)-1;"D");IF(MOD(DATEDIF(TODAY();DATE(YEAR(TODAY());MONTH(TODAY())+1;1)-1;'
-                            '"D");10)<5;"дня";"дней"))',
-                            "",
-                            "",
-                        ],
-                    ],
-                    "ROWS",
-                )
-                # ss.prepare_setValues("D5:E6", [["This is D5", "This is D6"], ["This is E5", "=5+5"]], "COLUMNS")
-
-                ss.prepare_setCellsFormats(
-                    f"A1:C1",
-                    [
-                        [
-                            {"textFormat": {"bold": True}},
-                            {"textFormat": {"bold": True}},
-                            {
-                                "textFormat": {"bold": True},
-                                "horizontalAlignment": "RIGHT",
-                                "numberFormat": {
-                                    "type": "CURRENCY",
-                                    "pattern": "#,##0.00%",
-                                },
-                            },
-                        ]
-                    ],
-                )
-                # Цвет фона ячеек
-                ss.prepare_setCellsFormat(
-                    "A1:C1",
-                    {"backgroundColor": functions.htmlColorToJSON("#f7cb4d")},
-                    fields="userEnteredFormat.backgroundColor",
-                )
-
-                # Бордер
-                i = 0
-                for j in range(self.sheet4_width):
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": i,
-                                    "endRowIndex": i + 1,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "top": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {"red": 0, "green": 0, "blue": 0},
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": i,
-                                    "endRowIndex": i + 1,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "right": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": i,
-                                    "endRowIndex": i + 1,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "left": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": i,
-                                    "endRowIndex": i + 1,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "bottom": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                ss.runPrepared()
-
-                # ЛИСТ 6
-                logging.info(
-                    f"{__name__}: {str(datetime.now())[:-7]}:    "
-                    f"Создание листа 6 в файле GoogleSheets..."
-                )
-                sheetId = 5
-                # Ширина столбцов
-                ss = to_google_sheets.Spreadsheet(
-                    self.spreadsheet["spreadsheetId"],
-                    sheetId,
-                    self.googleservice,
-                    self.spreadsheet["sheets"][sheetId]["properties"]["title"],
-                )
-                ss.prepare_setColumnsWidth(0, 1, 105)
-                ss.prepare_setColumnsWidth(2, 5, 120)
-                ss.prepare_setColumnWidth(6, 100)
-                ss.prepare_setColumnWidth(7, 65)
-                ss.prepare_setColumnWidth(8, 120)
-                ss.prepare_setColumnWidth(9, 100)
-                ss.prepare_setColumnWidth(10, 65)
-                ss.prepare_setColumnWidth(11, 120)
-                ss.prepare_setColumnWidth(12, 100)
-                ss.prepare_setColumnWidth(13, 65)
-                ss.prepare_setColumnWidth(14, 120)
-                ss.prepare_setColumnWidth(15, 100)
-
-                # Объединение ячеек
-                ss.prepare_mergeCells("A1:A2")
-                ss.prepare_mergeCells("B1:B2")
-                ss.prepare_mergeCells("C1:C2")
-                ss.prepare_mergeCells("D1:D2")
-                ss.prepare_mergeCells("E1:E2")
-                ss.prepare_mergeCells("F1:F2")
-                ss.prepare_mergeCells("G1:G2")
-                ss.prepare_mergeCells("H1:J1")
-                ss.prepare_mergeCells("K1:M1")
-                ss.prepare_mergeCells("N1:P1")
-
-                # Задание параметров группе ячеек
-                # Жирный, по центру
-                ss.prepare_setCellsFormat(
-                    "A1:P2",
-                    {"horizontalAlignment": "CENTER", "textFormat": {"bold": True}},
-                )
-                # ss.prepare_setCellsFormat('E4:E8', {'numberFormat': {'pattern': '[h]:mm:ss', 'type': 'TIME'}},
-                #                           fields='userEnteredFormat.numberFormat')
-
-                # Заполнение таблицы
-                ss.prepare_setValues(
-                    "A1:P2",
-                    [
-                        [
-                            "Дата",
-                            "День недели",
-                            "Кол-во проходов\n ПЛАН",
-                            "Кол-во проходов\n ФАКТ",
-                            "Общая сумма\n ПЛАН",
-                            "Общая сумма\n ФАКТ",
-                            "Депозит",
-                            "Карты",
-                            "",
-                            "",
-                            "Услуги",
-                            "",
-                            "",
-                            "Товары",
-                            "",
-                            "",
-                        ],
-                        [
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "",
-                            "Кол-во",
-                            "Сумма",
-                            "Средний чек",
-                            "Кол-во",
-                            "Сумма",
-                            "Средний чек",
-                            "Кол-во",
-                            "Сумма",
-                            "Средний чек",
-                        ],
-                    ],
-                    "ROWS",
-                )
-                # ss.prepare_setValues("D5:E6", [["This is D5", "This is D6"], ["This is E5", "=5+5"]], "COLUMNS")
-
-                # Цвет фона ячеек
-                ss.prepare_setCellsFormat(
-                    "A1:P2",
-                    {"backgroundColor": functions.htmlColorToJSON("#f7cb4d")},
-                    fields="userEnteredFormat.backgroundColor",
-                )
-
-                # Бордер
-                for i in range(2):
-                    for j in range(self.sheet6_width):
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": i,
-                                        "endRowIndex": i + 1,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "top": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {"red": 0, "green": 0, "blue": 0},
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": i,
-                                        "endRowIndex": i + 1,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "right": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": i,
-                                        "endRowIndex": i + 1,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "left": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-
-                ss.runPrepared()
-
-                self.google_doc = (
-                    date_from.strftime("%Y-%m"),
-                    self.spreadsheet["spreadsheetId"],
-                )
-                self.google_links[self.google_doc[0]] = [
-                    self.google_doc[1],
-                    self.doc_version,
-                ]
-                links = []
-                for docid in self.google_links:
-                    links.append(
-                        [
-                            docid,
-                            self.google_links[docid][0],
-                            self.google_links[docid][1],
-                        ]
-                    )
-                with open(
-                    self.list_google_docs, "w", newline="", encoding="utf-8"
-                ) as f:
-                    file = csv.writer(f, delimiter=";")
-                    for link in links:
-                        file.writerow(link)
-                logging.info(
-                    f'{__name__}: {str(datetime.now())[:-7]}:    Создана новая таблица с Id: {self.spreadsheet["spreadsheetId"]}'
-                )
-
+            google_doc = (google_doc_id.month, google_doc_id.doc_id)
             self.spreadsheet = (
-                self.googleservice.spreadsheets()
-                .get(spreadsheetId=self.google_doc[1], ranges=[], includeGridData=True)
+                googleservice.spreadsheets()
+                .get(spreadsheetId=google_doc[1], ranges=[], includeGridData=True)
                 .execute()
             )
 
@@ -3492,10 +1632,7 @@ class BarsicReport2Service:
             #     s = ''
 
             # Проверка нет ли текущей даты в таблице
-            logging.info(
-                f"{__name__}: {str(datetime.now())[:-7]}:    "
-                f"Проверка нет ли текущей даты в таблице..."
-            )
+            logging.info("Проверка нет ли текущей даты в таблице...")
             self.start_line = 1
             self.reprint = 2
 
@@ -3504,7 +1641,7 @@ class BarsicReport2Service:
                     if line_table["values"][0]["formattedValue"] == datetime.strftime(
                         self.finreport_dict["Дата"][0], "%d.%m.%Y"
                     ):
-                        self.rewrite_google_sheet()
+                        self.rewrite_google_sheet(googleservice)
                         self.reprint = 0
                         break
                     elif line_table["values"][0]["formattedValue"] == "ИТОГО":
@@ -3514,21 +1651,19 @@ class BarsicReport2Service:
                 except KeyError:
                     self.start_line += 1
             if self.reprint:
-                self.write_google_sheet()
+                self.write_google_sheet(googleservice)
             # width_table = len(self.spreadsheet['sheets'][0]['data'][0]['rowData'][0]['values'])
         return True
 
-    def rewrite_google_sheet(self):
+    def rewrite_google_sheet(self, googleservice):
         """
         Заполнение google-таблицы в случае, если данные уже существуют
         """
-        logging.warning(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Перезапись уже существующей строки..."
-        )
+        logging.warning("Перезапись уже существующей строки...")
         self.reprint = 1
-        self.write_google_sheet()
+        self.write_google_sheet(googleservice)
 
-    def write_google_sheet(self):
+    def write_google_sheet(self, googleservice):
         """
         Заполнение google-таблицы
         """
@@ -3537,7 +1672,7 @@ class BarsicReport2Service:
         #     while True:
         #         time_of = (datetime.now() - self.google_kwote_timer).seconds
         #         if time_of < 100:
-        #             logging.info(f'{__name__}: {str(datetime.now())[:-7]}:    '
+        #             logging.info(f''
         #                          f'Превышено количество запросов в API GoogleSheets. \n'
         #                          f'Программа продолжит выполнение через {100-time_of} сек...')
         #             time.sleep(5)
@@ -3546,14 +1681,12 @@ class BarsicReport2Service:
         # except AttributeError:
         #     pass
 
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    " f"Заполнение листа 1..."
-        )
+        logging.info("Заполнение листа 1...")
         sheetId = 0
-        ss = to_google_sheets.Spreadsheet(
+        ss = Spreadsheet(
             self.spreadsheet["spreadsheetId"],
             sheetId,
-            self.googleservice,
+            googleservice,
             self.spreadsheet["sheets"][sheetId]["properties"]["title"],
         )
 
@@ -3584,13 +1717,10 @@ class BarsicReport2Service:
         )
 
         if self.finreport_dict["ИТОГО"][1] != control_total_sum:
-            logging.error(
-                f"{__name__}: {str(datetime.now())[:-7]}:    Несоответствие данных: Сумма услуг не равна итоговой сумме"
-            )
+            logging.error("Несоответствие данных: Сумма услуг не равна итоговой сумме")
             logger.info(
-                "Несоответствие данных",
-                f"Сумма услуг по группам + депозит ({control_total_sum}) не равна итоговой сумме "
-                f"({self.finreport_dict['ИТОГО'][1]}). \n"
+                f"Несоответствие данных: Сумма услуг по группам + депозит ({control_total_sum}) "
+                f"не равна итоговой сумме ({self.finreport_dict['ИТОГО'][1]}). \n"
                 f"Рекомендуется проверить правильно ли разделены услуги по группам.",
             )
 
@@ -3777,10 +1907,7 @@ class BarsicReport2Service:
 
         # ------------------------------------------- Заполнение ИТОГО --------------------------------------
         # Вычисление последней строки в таблице
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    "
-            f"Заполнение строки ИТОГО на листе 1..."
-        )
+        logging.info("Заполнение строки ИТОГО на листе 1...")
 
         self.sheet2_line = 1
         for line_table in self.spreadsheet["sheets"][2]["data"][0]["rowData"]:
@@ -3809,7 +1936,7 @@ class BarsicReport2Service:
             f"A{height_table}:AI{height_table}",
             [
                 [
-                    f"ИТОГО",
+                    "ИТОГО",
                     "",
                     f"=SUM(C3:C{height_table - 1})",
                     f"=SUM(D3:D{height_table - 1})",
@@ -3852,10 +1979,10 @@ class BarsicReport2Service:
             f"A{height_table + 1}:D{height_table + 1}",
             [
                 [
-                    f"Выполнение плана (трафик)",
+                    "Выполнение плана (трафик)",
                     "",
                     f"=IFERROR('План'!C{self.sheet2_line};0)",
-                    f"=IFERROR(ROUND(D{height_table}/C{height_table+1};2);0)",
+                    f"=IFERROR(ROUND(D{height_table}/C{height_table + 1};2);0)",
                 ]
             ],
             "ROWS",
@@ -3864,10 +1991,10 @@ class BarsicReport2Service:
             f"A{height_table + 2}:D{height_table + 2}",
             [
                 [
-                    f"Выполнение плана (доход)",
+                    "Выполнение плана (доход)",
                     "",
                     f"=IFERROR('План'!E{self.sheet2_line};0)",
-                    f"=IFERROR(ROUND(G{height_table}/C{height_table+2};2);0)",
+                    f"=IFERROR(ROUND(G{height_table}/C{height_table + 2};2);0)",
                 ]
             ],
             "ROWS",
@@ -4028,7 +2155,7 @@ class BarsicReport2Service:
             ],
         )
         ss.prepare_setCellsFormats(
-            f"A{height_table+2}:D{height_table+2}",
+            f"A{height_table + 2}:D{height_table + 2}",
             [
                 [
                     {"textFormat": {"bold": True}},
@@ -4057,12 +2184,12 @@ class BarsicReport2Service:
             fields="userEnteredFormat.backgroundColor",
         )
         ss.prepare_setCellsFormat(
-            f"A{height_table+1}:D{height_table+1}",
+            f"A{height_table + 1}:D{height_table + 1}",
             {"backgroundColor": functions.htmlColorToJSON("#fce8b2")},
             fields="userEnteredFormat.backgroundColor",
         )
         ss.prepare_setCellsFormat(
-            f"A{height_table+2}:D{height_table+2}",
+            f"A{height_table + 2}:D{height_table + 2}",
             {"backgroundColor": functions.htmlColorToJSON("#fce8b2")},
             fields="userEnteredFormat.backgroundColor",
         )
@@ -4289,14 +2416,12 @@ class BarsicReport2Service:
             )
         ss.runPrepared()
 
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    " f"Заполнение листа 2..."
-        )
+        logging.info("Заполнение листа 2...")
         sheetId = 1
-        ss = to_google_sheets.Spreadsheet(
+        ss = Spreadsheet(
             self.spreadsheet["spreadsheetId"],
             sheetId,
-            self.googleservice,
+            googleservice,
             self.spreadsheet["sheets"][sheetId]["properties"]["title"],
         )
 
@@ -4413,10 +2538,7 @@ class BarsicReport2Service:
 
         # ------------------------------------------- Заполнение ИТОГО --------------------------------------
         # Вычисление последней строки в таблице
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    "
-            f"Заполнение строки ИТОГО на листе 2..."
-        )
+        logging.info("Заполнение строки ИТОГО на листе 2...")
 
         for i, line_table in enumerate(
             self.spreadsheet["sheets"][1]["data"][0]["rowData"]
@@ -4435,7 +2557,7 @@ class BarsicReport2Service:
             f"A{height_table}:C{height_table}",
             [
                 [
-                    f"ИТОГО",
+                    "ИТОГО",
                     f"=SUM(B3:B{height_table - 1})",
                     f"=SUM(C3:C{height_table - 1})",
                 ]
@@ -4544,14 +2666,12 @@ class BarsicReport2Service:
 
         if self.itog_report_month:
             # SHEET 4
-            logging.info(
-                f"{__name__}: {str(datetime.now())[:-7]}:    " f"Заполнение  листа 4..."
-            )
+            logging.info("Заполнение  листа 4...")
             sheetId = 3
-            ss = to_google_sheets.Spreadsheet(
+            ss = Spreadsheet(
                 self.spreadsheet["spreadsheetId"],
                 sheetId,
-                self.googleservice,
+                googleservice,
                 self.spreadsheet["sheets"][sheetId]["properties"]["title"],
             )
 
@@ -5169,21 +3289,19 @@ class BarsicReport2Service:
             ss.runPrepared()
 
             # SHEET 4
-            logging.info(
-                f"{__name__}: {str(datetime.now())[:-7]}:    " f"Заполнение  листа 5..."
-            )
+            logging.info("Заполнение  листа 5...")
             sheetId = 4
-            ss = to_google_sheets.Spreadsheet(
+            ss = Spreadsheet(
                 self.spreadsheet["spreadsheetId"],
                 sheetId,
-                self.googleservice,
+                googleservice,
                 self.spreadsheet["sheets"][sheetId]["properties"]["title"],
             )
 
             self.nex_line = 1
             ss.prepare_setValues(
                 f"A{self.nex_line}:C{self.nex_line}",
-                [[f"Итоговый отчет платежного агента", "", ""]],
+                [["Итоговый отчет платежного агента", "", ""]],
                 "ROWS",
             )
             ss.prepare_setCellsFormat(
@@ -5796,14 +3914,12 @@ class BarsicReport2Service:
             ss.runPrepared()
 
         # Заполнение листа 6
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    " f"Заполнение листа 6..."
-        )
+        logging.info("Заполнение листа 6...")
         sheetId = 5
-        ss = to_google_sheets.Spreadsheet(
+        ss = Spreadsheet(
             self.spreadsheet["spreadsheetId"],
             sheetId,
-            self.googleservice,
+            googleservice,
             self.spreadsheet["sheets"][sheetId]["properties"]["title"],
         )
 
@@ -5956,10 +4072,7 @@ class BarsicReport2Service:
             )
 
         # ------------------------------------------- Заполнение ИТОГО --------------------------------------
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    "
-            f"Заполнение строки ИТОГО на листе 2..."
-        )
+        logging.info("Заполнение строки ИТОГО на листе 2...")
 
         for i, line_table in enumerate(
             self.spreadsheet["sheets"][1]["data"][0]["rowData"]
@@ -5978,7 +4091,7 @@ class BarsicReport2Service:
             f"A{height_table}:P{height_table}",
             [
                 [
-                    f"ИТОГО",
+                    "ИТОГО",
                     "",
                     f"=SUM(C3:C{height_table - 1})",
                     f"=SUM(D3:D{height_table - 1})",
@@ -6002,7 +4115,7 @@ class BarsicReport2Service:
             f"A{height_table + 1}:D{height_table + 1}",
             [
                 [
-                    f"Выполнение плана (трафик)",
+                    "Выполнение плана (трафик)",
                     "",
                     f"=IFERROR('План'!L{self.sheet2_line};0)",
                     f"=IFERROR(ROUND(D{height_table}/C{height_table + 1};2);0)",
@@ -6014,7 +4127,7 @@ class BarsicReport2Service:
             f"A{height_table + 2}:D{height_table + 2}",
             [
                 [
-                    f"Выполнение плана (доход)",
+                    "Выполнение плана (доход)",
                     "",
                     f"=IFERROR('План'!M{self.sheet2_line};0)",
                     f"=IFERROR(ROUND(F{height_table}/C{height_table + 2};2);0)",
@@ -6391,14 +4504,10 @@ class BarsicReport2Service:
             )
         ss.runPrepared()
 
-    def sms_report(self, date_from):
-        """
-        Составляет текстовую версию финансового отчета
-        :return: str
-        """
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Составление SMS-отчета..."
-        )
+    def sms_report(self, date_from) -> str:
+        """Составляет текстовую версию финансового отчета."""
+
+        logging.info("Составление SMS-отчета...")
         resporse = "Отчет по аквапарку за "
 
         if self.finreport_dict["Дата"][0] == self.finreport_dict["Дата"][1] - timedelta(
@@ -6440,11 +4549,6 @@ class BarsicReport2Service:
         resporse += f"Общая ИТОГО - {total_sum:.2f} ₽;\n\n"
 
         if self.itog_report_org2["Итого по отчету"][1]:
-            # resporse += 'Отчет по пляжу за '
-            # if beach_report['Дата'][0] + timedelta(1) == beach_report['Дата'][1]:
-            #     resporse += f'{datetime.strftime(beach_report["Дата"][0], "%d.%m.%Y")}:\n'
-            # else:
-            #     resporse += f'{datetime.strftime(beach_report["Дата"][0], "%d.%m.%Y")} - {datetime.strftime(beach_report["Дата"][0], "%d.%m.%Y")}:\n'
             try:
                 resporse += f'Люди (пляж) - {self.itog_report_org2["Летняя зона | БЕЗЛИМИТ | 1 проход"][0]};\n'
             except KeyError:
@@ -6568,14 +4672,6 @@ class BarsicReport2Service:
         border_right_top = Border(
             top=Side(border_style="thin", color="FF000000"),
             right=Side(border_style="thin", color="FF000000"),
-        )
-        align_center = Alignment(
-            horizontal="center",
-            vertical="bottom",
-            text_rotation=0,
-            wrap_text=False,
-            shrink_to_fit=False,
-            indent=0,
         )
         align_left = Alignment(
             horizontal="left",
@@ -6822,9 +4918,7 @@ class BarsicReport2Service:
                 f'"Итого по отчету" из Барса ({bars_total_sum[2]})'
                 f" не совпадает с итоговой суммой по формируемым строкам ({all_sum})."
             )
-            logging.error(
-                f"{__name__}: {str(datetime.now())[:-7]}:    {error_code} {error_message}"
-            )
+            logging.error(f"{error_code} {error_message}")
             logger.info(error_code, error_message)
             return None
 
@@ -6897,7 +4991,7 @@ class BarsicReport2Service:
             + ".xlsx"
         )
         logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Сохранение Итогового отчета "
+            f"Сохранение Итогового отчета "
             f'по {organisation_total["Организация"]["Организация"][0][0]} в {path}'
         )
         path = self.create_path(path, date_from)
@@ -7284,7 +5378,7 @@ class BarsicReport2Service:
             + ".xlsx"
         )
         logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Сохранение Суммового отчета "
+            f"Сохранение Суммового отчета "
             f'по {cashdesk_report["Организация"][0][0]} в {path}'
         )
         path = self.create_path(path, date_from)
@@ -7505,86 +5599,19 @@ class BarsicReport2Service:
             + ".xlsx"
         )
         logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Сохранение отчета по количеству клиентов "
+            f"Сохранение отчета по количеству клиентов "
             f"по {client_count_totals_org[0][0]} в {path}"
         )
         path = self.create_path(path, date_from)
         self.save_file(path, wb)
         return path
 
-    def parseXML(self, xmlString):
-        """
-        ЧТЕНИЕ XML С ДАННЫМИ
-        :param xmlString: строка XML из интернет-магазина Битрикс
-        :return: список словарей с данными
-        """
-        x = re.search(r' encoding="windows-1251"', xmlString)
-
-        xml = xmlString[: x.start()] + xmlString[x.end() :]
-        result = []
-        products_in_bay = -1
-        last_elem = ""
-        with open("xml_root.xml", "w") as f:
-            f.write(xml)
-        root = objectify.fromstring(xml)
-        for doc in root.getchildren():
-            paydate = ""
-            pay = False
-            status = ""
-            for req in doc.ЗначенияРеквизитов.getchildren():
-                if req.Наименование == "Дата оплаты":
-                    paydate = datetime.strftime(
-                        datetime.strptime(str(req.Значение), "%d.%m.%Y %H:%M:%S"),
-                        "%Y-%m-%d %H:%M:%S",
-                    )
-                if req.Наименование == "Заказ оплачен":
-                    pay = bool(req.Значение)
-                if req.Наименование == "Статус заказа":
-                    status = str(req.Значение)
-            for product in doc.Товары.getchildren():
-                count = int(product.Количество)
-                while count > 0:
-                    count -= 1
-                    result.append(dict())
-                    if last_elem != doc.Ид:
-                        products_in_bay = -1
-                    last_elem = doc.Ид
-                    products_in_bay += 1
-                    result[len(result) - 1]["Id_P"] = int(
-                        str(doc.Ид) + str(products_in_bay)
-                    )
-                    result[len(result) - 1]["OrderNumber"] = int(doc.Ид)
-                    result[len(result) - 1]["ProductId"] = str(product.Ид)
-                    result[len(result) - 1]["ProductName"] = str(product.Наименование)
-                    result[len(result) - 1]["OrderDate"] = datetime.strptime(
-                        str(doc.Дата + " " + doc.Время), "%Y-%m-%d %H:%M:%S"
-                    ).strftime("%Y-%m-%d %H:%M:%S")
-                    result[len(result) - 1]["PayDate"] = paydate
-                    result[len(result) - 1]["Sum_P"] = Decimal(
-                        float(product.ЦенаЗаЕдиницу)
-                    )
-                    result[len(result) - 1]["Pay_P"] = pay
-                    result[len(result) - 1]["Status_P"] = status
-                    result[len(result) - 1]["Client_P"] = str(
-                        doc.Контрагенты.Контрагент.Ид
-                    )
-        if result:
-            logging.info(
-                f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"):20}:    '
-                f"Новый файл. Количество строк - {len(result)}"
-            )
-        else:
-            logging.info(
-                f'{datetime.strftime(datetime.now(), "%Y-%m-%d %H:%M:%S"):20}:    Нет новых покупок.'
-            )
-        return result
-
     def uploadToBase(
         self,
         server,
         database,
-        uid,
-        pwd,
+        user,
+        password,
         Id_P,
         OrderNumber_P,
         ProductId_P,
@@ -7600,7 +5627,9 @@ class BarsicReport2Service:
         Отправка данных в sql-базу
         """
 
-        cnxn = get_mssql_connection(server=server, database=database, uid=uid, pwd=pwd)
+        cnxn = mssql_connection(
+            server=server, database=database, user=user, password=password
+        )
         cursor = cnxn.cursor()
 
         cursor.execute(
@@ -7638,11 +5667,13 @@ class BarsicReport2Service:
         self,
         server,
         database,
-        uid,
-        pwd,
+        user,
+        password,
         Id_P,
     ):
-        cnxn = get_mssql_connection(server=server, database=database, uid=uid, pwd=pwd)
+        cnxn = mssql_connection(
+            server=server, database=database, user=user, password=password
+        )
         cursor = cnxn.cursor()
 
         cursor.execute(
@@ -7675,49 +5706,7 @@ class BarsicReport2Service:
         else:
             return True
 
-    def load_checkbox(self):
-        """
-        Установка чекбоксов в соответствии с настройками INI-файла
-        """
-        logging.info(f"{__name__}: {str(datetime.now())[:-7]}:    Загрузка настроек...")
-        self.root.ids.report.ids.split_by_days.active = self.split_by_days
-        self.root.ids.report.ids.finreport_xls.active = self.finreport_xls
-        self.root.ids.report.ids.check_client_count_total_xls.active = (
-            self.check_client_count_total_xls
-        )
-        self.root.ids.report.ids.check_cashreport_xls.active = self.check_cashreport_xls
-        self.root.ids.report.ids.check_itogreport_xls.active = self.check_itogreport_xls
-        self.root.ids.report.ids.agentreport_xls.active = self.agentreport_xls
-        self.root.ids.report.ids.use_yadisk.active = self.use_yadisk
-        self.root.ids.report.ids.finreport_google.active = self.finreport_google
-        self.root.ids.report.ids.finreport_telegram.active = self.finreport_telegram
-
-    def change_checkbox(self, name, checkbox):
-        """
-        Изменяет состояние элемента конфигурации и записывает в INI-файл
-        :param name: Имя чекбокса
-        :param checkbox: Состояние active чекбокса
-        """
-        self.config.set("General", name, str(checkbox))
-        setattr(self, name, checkbox)
-        self.config.write()
-        logging.info(
-            f"{__name__}: {str(datetime.now())[:-7]}:    Параметр {name} изменен на значение {checkbox}"
-        )
-        if (
-            name == "split_by_days"
-            and not checkbox
-            and not self.root.ids.report.ids.date_switch.active
-        ):
-            self.root.ids.report.ids.finreport_google.active = False
-            self.change_checkbox("finreport_google", False)
-            self.root.ids.report.ids.finreport_google.disabled = True
-            self.root.ids.report.ids.finreport_google_text.disabled = True
-        elif name == "split_by_days" and checkbox:
-            self.root.ids.report.ids.finreport_google_text.disabled = False
-            self.root.ids.report.ids.finreport_google.disabled = False
-
-    def save_reports(self, date_from):
+    async def save_reports(self, date_from):
         """
         Функция управления
         """
@@ -7733,7 +5722,28 @@ class BarsicReport2Service:
         if self.itog_report_month:
             self.fin_report_month()
             self.agent_report_month()
-        self.export_to_google_sheet(date_from)
+
+        credentials = ServiceAccountCredentials.from_json_keyfile_dict(
+            settings.google_api_settings.google_service_account_config,
+            scopes=[
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive",
+            ],
+        )
+        httpAuth = credentials.authorize(httplib2.Http())
+        try:
+            logging.info("Попытка авторизации с Google-документами ...")
+            googleservice = apiclient.discovery.build("sheets", "v4", http=httpAuth)
+
+        except IndexError as e:
+            error_message = f"Ошибка {repr(e)}"
+            logging.error(error_message)
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=error_message,
+            )
+
+        await self.export_to_google_sheet(date_from, httpAuth, googleservice)
         # finreport_telegram:
         self.sms_report_list.append(self.sms_report(date_from))
         # check_itogreport_xls:
@@ -7776,7 +5786,7 @@ class BarsicReport2Service:
                 self.save_client_count_totals(self.client_count_totals_org2, date_from)
             )
 
-    def load_report(self, date_from, date_to):
+    async def load_report(self, date_from, date_to):
         """Выполнить отчеты"""
 
         self.itog_report_org1 = None
@@ -7792,7 +5802,7 @@ class BarsicReport2Service:
             server=self.server,
             database=self.database_bitrix,
             user=self.user,
-            pwd=self.pwd,
+            password=self.pwd,
             date_from=date_from,
             date_to=date_to,
         )
@@ -7800,7 +5810,7 @@ class BarsicReport2Service:
             server=self.server,
             database=self.database_bitrix,
             user=self.user,
-            pwd=self.pwd,
+            password=self.pwd,
             date_from=date_from - relativedelta(years=1),
             date_to=date_to - relativedelta(years=1),
         )
@@ -7808,7 +5818,7 @@ class BarsicReport2Service:
             server=self.server_rk,
             database=self.database_rk,
             user=self.user_rk,
-            pwd=self.pwd_rk,
+            password=self.pwd_rk,
             cash_id=15033,
             date_from=date_from,
             date_to=date_to,
@@ -7817,7 +5827,7 @@ class BarsicReport2Service:
             server=self.server_rk,
             database=self.database_rk,
             user=self.user_rk,
-            pwd=self.pwd_rk,
+            password=self.pwd_rk,
             cash_id=15033,
             date_from=date_from - relativedelta(years=1),
             date_to=date_to - relativedelta(years=1),
@@ -7828,7 +5838,7 @@ class BarsicReport2Service:
                 server=self.server,
                 database=self.database1,
                 user=self.user,
-                pwd=self.pwd,
+                password=self.pwd,
                 org=self.org1[0],
                 org_name=self.org1[1],
                 date_from=date_from,
@@ -7838,7 +5848,7 @@ class BarsicReport2Service:
                 server=self.server,
                 database=self.database1,
                 user=self.user,
-                pwd=self.pwd,
+                password=self.pwd,
                 org=self.org1[0],
                 org_name=self.org1[1],
                 date_from=date_from - relativedelta(years=1),
@@ -7848,7 +5858,7 @@ class BarsicReport2Service:
                 server=self.server,
                 database=self.database1,
                 user=self.user,
-                pwd=self.pwd,
+                password=self.pwd,
                 org=self.org3[0],
                 org_name=self.org3[1],
                 date_from=date_from,
@@ -7858,7 +5868,7 @@ class BarsicReport2Service:
                 server=self.server,
                 database=self.database1,
                 user=self.user,
-                pwd=self.pwd,
+                password=self.pwd,
                 org=self.org3[0],
                 org_name=self.org3[1],
                 date_from=date_from - relativedelta(years=1),
@@ -7868,7 +5878,7 @@ class BarsicReport2Service:
                 server=self.server,
                 database=self.database1,
                 user=self.user,
-                pwd=self.pwd,
+                password=self.pwd,
                 org=self.org4[0],
                 org_name=self.org4[1],
                 date_from=date_from,
@@ -7878,7 +5888,7 @@ class BarsicReport2Service:
                 server=self.server,
                 database=self.database1,
                 user=self.user,
-                pwd=self.pwd,
+                password=self.pwd,
                 org=self.org4[0],
                 org_name=self.org4[1],
                 date_from=date_from - relativedelta(years=1),
@@ -7888,7 +5898,7 @@ class BarsicReport2Service:
                 server=self.server,
                 database=self.database1,
                 user=self.user,
-                pwd=self.pwd,
+                password=self.pwd,
                 org=self.org5[0],
                 org_name=self.org5[1],
                 date_from=date_from,
@@ -7898,7 +5908,7 @@ class BarsicReport2Service:
                 server=self.server,
                 database=self.database1,
                 user=self.user,
-                pwd=self.pwd,
+                password=self.pwd,
                 org=self.org5[0],
                 org_name=self.org5[1],
                 date_from=date_from - relativedelta(years=1),
@@ -7911,7 +5921,7 @@ class BarsicReport2Service:
                     server=self.server,
                     database=self.database1,
                     user=self.user,
-                    pwd=self.pwd,
+                    password=self.pwd,
                     org=self.org1[0],
                     org_name=self.org1[1],
                     date_from=datetime.strptime(
@@ -7923,7 +5933,7 @@ class BarsicReport2Service:
                     server=self.server_rk,
                     database=self.database_rk,
                     user=self.user_rk,
-                    pwd=self.pwd_rk,
+                    password=self.pwd_rk,
                     cash_id=15033,
                     date_from=datetime.strptime(
                         "01" + (date_to - timedelta(1)).strftime("%m%y"), "%d%m%y"
@@ -7937,7 +5947,7 @@ class BarsicReport2Service:
                 server=self.server,
                 database=self.database1,
                 user=self.user,
-                pwd=self.pwd,
+                password=self.pwd,
                 date_from=date_from,
                 date_to=date_to,
             )
@@ -7945,7 +5955,7 @@ class BarsicReport2Service:
                 server=self.server,
                 database=self.database1,
                 user=self.user,
-                pwd=self.pwd,
+                password=self.pwd,
                 date_from=date_from - relativedelta(years=1),
                 date_to=date_to - relativedelta(years=1),
             )
@@ -7953,7 +5963,7 @@ class BarsicReport2Service:
                 server=self.server,
                 database=self.database1,
                 user=self.user,
-                pwd=self.pwd,
+                password=self.pwd,
                 org=self.org1[0],
                 org_name=self.org1[1],
                 date_from=date_from,
@@ -7964,7 +5974,7 @@ class BarsicReport2Service:
                 server=self.server,
                 database=self.database2,
                 user=self.user,
-                pwd=self.pwd,
+                password=self.pwd,
                 org=self.org2[0],
                 org_name=self.org2[1],
                 date_from=date_from,
@@ -7974,7 +5984,7 @@ class BarsicReport2Service:
                 server=self.server,
                 database=self.database2,
                 user=self.user,
-                pwd=self.pwd,
+                password=self.pwd,
                 date_from=date_from,
                 date_to=date_to,
             )
@@ -7982,34 +5992,14 @@ class BarsicReport2Service:
                 server=self.server,
                 database=self.database2,
                 user=self.user,
-                pwd=self.pwd,
+                password=self.pwd,
                 org=self.org2[0],
                 org_name=self.org2[1],
                 date_from=date_from,
                 date_to=date_to,
             )
 
-        # Чтение XML с привязкой групп услуг к услугам
-        self.orgs_dict = self.read_reportgroup(self.reportXML)
-        self.itogreport_group_dict = self.read_reportgroup(self.itogreportXML)
-        # Поиск новых услуг
-        self.find_new_service(self.itog_report_org1, self.orgs_dict)
-        self.find_new_service(self.itog_report_org1_lastyear, self.orgs_dict)
-        self.find_new_service(self.itog_report_org3, self.orgs_dict)
-        self.find_new_service(self.itog_report_org3_lastyear, self.orgs_dict)
-        self.find_new_service(self.itog_report_org4, self.orgs_dict)
-        self.find_new_service(self.itog_report_org4_lastyear, self.orgs_dict)
-        self.find_new_service(self.itog_report_org5, self.orgs_dict)
-        self.find_new_service(self.itog_report_org5_lastyear, self.orgs_dict)
-        if self.itog_report_month:
-            self.find_new_service(self.itog_report_month, self.orgs_dict)
-
-        if self.new_service:
-            logger.warning(f"Найдены новые сервисы: {self.new_service}")
-
-        self.agentservice(date_from)
-
-    def run_report(self, date_from, date_to, use_yadisk: bool = False):
+    async def run_report(self, date_from, date_to, use_yadisk: bool = False):
         self.path_list = []
         self.sms_report_list = []
 
@@ -8024,12 +6014,44 @@ class BarsicReport2Service:
         for date in period:
             date_from = date
             date_to = date + timedelta(1)
-            self.load_report(date_from, date_to)
+            await self.load_report(date_from, date_to)
+
+            self.orgs_dict = (
+                await self._report_config_service.get_report_elements_with_groups(
+                    "GoogleReport"
+                )
+            )
+            self.itogreport_group_dict = (
+                await self._report_config_service.get_report_elements_with_groups(
+                    "ItogReport"
+                )
+            )
+            self.agent_dict = (
+                await self._report_config_service.get_report_elements_with_groups(
+                    "PlatAgentReport"
+                )
+            )
+            # Поиск новых услуг
+            for report_name in ("GoogleReport", "PlatAgentReport"):
+                new_tariffs = await self._settings_service.get_new_tariff(
+                    "Aquapark_Ulyanovsk", report_name
+                )
+                if new_tariffs:
+                    error_message = f"Найдены нераспределенные тарифы в отчете {report_name}: {new_tariffs}"
+                    logger.error(error_message)
+                    raise HTTPException(
+                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                        detail=error_message,
+                    )
+
+            await self.save_reports(date_from)
 
         # Отправка в яндекс диск
         if use_yadisk:
             self.path_list = filter(lambda x: x is not None, self.path_list)
-            self.sync_to_yadisk(self.path_list, self.yadisk_token, date_from)
+            self.sync_to_yadisk(
+                self.path_list, self.yadisk_token, date_from, use_yadisk
+            )
             self.path_list = []
 
 

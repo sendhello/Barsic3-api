@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import Self
 
-from sqlalchemy import Column, DateTime, select
+from sqlalchemy import Column, DateTime, String, select
 from sqlalchemy.dialects.postgresql import UUID
 
 from db.postgres import async_session
@@ -40,9 +40,18 @@ class CRUDMixin:
         return self
 
     @classmethod
-    async def get_all(cls, page: int = 1, page_size: int = 20) -> list[Self]:
+    async def get_part(cls, page: int = 1, page_size: int = 20) -> list[Self]:
         async with async_session() as session:
             request = select(cls).limit(page_size).offset((page - 1) * page_size)
+            result = await session.execute(request)
+            entities = result.scalars().all()
+
+        return entities
+
+    @classmethod
+    async def get_all(cls) -> list[Self]:
+        async with async_session() as session:
+            request = select(cls)
             result = await session.execute(request)
             entities = result.scalars().all()
 
@@ -68,3 +77,10 @@ class IDMixin:
             entity = result.scalars().first()
 
         return entity
+
+
+class TitleMixin:
+    title = Column(String(255), nullable=False, unique=True)
+
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__} {self.title}>"

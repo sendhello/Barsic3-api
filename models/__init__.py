@@ -1,2 +1,2 @@
 # flake8: noqa
-from .user import Social, User
+from .report import ReportElementModel, ReportGroupModel, ReportNameModel

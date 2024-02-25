@@ -1,6 +1,6 @@
 from logging import config as logging_config
 
-from pydantic import Field
+from pydantic import AnyUrl, EmailStr, Field
 from pydantic_settings import BaseSettings
 
 from core.logger import LOGGING
@@ -53,25 +53,51 @@ class AppSettings(BaseSettings):
     mssql_user_rk: str = Field(validation_alias="MSSQL_USER_RK")
     mssql_pwd_rk: str = Field(validation_alias="MSSQL_PWD_RK")
     mssql_database_rk: str = Field(validation_alias="MSSQL_DATABASE_RK")
-    reportXML: str = Field(validation_alias="REPORT_XML")
-    agentXML: str = Field(validation_alias="AGENT_XML")
-    itogreportXML: str = Field(validation_alias="TOTAL_REPORT_XML")
     local_folder: str = Field(validation_alias="LOCAL_FOLDER")
     report_path: str = Field(validation_alias="REPORT_PATH")
-    credentials_file: str = Field(validation_alias="CREDENTIALS_FILE")
-    list_google_docs: str = Field(validation_alias="LIST_GOOGLE_DOCS")
     yadisk_token: str = Field(validation_alias="YADISK_TOKEN")
     telegram_token: str = Field(validation_alias="TELEGRAM_TOKEN")
     telegram_chanel_id: str = Field(validation_alias="TELEGRAM_CHANEL_ID")
+
+    report_names: str = Field(validation_alias="REPORT_NAMES")
+
+
+class GoogleApiSettings(BaseSettings):
+    """Настройки google API."""
+
     google_all_read: str = Field(validation_alias="GOOGLE_ALL_READ")
     google_reader_list: str = Field(validation_alias="GOOGLE_READER_LIST")
     google_writer_list: str = Field(validation_alias="GOOGLE_WRITER_LIST")
+    # Настройки Google Service Account
+    project_id: str = Field(validation_alias="GOOGLE_API_PROJECT_ID")
+    private_key_id: str = Field(validation_alias="GOOGLE_API_PRIVATE_KEY_ID")
+    private_key: str = Field(validation_alias="GOOGLE_API_PRIVATE_KEY")
+    client_email: EmailStr = Field(validation_alias="GOOGLE_API_CLIENT_EMAIL")
+    client_id: str = Field(validation_alias="GOOGLE_API_CLIENT_ID")
+    client_x509_cert_url: AnyUrl = Field(
+        validation_alias="GOOGLE_API_CLIENT_X509_CERT_URL"
+    )
+
+    @property
+    def google_service_account_config(self):
+        return {
+            "type": "service_account",
+            "project_id": self.project_id,
+            "private_key_id": self.private_key_id,
+            "private_key": self.private_key,
+            "client_email": self.client_email,
+            "client_id": self.client_id,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://accounts.google.com/o/oauth2/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": self.client_x509_cert_url,
+        }
 
 
 class Settings(PostgresSettings, RedisSettings, AppSettings):
     """Все настройки."""
 
-    pass
+    google_api_settings: GoogleApiSettings = GoogleApiSettings()
 
 
 settings = Settings()

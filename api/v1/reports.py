@@ -31,7 +31,7 @@ async def create_reports(
 ) -> dict:
     """Создание всех отчетов."""
 
-    legacy_service.run_report(
+    await legacy_service.run_report(
         date_from=date_from,
         date_to=date_to,
         use_yadisk=use_yadisk,

@@ -65,3 +65,6 @@ brew tap microsoft/mssql-release https://github.com/Microsoft/homebrew-mssql-rel
 brew update
 HOMEBREW_ACCEPT_EULA=Y brew install msodbcsql18 mssql-tools18
 ```
+
+### Получение Яндекс токена для сохранения отчетов на Яндекс-диске
+Создать приложение яндекс и получить токен можно по инструкции https://yandex.ru/dev/disk/webdav/

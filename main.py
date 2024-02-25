@@ -22,8 +22,8 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     lifespan=lifespan,
     title=settings.project_name,
-    description="Сервис аутентификации и авторизации",
-    version="1.0.0",
+    description="Сервис построения кастомных отчетов системы SkiBars2",
+    version="3.0.0",
     docs_url="/api/v1/reports/openapi",
     openapi_url="/api/v1/reports/openapi.json",
     default_response_class=ORJSONResponse,
