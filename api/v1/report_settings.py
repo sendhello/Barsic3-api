@@ -36,7 +36,6 @@ async def get_new_services(
             detail="Need any value from other_report_name or report_name",
         )
 
-    new_tariffs = await settings_service.get_new_tariff(
-        db_name.value, report_name_title
-    )
+    settings_service.choose_db(db_name=db_name.value)
+    new_tariffs = await settings_service.get_new_tariff(report_name_title)
     return new_tariffs

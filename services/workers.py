@@ -306,7 +306,7 @@ class WorkerService:
         )
         worksheet.columns_auto_resize(0, table_width)
 
-        return {"Google Doc": google_doc.url}
+        return {"ok": True, "Google Report": google_doc.url}
 
 
 def get_worker_service():
