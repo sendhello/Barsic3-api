@@ -40,12 +40,13 @@ services:
     container_name: mssql
     hostname: mssql
     image: mcr.microsoft.com/azure-sql-edge:latest
+    cap_add:
+      - SYS_PTRACE
     environment:
       ACCEPT_EULA: ${ACCEPT_EULA}
       MSSQL_USER: ${MSSQL_USER}
       MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
       MSSQL_PID: ${MSSQL_PID}
-      MSSQL_ENCRYPT: DISABLED
     volumes:
       - azure-sql-storage:/var/opt/mssql
       - ./dev/backup/:/var/opt/backup

@@ -1,11 +1,10 @@
-def get_tariffs(db_name: str, organization_id: int):
-    return f"""
-        SELECT [CategoryId],
-               [StockType],
-               [Name],
-               [OrganizationId],
-               [Guid],
-               [ChangeTime]
-        FROM [{db_name}].[dbo].[Category]
-        WHERE [OrganizationId] = {organization_id}
-    """
+GET_TARIFFS_SQL = """
+    SELECT [CategoryId],
+           [StockType],
+           [Name],
+           [OrganizationId],
+           [Guid],
+           [ChangeTime]
+    FROM [Category]
+    WHERE [OrganizationId] = {organization_id}
+"""

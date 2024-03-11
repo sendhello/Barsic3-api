@@ -830,6 +830,9 @@ class BarsicReport2Service:
             float(sum([line["paid_sum"] for line in self.report_rk_month])),
         ]
 
+        logger.warning("*" * 300)
+        logger.warning(f"{self.itog_report_month=}")
+        logger.warning("*" * 300)
         for group_name, groups in self.itogreport_group_dict.items():
             finreport_group = self.finreport_dict_month.setdefault(group_name, {})
             finreport_group_total = finreport_group.setdefault(
@@ -914,6 +917,8 @@ class BarsicReport2Service:
                 f"{self.finreport_dict_month['ИТОГО'][''][1][2]}) не равно Контрольной сумме услуг"
                 f"({control_sum[0][1]}: {control_sum[0][2]})"
             )
+
+        return self.finreport_dict_month
 
     def fin_report_beach(self):
         """
@@ -1569,10 +1574,12 @@ class BarsicReport2Service:
                 "Экспорт отчета в Google Sheet за несколько дней невозможен!",
             )
         else:
-            google_doc_id = await self._report_config_service.get_google_doc_id_by_date(
-                date_from
+            google_report_id = (
+                await self._report_config_service.get_financial_doc_id_by_date(
+                    date_from
+                )
             )
-            if google_doc_id is None:
+            if google_report_id is None:
                 google_doc = create_new_google_doc(
                     googleservice=googleservice,
                     doc_name=doc_name,
@@ -1595,14 +1602,15 @@ class BarsicReport2Service:
                 google_report_id = GoogleReportIdCreate(
                     month=google_doc[0],
                     doc_id=google_doc[1],
+                    report_type="financial",
                     version=self.doc_version,
                 )
                 await self._report_config_service.add_google_report_id(google_report_id)
                 logging.info(f"Создана новая таблица с Id: {google_report_id.doc_id}")
 
-            if google_doc_id.version != self.doc_version:
+            if google_report_id.version != self.doc_version:
                 error_message = (
-                    f"Версия Финансового отчета ({google_doc_id.doc_id}) не соответствует текущей "
+                    f"Версия Финансового отчета ({google_report_id.doc_id}) не соответствует текущей "
                     f"({self.doc_version}).\nНеобходимо сначала удалить ссылку на старую версию, "
                     f"затем заново сформировать отчет с начала месяца."
                 )
@@ -1612,7 +1620,7 @@ class BarsicReport2Service:
                     detail=error_message,
                 )
 
-            google_doc = (google_doc_id.month, google_doc_id.doc_id)
+            google_doc = (google_report_id.month, google_report_id.doc_id)
             self.spreadsheet = (
                 googleservice.spreadsheets()
                 .get(spreadsheetId=google_doc[1], ranges=[], includeGridData=True)
@@ -1620,16 +1628,6 @@ class BarsicReport2Service:
             )
 
             # -------------------------------- ЗАПОЛНЕНИЕ ДАННЫМИ ------------------------------------------------
-
-            # Печать таблицы в консоль
-            # s = ''
-            # for line_table in spreadsheet['sheets'][0]['data'][0]['rowData']:
-            #     for cell in line_table['values']:
-            #         try:
-            #             s += cell['formattedValue'] + " | "
-            #         except KeyError:
-            #             pass
-            #     s = ''
 
             # Проверка нет ли текущей даты в таблице
             logging.info("Проверка нет ли текущей даты в таблице...")
@@ -1668,19 +1666,6 @@ class BarsicReport2Service:
         Заполнение google-таблицы
         """
         # SHEET 1
-        # try:
-        #     while True:
-        #         time_of = (datetime.now() - self.google_kwote_timer).seconds
-        #         if time_of < 100:
-        #             logging.info(f''
-        #                          f'Превышено количество запросов в API GoogleSheets. \n'
-        #                          f'Программа продолжит выполнение через {100-time_of} сек...')
-        #             time.sleep(5)
-        #         else:
-        #             break
-        # except AttributeError:
-        #     pass
-
         logging.info("Заполнение листа 1...")
         sheetId = 0
         ss = Spreadsheet(
@@ -6033,9 +6018,8 @@ class BarsicReport2Service:
             )
             # Поиск новых услуг
             for report_name in ("GoogleReport", "PlatAgentReport"):
-                new_tariffs = await self._settings_service.get_new_tariff(
-                    "Aquapark_Ulyanovsk", report_name
-                )
+                self._settings_service.choose_db("Aquapark_Ulyanovsk")
+                new_tariffs = await self._settings_service.get_new_tariff(report_name)
                 if new_tariffs:
                     error_message = f"Найдены нераспределенные тарифы в отчете {report_name}: {new_tariffs}"
                     logger.error(error_message)

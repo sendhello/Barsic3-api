@@ -16,15 +16,18 @@ class SettingsService:
         self._bars_service = bars_service
         self._report_config_service = report_config_service
 
-    async def get_new_tariff(self, db_name: str, report_name: str) -> list[str]:
+    def choose_db(self, db_name: str):
+        self._bars_service.choose_db(db_name)
+
+    async def get_new_tariff(self, report_name: str) -> list[str]:
         """Возвращает все нераспределенные тарифы."""
 
         all_tariffs = []
-        organizations = self._bars_service.get_organisations(db_name)
+        organizations = self._bars_service.get_organisations()
 
         for organization in organizations:
             organization_tariffs = self._bars_service.get_tariffs(
-                db_name, organization.super_account_id
+                organization.super_account_id
             )
             all_tariffs.extend([tariff.name for tariff in organization_tariffs])
 

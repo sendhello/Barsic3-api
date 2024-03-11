@@ -24,8 +24,8 @@ app = FastAPI(
     title=settings.project_name,
     description="Сервис построения кастомных отчетов системы SkiBars2",
     version="3.0.0",
-    docs_url="/api/v1/reports/openapi",
-    openapi_url="/api/v1/reports/openapi.json",
+    docs_url="/docs",
+    openapi_url="/openapi.json",
     default_response_class=ORJSONResponse,
 )
 

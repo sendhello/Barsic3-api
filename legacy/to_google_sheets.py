@@ -23,6 +23,28 @@ class SheetNotSetError(SpreadsheetError):
     pass
 
 
+def create_columnDict() -> dict:
+    columnDict = {}
+    for ch1 in range(ord("A") - 1, ord("C") + 1):
+        for ch2 in range(ord("A"), ord("Z") + 1):
+            if ch1 == ord("A") - 1:
+                columnDict[chr(ch2)] = ch2 - ord("A")
+            else:
+                columnDict[f"{chr(ch1)}{chr(ch2)}"] = (
+                    26 * (ch1 - ord("A") + 1) + ch2 - ord("A")
+                )
+    return columnDict
+
+
+def get_letter_column_name(column: int) -> str:
+    first_letter = chr(column // 26 + ord("@"))
+    second_letter = chr(column % 26 + ord("@"))
+    if first_letter == "@":
+        return second_letter
+
+    return f"{first_letter}{second_letter}"
+
+
 class Spreadsheet:
 
     # Класс-оберта методов
@@ -33,18 +55,6 @@ class Spreadsheet:
         self.sheetId = sheetId
         self.service = service
         self.sheetTitle = sheetTitle
-        self.create_columnDict()
-
-    def create_columnDict(self):
-        self.columnDict = {}
-        for ch1 in range(ord("A") - 1, ord("C") + 1):
-            for ch2 in range(ord("A"), ord("Z") + 1):
-                if ch1 == ord("A") - 1:
-                    self.columnDict[chr(ch2)] = ch2 - ord("A")
-                else:
-                    self.columnDict[f"{chr(ch1)}{chr(ch2)}"] = (
-                        26 * (ch1 - ord("A") + 1) + ch2 - ord("A")
-                    )
 
     def prepare_setDimensionPixelSize(self, dimension, startIndex, endIndex, pixelSize):
         self.requests.append(
@@ -116,6 +126,7 @@ class Spreadsheet:
         #   startColumnIndex: 0, endColumnIndex: 2}
 
     def toGridRange(self, cellsRange):
+        columnDict = create_columnDict()
         if self.sheetId is None:
             raise SheetNotSetError()
         if isinstance(cellsRange, str):
@@ -136,8 +147,8 @@ class Spreadsheet:
                     break
                 i += 1
             try:
-                cellsRange["startColumnIndex"] = int(self.columnDict[startCellColumn])
-                cellsRange["endColumnIndex"] = int(self.columnDict[endCellColumn]) + 1
+                cellsRange["startColumnIndex"] = int(columnDict[startCellColumn])
+                cellsRange["endColumnIndex"] = int(columnDict[endCellColumn]) + 1
             except KeyError:
                 raise (
                     KeyError,

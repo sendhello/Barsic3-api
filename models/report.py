@@ -1,6 +1,13 @@
 from typing import Self
 
-from sqlalchemy import Column, ForeignKey, Integer, String, UniqueConstraint, select
+from sqlalchemy import (
+    Column,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    select,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import joinedload, relationship
 
@@ -123,17 +130,23 @@ class GoogleReportIdModel(Base, IDMixin, CRUDMixin):
     """Список Google-документов."""
 
     __tablename__ = "google_report_ids"
-    month = Column(String(255), nullable=False, unique=True)
+    month = Column(String(255), nullable=False)
     doc_id = Column(String(255), nullable=False, unique=True)
+    report_type = Column(String(255), nullable=False, default="financial")
     version = Column(Integer, nullable=False)
+    __table_args__ = (
+        UniqueConstraint("month", "report_type", name="unique_report_type_in_month"),
+    )
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.title}>"
 
     @classmethod
-    async def get_by_month(cls, month: str) -> Self:
+    async def get_by_month(cls, month: str, report_type: str) -> Self:
         async with async_session() as session:
-            request = select(cls).where(cls.month == month)
+            request = select(cls).where(
+                cls.month == month, cls.report_type == report_type
+            )
             result = await session.execute(request)
             entity = result.scalars().first()
 

@@ -90,9 +90,26 @@ class ReportConfigService:
         google_doc_id = GoogleReportId.model_validate(google_doc_id_)
         return google_doc_id
 
-    async def get_google_doc_id_by_date(self, date_: datetime) -> GoogleReportId | None:
+    async def get_financial_doc_id_by_date(
+        self, date_: datetime
+    ) -> GoogleReportId | None:
         month = date_.strftime("%Y-%m")
-        google_doc_id_ = await GoogleReportIdModel.get_by_month(month)
+        google_doc_id_ = await GoogleReportIdModel.get_by_month(
+            month, report_type="financial"
+        )
+        if google_doc_id_ is None:
+            return None
+
+        google_doc_id = GoogleReportId.model_validate(google_doc_id_)
+        return google_doc_id
+
+    async def get_total_detail_doc_id_by_date(
+        self, date_: datetime
+    ) -> GoogleReportId | None:
+        month = date_.strftime("%Y-%m")
+        google_doc_id_ = await GoogleReportIdModel.get_by_month(
+            month, report_type="total_detail"
+        )
         if google_doc_id_ is None:
             return None
 

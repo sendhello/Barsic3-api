@@ -11,12 +11,10 @@ logger = logging.getLogger(__name__)
 
 
 class MsSqlDatabase:
-    def __init__(
-        self, server: str, database: str, user: str, password: str, port: int = 1433
-    ):
+    def __init__(self, server: str, user: str, password: str, port: int = 1433):
         self._server = server
         self._port = port
-        self._database = database
+        self._database = None
         self._user = user
         self._password = password
         self._connection: Optional[Connection] = None
@@ -24,6 +22,9 @@ class MsSqlDatabase:
     @property
     def _driver(self) -> str:
         return getattr(MssqlDriverType, settings.mssql_driver_type).value
+
+    def set_database(self, database: str) -> None:
+        self._database = database
 
     def _connect(self):
         self._connection = connect(
@@ -61,9 +62,10 @@ class MsSqlDatabase:
 
 
 def mssql_connection(server, database, user, password) -> Connection:
-    return MsSqlDatabase(
+    db = MsSqlDatabase(
         server=server,
-        database=database,
         user=user,
         password=password,
-    ).connect()
+    )
+    db.set_database(database)
+    return db.connect()

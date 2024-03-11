@@ -4,8 +4,13 @@ from aiogram.types import Message
 from core.settings import settings
 
 
-bot = Bot(token=settings.telegram_token)
+class TelegramBot(Bot):
+    def __init__(self, telegram_token):
+        self._bot = Bot(token=telegram_token)
+
+    async def send_message(self, channel_id: int, text: str) -> Message:
+        return await self._bot.send_message(channel_id, text)
 
 
-async def send_message(channel_id: int, text: str) -> Message:
-    return await bot.send_message(channel_id, text)
+def get_telegram_bot():
+    return TelegramBot(settings.telegram_token)
