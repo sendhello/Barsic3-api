@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+
+  postgres:
+    container_name: postgres
+    hostname: postgres
+    image: postgres:15.2
+    networks:
+      - network
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - barsic_pg:/var/lib/postgresql/data/
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    container_name: redis
+    hostname: redis
+    image: redis:7.2-rc1
+    environment:
+      ALLOW_EMPTY_PASSWORD: ${ALLOW_EMPTY_PASSWORD}
+    volumes:
+      - barsic_redis:/data
+    ports:
+      - "6379:6379"
+    networks:
+      - network
+
+  mssql:
+    container_name: mssql
+    hostname: mssql
+    image: mcr.microsoft.com/azure-sql-edge:latest
+    cap_add:
+      - SYS_PTRACE
+    environment:
+      ACCEPT_EULA: ${ACCEPT_EULA}
+      MSSQL_USER: ${MSSQL_USER}
+      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+      MSSQL_PID: ${MSSQL_PID}
+    volumes:
+      - azure-sql-storage:/var/opt/mssql
+      - ./dev/backup/:/var/opt/backup
+    ports:
+      - "1433:1433"
+    networks:
+      - network
+
+volumes:
+  barsic_pg:
+  barsic_redis:
+  azure-sql-storage:
+
+networks:
+  network:
