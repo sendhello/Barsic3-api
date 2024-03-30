@@ -68,3 +68,21 @@ HOMEBREW_ACCEPT_EULA=Y brew install msodbcsql18 mssql-tools18
 
 ### Получение Яндекс токена для сохранения отчетов на Яндекс-диске
 Создать приложение яндекс и получить токен можно по инструкции https://yandex.ru/dev/disk/webdav/
+
+### Создание бекапа postgres
+```commandline
+# Создание бекапа postgres
+ssh root@192.168.1.231
+docker exec -it postgres bash
+pg_dump -U barsic -W barsic > /tmp/barsic.dump
+docker cp postgres:/tmp/barsic.dump /tmp/barsic.dump
+exit
+scp 192.168.1.231:/tmp/barsic.dump C:\\temp\barsic.dump 
+
+# Восстановление из бекапа postgres
+scp C:\\temp\barsic.dump 192.168.1.231:/tmp/barsic.dump
+ssh root@192.168.1.231
+docker cp /tmp/barsic.dump postgres:/tmp/barsic.dump
+docker exec -it postgres bash
+pg_restore -U barsic -W -d barsic /tmp/barsic.dump
+```
