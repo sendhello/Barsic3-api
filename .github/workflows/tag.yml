@@ -42,12 +42,6 @@ jobs:
     needs:
       - linters
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - linux/amd64
-          - linux/arm64
     steps:
       - name: Prepare
         run: |
@@ -73,7 +67,8 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY_IMAGE }}
+          images: |
+            sendhello/barsic3-api
           flavor: |
             latest=true
           tags: |
@@ -91,5 +86,5 @@ jobs:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          platforms: ${{ matrix.platform }}
+          platforms: linux/amd64,linux/arm64
           file: ./Dockerfile
