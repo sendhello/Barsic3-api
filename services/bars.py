@@ -21,7 +21,6 @@ class BarsService:
 
     def get_organisations(self) -> list[Organisation]:
         organisations_ = self._repo.get_organisations()
-        logger.warning(f"{organisations_=}")
         return [Organisation.model_validate(org) for org in organisations_]
 
     def get_total_report(
