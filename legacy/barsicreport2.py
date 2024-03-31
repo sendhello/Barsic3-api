@@ -830,9 +830,6 @@ class BarsicReport2Service:
             float(sum([line["paid_sum"] for line in self.report_rk_month])),
         ]
 
-        logger.warning("*" * 300)
-        logger.warning(f"{self.itog_report_month=}")
-        logger.warning("*" * 300)
         for group_name, groups in self.itogreport_group_dict.items():
             finreport_group = self.finreport_dict_month.setdefault(group_name, {})
             finreport_group_total = finreport_group.setdefault(
@@ -1514,7 +1511,6 @@ class BarsicReport2Service:
                 if not key["file"]:
                     folders_list.append(directory + key["name"])
 
-            logger.warning(f"{folder=}, {folders_list=}")
             if folder not in folders_list:
                 self.yadisk.mkdir(folder)
                 logging.info(f'Создание новой папки в YandexDisk - "{folder}"')

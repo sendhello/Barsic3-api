@@ -65,16 +65,13 @@ async def update_report_group(
     id: UUID, report_group_in: ReportGroupUpdate
 ) -> ReportGroup:
     report_group = await ReportGroupModel.get_by_id(id_=id)
-    logger.warning(f"{report_group=}")
     if not report_group:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="ReportGroup doesn't exists"
         )
 
     report_group_dto = jsonable_encoder(report_group_in)
-    logger.warning(f"{report_group_dto=}")
     report_group = await report_group.update(**report_group_dto)
-    logger.warning(f"{report_group=}")
     return report_group
 
 
@@ -127,11 +124,9 @@ async def create_report_groups(
     error_groups = []
     for group_name in report_groups:
         try:
-            logger.warning(f"{group_name=}, {report_name=}, {report_name.id=}")
             report_group_ = await ReportGroupModel.create(
                 title=group_name, parent_id=None, report_name_id=report_name.id
             )
-            logger.warning(f"{report_group_.__dict__=}")
             created_groups.append(ReportGroup.model_validate(report_group_))
 
         except IntegrityError:

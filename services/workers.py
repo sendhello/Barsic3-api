@@ -241,7 +241,7 @@ class WorkerService:
 
         table_width = days_in_month + 1
         table_width_letter = get_letter_column_name(table_width)
-        table_height = len(report_matrix) + 3
+        table_height = len(report_matrix) + 4
 
         worksheet.update([[report_name]], "A1")
         worksheet.update([[detail_name]], "A2")
