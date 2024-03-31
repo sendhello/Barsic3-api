@@ -37,7 +37,10 @@ class WorkerService:
         self._bars_service.choose_db(db_name)
 
     async def get_total_report_with_groups(
-        self, date_from: datetime, date_to: datetime
+        self,
+        date_from: datetime,
+        date_to: datetime,
+        use_cache: bool = True,
     ) -> dict:
         # total_report = self._bars_service.get_total_report(
         #     organization_id=63,
@@ -67,9 +70,12 @@ class WorkerService:
             or current_date + timedelta(days=1) == date_to
         ):
             report_type = "total_detail"
-            total_detail_report = await self._report_service.get_report_by_date(
-                report_type, current_date.date()
-            )
+            total_detail_report = None
+            if use_cache:
+                total_detail_report = await self._report_service.get_report_by_date(
+                    report_type, current_date.date()
+                )
+
             if total_detail_report is None:
                 report_rk_month = self._legacy_service.rk_report_request(
                     server=settings.mssql_server_rk,
