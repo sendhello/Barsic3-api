@@ -84,5 +84,5 @@ scp C:\\temp\barsic.dump 192.168.1.231:/tmp/barsic.dump
 ssh root@192.168.1.231
 docker cp /tmp/barsic.dump postgres:/tmp/barsic.dump
 docker exec -it postgres bash
-pg_restore -U barsic -W -d barsic /tmp/barsic.dump
+psql -U barsic -W barsic < /tmp/barsic.dump
 ```
