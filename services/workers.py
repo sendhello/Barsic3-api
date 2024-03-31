@@ -1,10 +1,11 @@
 import logging
 from calendar import monthrange
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import gspread
 import gspread_formatting as gf
+from fastapi import HTTPException
 
 from core.settings import settings
 from legacy.barsicreport2 import BarsicReport2Service, get_legacy_service
@@ -49,6 +50,17 @@ class WorkerService:
 
         total_detail_full_report = defaultdict()
 
+        if date_from >= date_to:
+            raise HTTPException(status_code=404, detail="date_from >= date_to")
+
+        if date_from.month == date_to.month - 1:
+            days_in_month = monthrange(date_from.year, date_from.month)[1]
+            date_to = datetime.combine(
+                date(date_from.year, date_from.month, days_in_month),
+                datetime.max.time(),
+            )
+
+        logger.info(f"Try build total by day report from {date_from} to {date_to}")
         current_date = date_from
         while current_date < date_to and (
             current_date.month == date_to.month
@@ -241,7 +253,7 @@ class WorkerService:
 
         table_width = days_in_month + 1
         table_width_letter = get_letter_column_name(table_width)
-        table_height = len(report_matrix) + 4
+        table_height = len(report_matrix) + 3
 
         worksheet.update([[report_name]], "A1")
         worksheet.update([[detail_name]], "A2")
@@ -285,6 +297,7 @@ class WorkerService:
             numberFormat=gf.NumberFormat(type="CURRENCY", pattern="#0[$ ₽]"),
         )
         clear_fmt = gf.CellFormat(backgroundColor=gf.Color.fromHex("#ffffff"))
+        logger.warning(f"{table_height=}")
         gf.format_cell_ranges(
             worksheet,
             [
@@ -292,8 +305,8 @@ class WorkerService:
                 ("A1:A1", h1_fmt),
                 ("A2:A2", h4_fmt),
                 (f"A4:{table_width_letter}4", table_head_fmt),
-                (f"A5:{table_width_letter}{table_height}", body_fmt),
-                (f"B5:{table_width_letter}{table_height}", currency_fmt),
+                (f"A5:{table_width_letter}{max(table_height, 5)}", body_fmt),
+                (f"B5:{table_width_letter}{max(table_height, 5)}", currency_fmt),
                 *[
                     (f"A{line}:{table_width_letter}{line}", table_h2_fmt)
                     for line in h2_lines
