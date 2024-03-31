@@ -73,11 +73,14 @@ async def create_total_report_by_day(
     db_name: Annotated[gen_db_name_enum(), Query(description="База данных")],
     date_from: datetime = datetime.combine(date.today(), datetime.min.time()),
     date_to: datetime = datetime.combine(date.today(), datetime.min.time()),
+    use_cache: bool = True,
     bars_service: BarsService = Depends(get_bars_service),
     worker_service: WorkerService = Depends(get_worker_service),
 ) -> dict:
     """Список Организаций."""
 
     bars_service.choose_db(db_name=db_name.value)
-    res = await worker_service.get_total_report_with_groups(date_from, date_to)
+    res = await worker_service.get_total_report_with_groups(
+        date_from, date_to, use_cache=use_cache
+    )
     return res
