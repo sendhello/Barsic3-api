@@ -70,9 +70,14 @@ class WorkerService:
             or current_date + timedelta(days=1) == date_to
         ):
             report_type = "total_detail"
-            total_detail_report = None
+
             if use_cache:
                 total_detail_report = await self._report_service.get_report_by_date(
+                    report_type, current_date.date()
+                )
+            else:
+                total_detail_report = None
+                await self._report_service.delete_report(
                     report_type, current_date.date()
                 )
 

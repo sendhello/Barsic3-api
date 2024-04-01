@@ -1,8 +1,10 @@
 import logging
 from datetime import date
 
+from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.exc import IntegrityError
+from starlette import status
 
 from models.report_cache import ReportCacheModel
 from schemas.report_cache import ReportCache, ReportCacheCreate
@@ -34,7 +36,17 @@ class ReportService:
             await ReportCacheModel.create(**report_cache_dto)
 
         except IntegrityError:
-            await ReportCacheModel.update(**report_cache_dto)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="ReportCache with such 'date' and 'report_type' already exists",
+            )
+
+    async def delete_report(self, report_type: str, report_date: date) -> None:
+        report_cache_ = await ReportCacheModel.get_by_date(
+            report_type=report_type, report_date=report_date
+        )
+        if report_cache_:
+            await report_cache_.delete()
 
 
 def get_report_service():
