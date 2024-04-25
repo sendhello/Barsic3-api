@@ -5,6 +5,7 @@ from pyodbc import Connection, connect
 
 from constants import MssqlDriverType
 from core.settings import settings
+from utils.backoff import backoff
 
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class MsSqlDatabase:
             self._connection.close()
             self._connection = None
 
+    @backoff
     def connect(self) -> Connection:
         if self._connection is None:
             try:
