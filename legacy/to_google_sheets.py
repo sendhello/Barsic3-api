@@ -339,7 +339,9 @@ def create_new_google_doc(
 
     # Доступы к документу
     logging.info("Настройка доступов к файлу GoogleSheets...")
-    driveService = apiclient.discovery.build("drive", "v3", http=http_auth)
+    driveService = apiclient.discovery.build(
+        "drive", "v3", http=http_auth, cache_discovery=False
+    )
     if settings.google_api_settings.google_all_read:
         _ = (
             driveService.permissions()

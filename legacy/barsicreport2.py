@@ -198,8 +198,6 @@ class BarsicReport2Service:
             if org[0] == 13240081:
                 self.org5 = (org[0], org[2])
 
-        logging.warning(f"{org_list1=}")
-        logging.warning(f"{org_list2=}")
         self.org2 = (org_list2[0][0], org_list2[0][2])
         logging.info(f"Выбраны организации {org_list1[0][2]} и {org_list2[0][2]}")
 
@@ -1427,9 +1425,7 @@ class BarsicReport2Service:
         for folder in list_path:
             if folder not in os.listdir():
                 os.mkdir(folder)
-                logging.warning(
-                    f'В директории "{os.getcwd()}" создана папка "{folder}"'
-                )
+                logging.debug(f'В директории "{os.getcwd()}" создана папка "{folder}"')
                 os.chdir(folder)
             else:
                 os.chdir(folder)
@@ -5714,7 +5710,9 @@ class BarsicReport2Service:
         httpAuth = credentials.authorize(httplib2.Http())
         try:
             logging.info("Попытка авторизации с Google-документами ...")
-            googleservice = apiclient.discovery.build("sheets", "v4", http=httpAuth)
+            googleservice = apiclient.discovery.build(
+                "sheets", "v4", http=httpAuth, cache_discovery=False
+            )
 
         except IndexError as e:
             error_message = f"Ошибка {repr(e)}"

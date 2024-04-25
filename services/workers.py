@@ -241,7 +241,7 @@ class WorkerService:
             report_matrix.append([general_group, *amounts_matrix])
             h2_lines.append(len(report_matrix) + 4)
 
-            for group_name, group_content in general_group_content.items():
+            for group_name, group_content in sorted(general_group_content.items()):
                 if group_name in ("Итого по группе", "None", ""):
                     continue
 
@@ -308,7 +308,6 @@ class WorkerService:
             numberFormat=gf.NumberFormat(type="CURRENCY", pattern="#0[$ ₽]"),
         )
         clear_fmt = gf.CellFormat(backgroundColor=gf.Color.fromHex("#ffffff"))
-        logger.warning(f"{table_height=}")
         gf.format_cell_ranges(
             worksheet,
             [
