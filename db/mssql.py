@@ -44,7 +44,7 @@ class MsSqlDatabase:
             self._connection.close()
             self._connection = None
 
-    @backoff
+    @backoff()
     def connect(self) -> Connection:
         if self._connection is None:
             try:
