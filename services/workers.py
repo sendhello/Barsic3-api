@@ -241,7 +241,12 @@ class WorkerService:
             report_matrix.append([general_group, *amounts_matrix])
             h2_lines.append(len(report_matrix) + 4)
 
-            for group_name, group_content in sorted(general_group_content.items()):
+            filtered_general_group_content = {
+                k: v for k, v in general_group_content.items() if k is not None
+            }
+            for group_name, group_content in sorted(
+                filtered_general_group_content.items()
+            ):
                 if group_name in ("Итого по группе", "None", ""):
                     continue
 
