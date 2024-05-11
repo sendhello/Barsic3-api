@@ -5,7 +5,7 @@ services:
   barsic-web:
     container_name: barsic-web
     hostname: barsic-web
-    build: .
+    image: sendhello/barsic3-api:${BARSIC_WEB_VERSION}
     environment:
       DEBUG: ${DEBUG}
       PROJECT_NAME: ${PROJECT_NAME}
@@ -45,23 +45,56 @@ services:
       GOOGLE_API_CLIENT_ID: ${GOOGLE_API_CLIENT_ID}
       GOOGLE_API_CLIENT_X509_CERT_URL: ${GOOGLE_API_CLIENT_X509_CERT_URL}
     networks:
-      - network
-    ports:
-      - "8000:8000"
+      network:
+      vlan:
+        ipv4_address: 192.168.1.232
+    expose:
+      - "8000"
     volumes:
       - ./reports:/opt/app/reports/
     depends_on:
       - redis
       - postgres
+    restart: always
+
+  barsic-bot:
+    container_name: barsic-bot
+    hostname: barsic-bot
+    image: sendhello/barsic-bot:${BARSIC_BOT_VERSION}
+    environment:
+      DEBUG: ${DEBUG}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      CACHE_TIME: ${CACHE_TIME}
+      PROJECT_NAME: ${PROJECT_NAME}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      # AppSettings
+      BOT_TELEGRAM_TOKEN: ${BOT_TELEGRAM_TOKEN}
+      BARSIC_WEB_HOST: ${BARSIC_WEB_HOST}
+      BARSIC_WEB_PORT: ${BARSIC_WEB_PORT}
+      USER_PASSWORD: ${USER_PASSWORD}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      WRITE_PASSWORD_LIMIT_PER_DAY: ${WRITE_PASSWORD_LIMIT_PER_DAY}
+    networks:
+      network:
+    depends_on:
+      - redis
+      - postgres
+      - barsic-web
+    restart: always
 
   postgres:
     container_name: postgres
     hostname: postgres
     image: postgres:15.2
     networks:
-      - network
-    ports:
-      - "5433:5432"
+      network:
+    expose:
+      - "5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -73,6 +106,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: always
 
   redis:
     container_name: redis
@@ -82,10 +116,11 @@ services:
       ALLOW_EMPTY_PASSWORD: ${ALLOW_EMPTY_PASSWORD}
     volumes:
       - barsic_redis:/data
-    ports:
-      - "6379:6379"
+    expose:
+      - "6379"
     networks:
-      - network
+      network:
+    restart: always
 
   nginx:
     container_name: nginx
@@ -97,9 +132,10 @@ services:
     depends_on:
       - barsic-web
     ports:
-      - "80:80"
+      - "${EXTERNAL_PORT}:80"
     networks:
-      - network
+      network:
+    restart: always
 
 volumes:
   barsic_pg:
@@ -107,3 +143,12 @@ volumes:
 
 networks:
   network:
+  vlan:
+    driver: ipvlan
+    driver_opts:
+      ipvlan_mode: l2
+      parent: eth0
+    ipam:
+      config:
+        - subnet: "192.168.1.0/24"
+          gateway: "192.168.1.2"

@@ -2,7 +2,7 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, Path, Query
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import HTTPException
 from sqlalchemy.exc import IntegrityError
@@ -10,8 +10,9 @@ from starlette import status
 
 from api.utils import PaginateQueryParams
 from constants import gen_report_name_enum
-from models.report import ReportGroupModel, ReportNameModel
+from models.report import ReportElementModel, ReportGroupModel, ReportNameModel
 from schemas.report import (
+    ReportElement,
     ReportGroup,
     ReportGroupCreate,
     ReportGroupDetail,
@@ -26,12 +27,20 @@ logger = logging.getLogger(__name__)
 
 @router.get("/", response_model=list[ReportGroup])
 async def get_report_groups(
-    paginate: Annotated[PaginateQueryParams, Depends(PaginateQueryParams)]
+    paginate: Annotated[PaginateQueryParams, Depends(PaginateQueryParams)],
+    report_name_id: Annotated[UUID, Query(description="ID наименования отчета")] = None,
 ) -> list[ReportGroup]:
-    report_groups = await ReportGroupModel.get_part(
+
+    if report_name_id is not None:
+        raw_report_groups = await ReportGroupModel.get_by_report_name_id(
+            report_name_id=report_name_id
+        )
+        return raw_report_groups
+
+    raw_report_groups = await ReportGroupModel.get_part(
         page=paginate.page, page_size=paginate.page_size
     )
-    return report_groups
+    return raw_report_groups
 
 
 @router.post("/", response_model=ReportGroup)
@@ -86,17 +95,51 @@ async def delete_report_group(id: UUID) -> ReportGroup:
     return await report_group.delete()
 
 
-@router.post("/add_groups", response_model=list[ReportGroup])
-async def create_report_groups(
-    report_groups: Annotated[list[str], Body(description="Список групп отчета")],
+@router.post("/{id}/add_elements/", response_model=list[ReportElement])
+async def add_elements(
+    id: Annotated[UUID, Path(description="ID группы")],
+    elements: Annotated[
+        list[str], Body(description="Список тарифов для добавления в группу")
+    ],
+) -> list[ReportElement]:
+    """Добавление элементов в группу."""
+
+    created_elements = []
+    error_elements = []
+    for el in elements:
+        try:
+            db_element = await ReportElementModel.create(
+                title=el,
+                group_id=id,
+            )
+            created_elements.append(ReportElement.model_validate(db_element))
+
+        except IntegrityError:
+            error_elements.append(el)
+
+    if error_elements:
+        error_elements = [f'"{error}"' for error in error_elements]
+        error_elements_text = f'{", ".join(error_elements)}'
+        error_message = f"Elements {error_elements_text} already exist"
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=error_message
+        )
+
+    return created_elements
+
+
+@router.post("/add_elements", response_model=list[ReportElement])
+async def create_report_elements(
+    elements: Annotated[list[str], Body(description="Список тарифов в группе")],
+    group_name: Annotated[str, Query(description="Группа отчета")],
     report_name: Annotated[
         gen_report_name_enum(), Query(description="Наименование отчета")
     ] = None,
     other_report_name: Annotated[
         str | None, Query(description="Наименование отчета (если нет в списке)")
     ] = None,
-) -> list[ReportGroup]:
-    """Добавление групп списком."""
+) -> list[ReportElement]:
+    """Добавление тарифов в группу списком (для ручного добавления)."""
 
     if report_name is not None:
         report_name_title = report_name.value
@@ -120,24 +163,36 @@ async def create_report_groups(
 
     report_name = ReportName.model_validate(report_name_)
 
-    created_groups = []
-    error_groups = []
-    for group_name in report_groups:
+    group_ = await ReportGroupModel.get_by_title(group_name, report_name.id)
+    if group_ is None:
+        group_names = await ReportGroupModel.get_all()
+        group_names_text = ", ".join(f'"{name.title}"' for name in group_names)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Report with name '{group_name}' not found in database. "
+            f"Please try one from: {group_names_text}",
+        )
+
+    group = ReportGroup.model_validate(group_)
+    created_elements = []
+    error_elements = []
+    for el in elements:
         try:
-            report_group_ = await ReportGroupModel.create(
-                title=group_name, parent_id=None, report_name_id=report_name.id
+            element_ = await ReportElementModel.create(
+                title=el,
+                group_id=group.id,
             )
-            created_groups.append(ReportGroup.model_validate(report_group_))
+            created_elements.append(ReportElement.model_validate(element_))
 
         except IntegrityError:
-            error_groups.append(group_name)
+            error_elements.append(el)
 
-    if error_groups:
-        error_groups = [f'"{error}"' for error in error_groups]
-        error_groups_text = f'{", ".join(error_groups)}'
-        error_message = f"Groups {error_groups_text} already exist"
+    if error_elements:
+        error_elements = [f'"{error}"' for error in error_elements]
+        error_elements_text = f'{", ".join(error_elements)}'
+        error_message = f"Elements {error_elements_text} already exist"
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=error_message
         )
 
-    return created_groups
+    return created_elements
