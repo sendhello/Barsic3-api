@@ -27,6 +27,7 @@ class MsSqlDatabase:
     def set_database(self, database: str) -> None:
         self._database = database
 
+    @backoff()
     def _connect(self):
         self._connection = connect(
             f"DRIVER={self._driver};"
@@ -44,15 +45,9 @@ class MsSqlDatabase:
             self._connection.close()
             self._connection = None
 
-    @backoff()
     def connect(self) -> Connection:
         if self._connection is None:
-            try:
-                self._connect()
-
-            except Exception as e:
-                logger.error(f"Connection error with MsSqlDB: {e}")
-                raise e
+            self._connect()
 
         return self._connection
 
