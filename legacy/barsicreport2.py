@@ -4,6 +4,7 @@ import re
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List
+from copy import deepcopy
 
 import apiclient
 import httplib2
@@ -14,13 +15,14 @@ from oauth2client.service_account import ServiceAccountCredentials
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from starlette import status
-
+from services.bars import BarsService, get_bars_service
 from core.settings import settings
 from db.mssql import MsSqlDatabase
 from legacy import functions
 from legacy.to_google_sheets import Spreadsheet, create_new_google_doc
 from schemas.bars import ClientsCount
 from schemas.google_report_ids import GoogleReportIdCreate
+from services.bars import BarsService
 from services.report_config import ReportConfigService, get_report_config_service
 from services.settings import SettingsService, get_settings_service
 from sql.clients_count import CLIENTS_COUNT_SQL
@@ -52,6 +54,7 @@ class BarsicReport2Service:
 
         self._report_config_service: ReportConfigService = get_report_config_service()
         self._settings_service: SettingsService = get_settings_service()
+        self._bars_service: BarsService = get_bars_service()
 
     def get_clients_count(self) -> list[ClientsCount]:
         """Получение количества человек в зоне."""
@@ -620,8 +623,8 @@ class BarsicReport2Service:
         :return - dict
         """
         logger.info("Формирование финансового отчета за месяц")
-        self.finreport_dict_month = {}
-        control_sum_group = self.finreport_dict_month.setdefault(
+        finreport_dict_month = {}
+        control_sum_group = finreport_dict_month.setdefault(
             "Контрольная сумма", {}
         )
         control_sum = control_sum_group.setdefault("Cумма", [["Сумма", 0, 0.0]])
@@ -631,42 +634,42 @@ class BarsicReport2Service:
         ]
 
         for group_name, groups in self.itogreport_group_dict.items():
-            finreport_group = self.finreport_dict_month.setdefault(group_name, {})
+            finreport_group = finreport_dict_month.setdefault(group_name, {})
             finreport_group_total = finreport_group.setdefault(
                 "Итого по группе", [["Итого по группе", 0, 0.0]]
             )
             for oldgroup in groups:
                 try:
-                    for product_name in self.orgs_dict[oldgroup]:
+                    for service_name in self.orgs_dict[oldgroup]:
                         try:
-                            product = self.itog_report_month[product_name]
+                            service_count, service_sum, org_name, group_name = self.itog_report_month[service_name]
 
-                            if product_name == "Дата":
+                            if service_name == "Дата":
                                 product_group = finreport_group.setdefault(oldgroup, [])
                                 product_group.append(
-                                    [product_name, product[0], product[1]]
+                                    [service_name, service_count, service_sum]
                                 )
-                            elif product_name == "Депозит":
+                            elif service_name == "Депозит":
                                 product_group = finreport_group.setdefault(oldgroup, [])
-                                product_group.append([product_name, 0, product[1]])
-                                finreport_group_total[0][2] += product[1]
-                                control_sum[0][2] += product[1]
-                            elif product_name == "Организация":
+                                product_group.append([service_name, 0, service_sum])
+                                finreport_group_total[0][2] += service_sum
+                                control_sum[0][2] += service_sum
+                            elif service_name == "Организация":
                                 pass
                             else:
                                 product_group = finreport_group.setdefault(
-                                    product[2], [["Итого по папке", 0, 0.0]]
+                                    org_name, [["Итого по папке", 0, 0.0]]
                                 )
                                 product_group.append(
-                                    [product_name, product[0], product[1]]
+                                    [service_name, service_count, service_sum]
                                 )
-                                product_group[0][1] += product[0]
-                                product_group[0][2] += product[1]
-                                finreport_group_total[0][1] += product[0]
-                                finreport_group_total[0][2] += product[1]
-                                if product_name != "Итого по отчету":
-                                    control_sum[0][1] += product[0]
-                                    control_sum[0][2] += product[1]
+                                product_group[0][1] += service_count
+                                product_group[0][2] += service_sum
+                                finreport_group_total[0][1] += service_count
+                                finreport_group_total[0][2] += service_sum
+                                if service_name != "Итого по отчету":
+                                    control_sum[0][1] += service_count
+                                    control_sum[0][2] += service_sum
                         except KeyError:
                             continue
                         except TypeError:
@@ -680,8 +683,7 @@ class BarsicReport2Service:
 
                 if oldgroup == "Общепит":
                     product_group = finreport_group.setdefault(
-                        "Общепит ----------------------------------------------------------------"
-                        "-------------- ИП Салахова",
+                        "Общепит (Смайл)",
                         [["Итого по папке", 0, 0.0]],
                     )
                     product_group.append(["Смайл", smile[0], smile[1]])
@@ -692,24 +694,25 @@ class BarsicReport2Service:
 
         control_sum[0][1] += smile[0]
         control_sum[0][2] += smile[1]
-        self.finreport_dict_month["ИТОГО"]["Итого по группе"][0][1] += smile[0]
-        self.finreport_dict_month["ИТОГО"]["Итого по группе"][0][2] += smile[1]
-        self.finreport_dict_month["ИТОГО"][""][0][1] += smile[0]
-        self.finreport_dict_month["ИТОГО"][""][0][2] += smile[1]
-        self.finreport_dict_month["ИТОГО"][""][1][1] += smile[0]
-        self.finreport_dict_month["ИТОГО"][""][1][2] += smile[1]
+        finreport_dict_month["ИТОГО"]["Итого по группе"][0][1] += smile[0]
+        finreport_dict_month["ИТОГО"]["Итого по группе"][0][2] += smile[1]
+        finreport_dict_month["ИТОГО"][""][0][1] += smile[0]
+        finreport_dict_month["ИТОГО"][""][0][2] += smile[1]
+        finreport_dict_month["ИТОГО"][""][1][1] += smile[0]
+        finreport_dict_month["ИТОГО"][""][1][2] += smile[1]
         if (
-            self.finreport_dict_month["ИТОГО"][""][1][2] != control_sum[0][2]
-            or self.finreport_dict_month["ИТОГО"][""][1][1] != control_sum[0][1]
+            finreport_dict_month["ИТОГО"][""][1][2] != control_sum[0][2]
+            or finreport_dict_month["ИТОГО"][""][1][1] != control_sum[0][1]
         ):
             logger.error(
                 f"Несоответствие Контрольных сумм. "
-                f"Итого по отчету ({self.finreport_dict_month['ИТОГО'][''][1][1]}: "
-                f"{self.finreport_dict_month['ИТОГО'][''][1][2]}) не равно Контрольной сумме услуг"
+                f"Итого по отчету ({finreport_dict_month['ИТОГО'][''][1][1]}: "
+                f"{finreport_dict_month['ИТОГО'][''][1][2]}) не равно Контрольной сумме услуг"
                 f"({control_sum[0][1]}: {control_sum[0][2]})"
             )
 
-        return self.finreport_dict_month
+        self.finreport_dict_month = finreport_dict_month
+        return finreport_dict_month
 
     def fin_report_beach(self):
         """
@@ -754,46 +757,45 @@ class BarsicReport2Service:
             self.finreport_dict_beach["Выход с пляжа"] = 0, 0
 
     def agent_report(self):
-        """
-        Форминует отчет платежного агента в установленном формате
-        :return - dict
-        """
-        logger.info("Формирование отчета платежного агента")
+        """Форминует отчет платежного агента в установленном формате."""
+
         self.agentreport_dict = {}
         self.agentreport_dict["Организация"] = [self.org1[0], self.org1[1]]
         for org, services in self.agent_dict.items():
-            if org != "Не учитывать":
-                self.agentreport_dict[org] = [0, 0]
-                for serv in services:
-                    try:
-                        if org == "Дата":
-                            self.agentreport_dict[org][0] = self.itog_report_org1[serv][
-                                0
-                            ]
-                            self.agentreport_dict[org][1] = self.itog_report_org1[serv][
-                                1
-                            ]
-                        elif serv == "Депозит":
-                            self.agentreport_dict[org][1] += self.itog_report_org1[
-                                serv
-                            ][1]
-                        elif serv == "Аквазона":
-                            self.agentreport_dict[org][1] += self.itog_report_org1[
-                                serv
-                            ][1]
-                        elif serv == "Организация":
-                            pass
-                        else:
-                            self.agentreport_dict[org][0] += self.itog_report_org1[
-                                serv
-                            ][0]
-                            self.agentreport_dict[org][1] += self.itog_report_org1[
-                                serv
-                            ][1]
-                    except KeyError:
+            if org == "Не учитывать":
+                continue
+
+            self.agentreport_dict[org] = [0, 0]
+            for serv in services:
+                try:
+                    if org == "Дата":
+                        self.agentreport_dict[org][0] = self.itog_report_org1[serv][
+                            0
+                        ]
+                        self.agentreport_dict[org][1] = self.itog_report_org1[serv][
+                            1
+                        ]
+                    elif serv == "Депозит":
+                        self.agentreport_dict[org][1] += self.itog_report_org1[
+                            serv
+                        ][1]
+                    elif serv == "Аквазона":
+                        self.agentreport_dict[org][1] += self.itog_report_org1[
+                            serv
+                        ][1]
+                    elif serv == "Организация":
                         pass
-                    except TypeError:
-                        pass
+                    else:
+                        self.agentreport_dict[org][0] += self.itog_report_org1[
+                            serv
+                        ][0]
+                        self.agentreport_dict[org][1] += self.itog_report_org1[
+                            serv
+                        ][1]
+                except KeyError:
+                    pass
+                except TypeError:
+                    pass
 
     def agent_report_month(self, month_total_report: dict[str, tuple]):
         """
@@ -2576,7 +2578,7 @@ class BarsicReport2Service:
                 )
             ss.runPrepared()
 
-            for group in self.finreport_dict_month:
+            for group, group_values in self.finreport_dict_month.items():
                 if group == "Контрольная сумма":
                     continue
                 if group == "Дата":
@@ -2587,8 +2589,8 @@ class BarsicReport2Service:
                     [
                         [
                             group,
-                            self.finreport_dict_month[group]["Итого по группе"][0][1],
-                            self.finreport_dict_month[group]["Итого по группе"][0][2],
+                            group_values["Итого по группе"][0][1],
+                            group_values["Итого по группе"][0][2],
                         ]
                     ],
                     "ROWS",
@@ -2707,7 +2709,7 @@ class BarsicReport2Service:
                             }
                         }
                     )
-                for folder in self.finreport_dict_month[group]:
+                for folder, folder_values in group_values.items():
                     if folder == "Итого по группе":
                         continue
                     if folder == "":
@@ -2722,8 +2724,8 @@ class BarsicReport2Service:
                         [
                             [
                                 folder_name,
-                                self.finreport_dict_month[group][folder][0][1],
-                                self.finreport_dict_month[group][folder][0][2],
+                                folder_values[0][1],
+                                folder_values[0][2],
                             ]
                         ],
                         "ROWS",
@@ -2842,13 +2844,13 @@ class BarsicReport2Service:
                                 }
                             }
                         )
-                    for servise in self.finreport_dict_month[group][folder]:
-                        if servise[0] == "Итого по папке":
+                    for service_name, service_count, service_sum in folder_values:
+                        if service_name == "Итого по папке":
                             continue
                         self.nex_line += 1
                         ss.prepare_setValues(
                             f"A{self.nex_line}:C{self.nex_line}",
-                            [[servise[0], servise[1], servise[2]]],
+                            [[service_name, service_count, service_sum]],
                             "ROWS",
                         )
                         ss.prepare_setCellsFormats(
@@ -5530,18 +5532,26 @@ class BarsicReport2Service:
                 date_from=date_from - relativedelta(years=1),
                 date_to=date_to - relativedelta(years=1),
             )
+            self.itog_report_month = None
             if int((date_to - timedelta(1)).strftime("%y%m")) < int(
                 date_to.strftime("%y%m")
             ):
-                itog_report_month_org1 = self.itog_report(
-                    database=settings.mssql_database1,
-                    org=self.org1[0],
-                    org_name=self.org1[1],
-                    date_from=datetime.strptime(
-                        "01" + (date_to - timedelta(1)).strftime("%m%y"), "%d%m%y"
-                    ),
-                    date_to=date_to,
-                )
+                self._bars_service.choose_db(settings.mssql_database1)
+                organizations = self._bars_service.get_organisations()
+                itog_report_month = {}
+                for organization in organizations:
+                    itog_report_month_for_org = self.itog_report(
+                        database=settings.mssql_database1,
+                        org=organization.super_account_id,
+                        org_name=organization.descr,
+                        date_from=datetime.strptime(
+                            "01" + (date_to - timedelta(1)).strftime("%m%y"), "%d%m%y"
+                        ),
+                        date_to=date_to,
+                    )
+                    itog_report_month = functions.concatenate_itog_reports(itog_report_month, itog_report_month_for_org)
+
+                self.itog_report_month = itog_report_month
                 self.report_rk_month = self.rk_report_request(
                     cash_id=15033,
                     date_from=datetime.strptime(
@@ -5549,8 +5559,6 @@ class BarsicReport2Service:
                     ),
                     date_to=date_to,
                 )
-            else:
-                self.itog_report_month = None
 
             self.cashdesk_report_org1 = self.cashdesk_report(
                 database=settings.mssql_database1,

@@ -1,7 +1,6 @@
-# /usr/bin/python3
-# -*- coding: utf-8 -*-
+from copy import deepcopy
 
-from decimal import Decimal
+from api.v1.report_settings import logger
 
 
 def is_int(value):
@@ -33,3 +32,26 @@ def to_bool(s):
         return False
     else:
         return None
+
+
+def concatenate_itog_reports(*itog_reports: dict[str, tuple]):
+    if len(itog_reports) == 0:
+        return {}
+
+    if len(itog_reports) == 1:
+        return itog_reports[0]
+
+    result_report = deepcopy(itog_reports[0])
+    for another_report in itog_reports[1:]:
+        for position, values in another_report.items():
+            if position in result_report and position != "Дата":
+                result_report[position] = (
+                    sum([result_report[position][0], another_report[position][0] or 0]),
+                    sum([result_report[position][1], another_report[position][1] or 0]),
+                    result_report[position][2],
+                    result_report[position][3],
+                )
+            else:
+                result_report[position] = another_report[position]
+
+    return result_report
