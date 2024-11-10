@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
+import logging
 
 from constants import gen_db_name_enum
 from core.settings import settings
@@ -9,6 +10,9 @@ from gateways.telegram import TelegramBot, get_telegram_bot
 from legacy.barsicreport2 import BarsicReport2Service, get_legacy_service
 from services.bars import BarsService, get_bars_service
 from services.workers import WorkerService, get_worker_service
+
+
+logger = logging.getLogger(__name__)
 
 
 router = APIRouter()

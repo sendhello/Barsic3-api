@@ -48,7 +48,6 @@ class AppSettings(BaseSettings):
     mssql_pwd: str = Field(validation_alias="MSSQL_PWD")
     mssql_database1: str = Field(validation_alias="MSSQL_DATABASE1")
     mssql_database2: str = Field(validation_alias="MSSQL_DATABASE2")
-    mssql_database_bitrix: str = Field(validation_alias="MSSQL_DATABASE_BITRIX")
     mssql_server_rk: str = Field(validation_alias="MSSQL_SERVER_RK")
     mssql_user_rk: str = Field(validation_alias="MSSQL_USER_RK")
     mssql_pwd_rk: str = Field(validation_alias="MSSQL_PWD_RK")
@@ -65,6 +64,7 @@ class AppSettings(BaseSettings):
 class GoogleApiSettings(BaseSettings):
     """Настройки google API."""
 
+    google_doc_version: int = Field(validation_alias="GOOGLE_DOC_VERSION")
     google_all_read: str = Field(validation_alias="GOOGLE_ALL_READ")
     google_reader_list: str = Field(validation_alias="GOOGLE_READER_LIST")
     google_writer_list: str = Field(validation_alias="GOOGLE_WRITER_LIST")

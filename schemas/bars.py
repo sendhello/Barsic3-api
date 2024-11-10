@@ -76,3 +76,10 @@ class TotalReport(Model):
             good_amount=good_amount,
             amount=amount,
         )
+
+
+class ClientsCount(Model):
+    count: int
+    id: int
+    zone_name: str
+    code: str

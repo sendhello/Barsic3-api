@@ -7,7 +7,6 @@ from typing import Any, Dict, List
 
 import apiclient
 import httplib2
-import pyodbc
 import yadisk
 from dateutil.relativedelta import relativedelta
 from fastapi.exceptions import HTTPException
@@ -17,12 +16,14 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from starlette import status
 
 from core.settings import settings
-from db.mssql import mssql_connection
+from db.mssql import MsSqlDatabase
 from legacy import functions
 from legacy.to_google_sheets import Spreadsheet, create_new_google_doc
+from schemas.bars import ClientsCount
 from schemas.google_report_ids import GoogleReportIdCreate
 from services.report_config import ReportConfigService, get_report_config_service
 from services.settings import SettingsService, get_settings_service
+from sql.clients_count import CLIENTS_COUNT_SQL
 
 
 logger = logging.getLogger("barsicreport2")
@@ -33,7 +34,10 @@ class BarsicReport2Service:
     Функционал предыдущей версии.
     """
 
-    def __init__(self):
+    def __init__(self, bars_srv: MsSqlDatabase, rk_srv: MsSqlDatabase):
+        self.bars_srv = bars_srv
+        self.rk_srv = rk_srv
+
         self.org1 = None
         self.org2 = None
         self.org3 = None
@@ -46,106 +50,29 @@ class BarsicReport2Service:
         self.new_agentservice = []
         self.agentorgs = []
 
-        self.server = settings.mssql_server
-        self.user = settings.mssql_user
-        self.pwd = settings.mssql_pwd
-        self.database1 = settings.mssql_database1
-        self.database2 = settings.mssql_database2
-        self.database_bitrix = settings.mssql_database_bitrix
-        self.server_rk = settings.mssql_server_rk
-        self.user_rk = settings.mssql_user_rk
-        self.pwd_rk = settings.mssql_pwd_rk
-        self.database_rk = settings.mssql_database_rk
-        self.local_folder = settings.local_folder
-        self.report_path = settings.report_path
-        self.yadisk_token = settings.yadisk_token
-
-        self.doc_version = 12
-
         self._report_config_service: ReportConfigService = get_report_config_service()
         self._settings_service: SettingsService = get_settings_service()
 
-    def count_clients(
-        self,
-        server,
-        database,
-        user,
-        password,
-    ):
-        """Количество человек в зоне"""
+    def get_clients_count(self) -> list[ClientsCount]:
+        """Получение количества человек в зоне."""
 
-        logging.info('Выполнение функции "count_clients"')
+        self.bars_srv.set_database(settings.database1)
+        with self.bars_srv as connect:
+            cursor = connect.cursor()
+            cursor.execute(CLIENTS_COUNT_SQL)
+            rows = cursor.fetchall()
+            if not rows:
+                return [ClientsCount(count=0, id=488, zone_name="", code="0003")]
 
-        result = []
-
-        try:
-            logging.info(f"Попытка соединения с {server}")
-            cnxn = mssql_connection(
-                server=server, database=database, user=user, password=password
-            )
-            cursor = cnxn.cursor()
-
-            cursor.execute(
-                """
-                    SELECT
-                        [gr].[c1] as [c11],
-                        [gr].[StockCategory_Id] as [StockCategory_Id1],
-                        [c].[Name],
-                        [c].[NN]
-                    FROM
-                        (
-                            SELECT
-                                [_].[CategoryId] as [StockCategory_Id],
-                                Count(*) as [c1]
-                            FROM
-                                [AccountStock] [_]
-                                    INNER JOIN [SuperAccount] [t1] ON [_].[SuperAccountId] = [t1].[SuperAccountId]
-                            WHERE
-                                [_].[StockType] = 41 AND
-                                [t1].[Type] = 0 AND
-                                [_].[Amount] > 0 AND
-                                NOT ([t1].[IsStuff] = 1)
-                            GROUP BY
-                                [_].[CategoryId]
-                        ) [gr]
-                            INNER JOIN [Category] [c] ON [gr].[StockCategory_Id] = [c].[CategoryId]
-               """
-            )
-            while True:
-                row = cursor.fetchone()
-                if row:
-                    result.append(row)
-                else:
-                    break
-            logging.info(f'Результат функции "count_clients": {result}')
-            if not result:
-                result.append(("Пусто", 488, "", "0003"))
-
-        except pyodbc.OperationalError as e:
-            logging.error(f"Ошибка {repr(e)}")
-            result.append(("Нет данных", 488, "Ошибка соединения", repr(e)))
-            logger.info(f"Ошибка соединения с {server}: {database}", repr(e))
-        except pyodbc.ProgrammingError as e:
-            logging.error(f"Ошибка {repr(e)}")
-            result.append(("Нет данных", 488, "Ошибка соединения", repr(e)))
-            logger.info(f"Невозможно открыть {database}", repr(e))
-        return result
+        return [ClientsCount(count=row[0], id=row[1], zone_name=row[2], code=row[3]) for row in rows]
 
     def count_clients_print(self):
-        in_zone = self.count_clients(
-            server=self.server,
-            database=self.database1,
-            user=self.user,
-            password=self.pwd,
-        )
+        clients_count = self.get_clients_count()
         self.click_select_org()
         try:
             count_clients = int(
                 self.itog_report(
-                    server=self.server,
-                    database=self.database1,
-                    user=self.user,
-                    password=self.pwd,
+                    database=settings.mssql_database1,
                     org=self.org1[0],
                     org_name=self.org1[1],
                     date_from=datetime.now(),
@@ -156,10 +83,7 @@ class BarsicReport2Service:
             count_clients = 0
         try:
             count_clients_allday = self.reportClientCountTotals(
-                server=self.server,
-                database=self.database1,
-                user=self.user,
-                password=self.pwd,
+                database=settings.mssql_database1,
                 org=self.org1[0],
                 date_from=datetime.now(),
                 date_to=datetime.now() + timedelta(1),
@@ -169,7 +93,7 @@ class BarsicReport2Service:
 
         return {
             "Всего": str(count_clients) + " / " + str(count_clients_allday),
-            str(in_zone[len(in_zone) - 1][2]): str(in_zone[len(in_zone) - 1][0]),
+            clients_count[0].zone_name: clients_count[0].count,
         }
 
     def click_select_org(self):
@@ -177,16 +101,10 @@ class BarsicReport2Service:
         Выбор первой организации из списка организаций
         """
         org_list1 = self.list_organisation(
-            server=self.server,
-            database=self.database1,
-            user=self.user,
-            password=self.pwd,
+            database=settings.mssql_database1,
         )
         org_list2 = self.list_organisation(
-            server=self.server,
-            database=self.database2,
-            user=self.user,
-            password=self.pwd,
+            database=settings.mssql_database2,
         )
         for org in org_list1:
             if org[0] == 36:
@@ -199,27 +117,18 @@ class BarsicReport2Service:
                 self.org5 = (org[0], org[2])
 
         self.org2 = (org_list2[0][0], org_list2[0][2])
-        logging.info(f"Выбраны организации {org_list1[0][2]} и {org_list2[0][2]}")
+        logger.info(f"Выбраны организации {org_list1[0][2]} и {org_list2[0][2]}")
 
     def list_organisation(
         self,
-        server,
         database,
-        user,
-        password,
     ):
         """Функция делает запрос в базу Барс и возвращает список заведенных
         в базе организаций в виде списка кортежей."""
 
-        logging.info("Поиск организаций...")
-        result = []
-        try:
-            logging.info(f"Попытка соединения с {server}")
-            cnxn = mssql_connection(
-                server=server, database=database, user=user, password=password
-            )
-            cursor = cnxn.cursor()
-
+        self.bars_srv.set_database(database)
+        with self.bars_srv as connect:
+            cursor = connect.cursor()
             id_type = 1
             cursor.execute(
                 f"""
@@ -236,32 +145,13 @@ class BarsicReport2Service:
                     Type={id_type}
                 """
             )
-            while True:
-                row = cursor.fetchone()
-                if row:
-                    result.append(row)
-                else:
-                    break
-        except pyodbc.OperationalError as e:
-            logging.error(f"Ошибка {repr(e)}")
-            logger.info(f"Ошибка соединения с {server}: {database}", repr(e))
-            raise e
-        except pyodbc.ProgrammingError as e:
-            logging.error(f"Ошибка {repr(e)}")
-            logger.info(f"Невозможно открыть {database}", repr(e))
-            raise e
-        return result
+            rows = cursor.fetchall()
 
-    @functions.to_googleshet
-    @functions.add_date
-    @functions.add_sum
-    @functions.convert_to_dict
+        return rows
+
     def itog_report(
         self,
-        server,
         database,
-        user,
-        password,
         org,
         org_name,
         date_from,
@@ -272,17 +162,14 @@ class BarsicReport2Service:
     ):
         """Делает запрос в базу Барс и возвращает итоговый отчет за запрашиваемый период."""
 
-        cnxn = mssql_connection(
-            server=server, database=database, user=user, password=password
-        )
-        date_from = date_from.strftime("%Y%m%d 00:00:00")
-        date_to = date_to.strftime("%Y%m%d 00:00:00")
-        cursor = cnxn.cursor()
+        date_from_date = date_from.strftime("%Y%m%d 00:00:00")
+        date_to_date = date_to.strftime("%Y%m%d 00:00:00")
+
         SQL_REQUEST = (
             f"exec sp_reportOrganizationTotals_v2 "
             f"@sa={org},"
-            f"@from='{date_from}',"
-            f"@to='{date_to}',"
+            f"@from='{date_from_date}',"
+            f"@to='{date_to_date}',"
             f"@hideZeroes={hide_zeroes},"
             f"@hideInternal={hide_internal}"
         )
@@ -290,63 +177,61 @@ class BarsicReport2Service:
         if database == "Aquapark_Ulyanovsk":
             SQL_REQUEST += f",@hideDiscount={hide_discount}"
 
-        cursor.execute(SQL_REQUEST)
-        report = []
-        while True:
-            row = cursor.fetchone()
-            if row:
-                report.append(row)
-            else:
-                break
-        report.append((0, 0, 0, 0, org_name, 0, "Организация", "Организация"))
-        report.append((0, 0, 0, 0, str(org), 0, "ID организации", "ID организации"))
-        if len(report) > 1:
-            logging.info(
-                f"Итоговый отчет сформирован ID организации = {org}, "
-                f"Период: {date_from[:8]}-{date_to[:8]}, Скрывать нули = {hide_zeroes}, "
-                f"Скрывать внутренние точки обслуживания: {hide_internal}, Cкрывать бонусы: {hide_discount})"
-            )
-        return report
+        self.bars_srv.set_database(database)
+        with self.bars_srv as connect:
+            cursor = connect.cursor()
+            cursor.execute(SQL_REQUEST)
+            rows = cursor.fetchall()
+
+        result = {
+            row[4]: (
+                int(row[1]) if isinstance(row[1], Decimal) else row[1],
+                float(row[0]) if isinstance(row[0], Decimal) else row[0],
+                row[6],
+                row[7]
+            ) for row in rows
+        }
+        result[org_name] = (0, 0, "Организация", "Организация")
+        result[str(org)] = (0, 0, "ID организации", "ID организации")
+
+        # добавление строки "Итого по отчету"
+        sum_service = 0
+        sum_many = 0
+        for line in result:
+            if not (result[line][0] is None or result[line][0] is None):
+                if line != "Депозит":
+                    sum_service += result[line][0]
+                sum_many += result[line][1]
+        result["Итого по отчету"] = (sum_service, sum_many, "", "Итого по отчету")
+
+        # добавление даты
+        result["Дата"] = (date_from, date_to, "", "")
+
+        return result
 
     def reportClientCountTotals(
         self,
-        server,
         database,
-        user,
-        password,
         org,
         date_from,
         date_to,
     ):
-        cnxn = mssql_connection(
-            server=server, database=database, user=user, password=password
-        )
         date_from = date_from.strftime("%Y%m%d 00:00:00")
         date_to = date_to.strftime("%Y%m%d 00:00:00")
-        cursor = cnxn.cursor()
-        cursor.execute(
-            f"exec sp_reportClientCountTotals @sa={org},@from='{date_from}',@to='{date_to}',@categoryId=0"
-        )
-        report = []
-        while True:
-            row = cursor.fetchone()
-            if row:
-                report.append(row)
-            else:
-                break
-        if len(report) > 1:
-            logging.info(
-                f"Отчет по количеству посетителей сформирован "
-                f"ID организации = {org}, Период: {date_from[:8]}-{date_to[:8]}"
+
+        self.bars_srv.set_database(database)
+        with self.bars_srv as connect:
+            cursor = connect.cursor()
+            cursor.execute(
+                f"exec sp_reportClientCountTotals @sa={org},@from='{date_from}',@to='{date_to}',@categoryId=0"
             )
-        return report
+            rows = cursor.fetchall()
+
+        return rows
 
     def client_count_totals_period(
         self,
-        server,
         database,
-        user,
-        password,
         org,
         org_name,
         date_from,
@@ -367,10 +252,7 @@ class BarsicReport2Service:
         total = 0
         while first_day < date_to:
             client_count = self.reportClientCountTotals(
-                server=server,
                 database=database,
-                user=user,
-                password=password,
                 org=org,
                 date_from=first_day,
                 date_to=first_day + timedelta(1),
@@ -386,75 +268,49 @@ class BarsicReport2Service:
 
     def cash_report_request(
         self,
-        server,
         database,
-        user,
-        password,
         date_from,
         date_to,
     ):
         """Делает запрос в базу Барс и возвращает суммовой отчет за запрашиваемый период."""
 
-        cnxn = mssql_connection(
-            server=server, database=database, user=user, password=password
-        )
         date_from = date_from.strftime("%Y%m%d 00:00:00")
         date_to = date_to.strftime("%Y%m%d 00:00:00")
-        cursor = cnxn.cursor()
-        cursor.execute(
-            f"exec sp_reportCashDeskMoney @from='{date_from}', @to='{date_to}'"
-        )
-        report = []
-        while True:
-            row = cursor.fetchone()
-            if row:
-                report.append(row)
-            else:
-                break
-        if len(report) > 1:
-            logging.info(
-                f"Суммовой отчет сформирован, " f"Период: {date_from[:8]}-{date_to[:8]}"
+
+        self.bars_srv.set_database(database)
+        with self.bars_srv as connect:
+            cursor = connect.cursor()
+            cursor.execute(
+                f"exec sp_reportCashDeskMoney @from='{date_from}', @to='{date_to}'"
             )
-        return report
+            rows = cursor.fetchall()
+
+        return rows
 
     def service_point_request(
         self,
-        server,
         database,
-        user,
-        password,
     ):
         """Делает запрос в базу Барс и возвращает список рабочих мест."""
 
-        cnxn = mssql_connection(
-            server=server, database=database, user=user, password=password
-        )
-        cursor = cnxn.cursor()
-        cursor.execute(
-            """
-                SELECT
-                    ServicePointId, Name, SuperAccountId, Type, Code, IsInternal
-                FROM 
-                    ServicePoint
-            """
-        )
-        report = []
-        while True:
-            row = cursor.fetchone()
-            if row:
-                report.append(row)
-            else:
-                break
-        if len(report) > 1:
-            logging.info("Список рабочих мест сформирован.")
-        return report
+        self.bars_srv.set_database(database)
+        with self.bars_srv as connect:
+            cursor = connect.cursor()
+            cursor.execute(
+                """
+                    SELECT
+                        ServicePointId, Name, SuperAccountId, Type, Code, IsInternal
+                    FROM 
+                        ServicePoint
+                """
+            )
+            rows = cursor.fetchall()
+
+        return rows
 
     def cashdesk_report(
         self,
-        server,
         database,
-        user,
-        password,
         date_from,
         date_to,
     ):
@@ -463,18 +319,12 @@ class BarsicReport2Service:
         :return: dict
         """
         cash_report = self.cash_report_request(
-            server=server,
             database=database,
-            user=user,
-            password=password,
             date_from=date_from,
             date_to=date_to,
         )
         service_point = self.service_point_request(
-            server=server,
             database=database,
-            user=user,
-            password=password,
         )
         service_point_dict = {}
         for point in service_point:
@@ -534,59 +384,14 @@ class BarsicReport2Service:
             report[typpe].append(type_sum)
         report["Итого"] = [all_sum]
         report["Дата"] = [[date_from, date_to]]
-        if database == self.database1:
+        if database == settings.mssql_database1:
             report["Организация"] = [[self.org1[1]]]
-        elif database == self.database2:
+        elif database == settings.mssql_database2:
             report["Организация"] = [[self.org2[1]]]
         return report
 
-    def read_bitrix_base(
-        self,
-        server,
-        database,
-        user,
-        password,
-        date_from,
-        date_to,
-    ):
-        """Функция делает запрос в базу и возвращает список продаж за указанную дату."""
-
-        logging.info("Чтение online-продаж...")
-        date_from = date_from.strftime("%Y%m%d") + " 00:00:00"
-        date_to = date_to.strftime("%Y%m%d") + " 00:00:00"
-
-        cnxn = mssql_connection(
-            server=server, database=database, user=user, password=password
-        )
-        cursor = cnxn.cursor()
-        cursor.execute(
-            f"""
-            SELECT 
-                Id, OrderNumber, ProductId, ProductName, OrderDate, PayDate, Sum, Pay, Status, Client
-            FROM 
-                Transactions
-            WHERE
-                (PayDate >= '{date_from}')and(PayDate < '{date_to}')
-            """
-        )
-        orders = []
-        while True:
-            row = cursor.fetchone()
-            if row:
-                orders.append(row)
-            else:
-                break
-        summ = 0
-        for order in orders:
-            summ += float(order[6])
-        return len(orders), summ
-
-    @staticmethod
     def rk_report_request(
-        server: str,
-        database: str,
-        user: str,
-        password: str,
+        self,
         cash_id: int,
         date_from: datetime,
         date_to: datetime,
@@ -594,27 +399,24 @@ class BarsicReport2Service:
         """
         Делает запрос в базу R-Keeper и возвращает продажи кассы cash_id за запрашиваемый период.
         """
-
-        cnxn = mssql_connection(
-            server=server, database=database, user=user, password=password
-        )
         date_from = date_from.strftime("%Y%m%d 00:00:00")
         date_to = date_to.strftime("%Y%m%d 00:00:00")
-        cursor = cnxn.cursor()
-        cursor.execute(
-            f"""{''}
-                SELECT OPENTIME, STATIONID, PAIDSUM FROM ORDERS 
-                WHERE STATIONID = {cash_id} AND OPENTIME > '{date_from}' AND OPENTIME < '{date_to}'
-            """
-        )
-        rows = cursor.fetchall()
+
+        self.rk_srv.set_database(settings.mssql_database_rk)
+        with self.rk_srv as connect:
+            cursor = connect.cursor()
+            cursor.execute(
+                f"""{''}
+                    SELECT OPENTIME, STATIONID, PAIDSUM FROM ORDERS 
+                    WHERE STATIONID = {cash_id} AND OPENTIME > '{date_from}' AND OPENTIME < '{date_to}'
+                """
+            )
+            rows = cursor.fetchall()
+
         report = [
             {"station_id": row[0], "open_time": row[1], "paid_sum": row[2]}
             for row in rows
         ]
-        logging.info(
-            f"Отчет по P-Keeper сфомирован, Период: {date_from[:8]}-{date_to[:8]}"
-        )
         return report
 
     def fin_report(self):
@@ -622,7 +424,7 @@ class BarsicReport2Service:
         Форминует финансовый отчет в установленном формате
         :return - dict
         """
-        logging.info("Формирование финансового отчета")
+        logger.info("Формирование финансового отчета")
         self.finreport_dict = {}
         is_aquazona = None
         for org, services in self.orgs_dict.items():
@@ -717,7 +519,7 @@ class BarsicReport2Service:
         Форминует финансовый отчет за предыдущий год в установленном формате
         :return - dict
         """
-        logging.info("Формирование финансового отчета за прошлый год")
+        logger.info("Формирование финансового отчета за прошлый год")
         self.finreport_dict_lastyear = {}
         is_aquazona = None
         for org, services in self.orgs_dict.items():
@@ -817,7 +619,7 @@ class BarsicReport2Service:
         Форминует финансовый отчет за месяц в установленном формате
         :return - dict
         """
-        logging.info("Формирование финансового отчета за месяц")
+        logger.info("Формирование финансового отчета за месяц")
         self.finreport_dict_month = {}
         control_sum_group = self.finreport_dict_month.setdefault(
             "Контрольная сумма", {}
@@ -871,7 +673,7 @@ class BarsicReport2Service:
                             continue
 
                 except KeyError as e:
-                    logging.error(
+                    logger.error(
                         f"Несоответствие конфигураций XML-файлов\n"
                         f"Группа {oldgroup} не существует! \nKeyError: {e}"
                     )
@@ -900,13 +702,7 @@ class BarsicReport2Service:
             self.finreport_dict_month["ИТОГО"][""][1][2] != control_sum[0][2]
             or self.finreport_dict_month["ИТОГО"][""][1][1] != control_sum[0][1]
         ):
-            logger.info(
-                "Несоответствие Контрольных сумм.",
-                f"Итого по отчету ({self.finreport_dict_month['ИТОГО'][''][1][1]}: "
-                f"{self.finreport_dict_month['ИТОГО'][''][1][2]}) не равно Контрольной сумме услуг"
-                f"({control_sum[0][1]}: {control_sum[0][2]})",
-            )
-            logging.error(
+            logger.error(
                 f"Несоответствие Контрольных сумм. "
                 f"Итого по отчету ({self.finreport_dict_month['ИТОГО'][''][1][1]}: "
                 f"{self.finreport_dict_month['ИТОГО'][''][1][2]}) не равно Контрольной сумме услуг"
@@ -920,7 +716,7 @@ class BarsicReport2Service:
         Форминует финансовый отчет по пляжу в установленном формате
         :return - dict
         """
-        logging.info("Формирование финансового отчета по пляжу")
+        logger.info("Формирование финансового отчета по пляжу")
         self.finreport_dict_beach = {
             "Депозит": (0, 0),
             "Товары": (0, 0),
@@ -962,7 +758,7 @@ class BarsicReport2Service:
         Форминует отчет платежного агента в установленном формате
         :return - dict
         """
-        logging.info("Формирование отчета платежного агента")
+        logger.info("Формирование отчета платежного агента")
         self.agentreport_dict = {}
         self.agentreport_dict["Организация"] = [self.org1[0], self.org1[1]]
         for org, services in self.agent_dict.items():
@@ -999,12 +795,12 @@ class BarsicReport2Service:
                     except TypeError:
                         pass
 
-    def agent_report_month(self):
+    def agent_report_month(self, month_total_report: dict[str, tuple]):
         """
         Форминует отчет платежного агента за месяц в установленном формате
         :return - dict
         """
-        logging.info("Формирование отчета платежного агента за месяц")
+        logger.info("Формирование отчета платежного агента за месяц")
         self.agentreport_dict_month = {}
         self.agentreport_dict_month["Контрольная сумма"] = {}
         self.agentreport_dict_month["Контрольная сумма"]["Cумма"] = [["Сумма", 0, 0.0]]
@@ -1020,126 +816,126 @@ class BarsicReport2Service:
                         self.agentreport_dict_month[org][tariff].append(
                             [
                                 tariff,
-                                self.itog_report_month[tariff][0],
-                                self.itog_report_month[tariff][1],
+                                month_total_report[tariff][0],
+                                month_total_report[tariff][1],
                             ]
                         )
                     elif tariff == "Депозит":
                         self.agentreport_dict_month[org][tariff] = []
                         self.agentreport_dict_month[org][tariff].append(
-                            [tariff, 0, self.itog_report_month[tariff][1]]
+                            [tariff, 0, month_total_report[tariff][1]]
                         )
                         self.agentreport_dict_month[org]["Итого по группе"][0][
                             2
-                        ] += self.itog_report_month[tariff][1]
+                        ] += month_total_report[tariff][1]
                         self.agentreport_dict_month["Контрольная сумма"]["Cумма"][0][
                             2
-                        ] += self.itog_report_month[tariff][1]
+                        ] += month_total_report[tariff][1]
                     elif tariff == "Организация":
                         pass
                     else:
                         try:
                             if self.agentreport_dict_month[org][
-                                self.itog_report_month[tariff][2]
+                                month_total_report[tariff][2]
                             ]:
                                 self.agentreport_dict_month[org][
-                                    self.itog_report_month[tariff][2]
+                                    month_total_report[tariff][2]
                                 ].append(
                                     [
                                         tariff,
-                                        self.itog_report_month[tariff][0],
-                                        self.itog_report_month[tariff][1],
+                                        month_total_report[tariff][0],
+                                        month_total_report[tariff][1],
                                     ]
                                 )
                                 self.agentreport_dict_month[org][
-                                    self.itog_report_month[tariff][2]
-                                ][0][1] += self.itog_report_month[tariff][0]
+                                    month_total_report[tariff][2]
+                                ][0][1] += month_total_report[tariff][0]
                                 self.agentreport_dict_month[org][
-                                    self.itog_report_month[tariff][2]
-                                ][0][2] += self.itog_report_month[tariff][1]
+                                    month_total_report[tariff][2]
+                                ][0][2] += month_total_report[tariff][1]
                                 self.agentreport_dict_month[org]["Итого по группе"][0][
                                     1
-                                ] += self.itog_report_month[tariff][0]
+                                ] += month_total_report[tariff][0]
                                 self.agentreport_dict_month[org]["Итого по группе"][0][
                                     2
-                                ] += self.itog_report_month[tariff][1]
+                                ] += month_total_report[tariff][1]
                                 if tariff != "Итого по отчету":
                                     self.agentreport_dict_month["Контрольная сумма"][
                                         "Cумма"
-                                    ][0][1] += self.itog_report_month[tariff][0]
+                                    ][0][1] += month_total_report[tariff][0]
                                     self.agentreport_dict_month["Контрольная сумма"][
                                         "Cумма"
-                                    ][0][2] += self.itog_report_month[tariff][1]
+                                    ][0][2] += month_total_report[tariff][1]
                             else:
                                 self.agentreport_dict_month[org][
-                                    self.itog_report_month[tariff][2]
+                                    month_total_report[tariff][2]
                                 ] = []
                                 self.agentreport_dict_month[org][
-                                    self.itog_report_month[tariff][2]
+                                    month_total_report[tariff][2]
                                 ].append(["Итого по папке", 0, 0.0])
                                 self.agentreport_dict_month[org][
-                                    self.itog_report_month[tariff][2]
+                                    month_total_report[tariff][2]
                                 ].append(
                                     [
                                         tariff,
-                                        self.itog_report_month[tariff][0],
-                                        self.itog_report_month[tariff][1],
+                                        month_total_report[tariff][0],
+                                        month_total_report[tariff][1],
                                     ]
                                 )
                                 self.agentreport_dict_month[org][
-                                    self.itog_report_month[tariff][2]
-                                ][0][1] += self.itog_report_month[tariff][0]
+                                    month_total_report[tariff][2]
+                                ][0][1] += month_total_report[tariff][0]
                                 self.agentreport_dict_month[org][
-                                    self.itog_report_month[tariff][2]
-                                ][0][2] += self.itog_report_month[tariff][1]
+                                    month_total_report[tariff][2]
+                                ][0][2] += month_total_report[tariff][1]
                                 self.agentreport_dict_month[org]["Итого по группе"][0][
                                     1
-                                ] += self.itog_report_month[tariff][0]
+                                ] += month_total_report[tariff][0]
                                 self.agentreport_dict_month[org]["Итого по группе"][0][
                                     2
-                                ] += self.itog_report_month[tariff][1]
+                                ] += month_total_report[tariff][1]
                                 if tariff != "Итого по отчету":
                                     self.agentreport_dict_month["Контрольная сумма"][
                                         "Cумма"
-                                    ][0][1] += self.itog_report_month[tariff][0]
+                                    ][0][1] += month_total_report[tariff][0]
                                     self.agentreport_dict_month["Контрольная сумма"][
                                         "Cумма"
-                                    ][0][2] += self.itog_report_month[tariff][1]
+                                    ][0][2] += month_total_report[tariff][1]
                         except KeyError:
                             self.agentreport_dict_month[org][
-                                self.itog_report_month[tariff][2]
+                                month_total_report[tariff][2]
                             ] = []
                             self.agentreport_dict_month[org][
-                                self.itog_report_month[tariff][2]
+                                month_total_report[tariff][2]
                             ].append(["Итого по папке", 0, 0.0])
                             self.agentreport_dict_month[org][
-                                self.itog_report_month[tariff][2]
+                                month_total_report[tariff][2]
                             ].append(
                                 (
                                     tariff,
-                                    self.itog_report_month[tariff][0],
-                                    self.itog_report_month[tariff][1],
+                                    month_total_report[tariff][0],
+                                    month_total_report[tariff][1],
                                 )
                             )
                             self.agentreport_dict_month[org][
-                                self.itog_report_month[tariff][2]
-                            ][0][1] += self.itog_report_month[tariff][0]
+                                month_total_report[tariff][2]
+                            ][0][1] += month_total_report[tariff][0]
                             self.agentreport_dict_month[org][
-                                self.itog_report_month[tariff][2]
-                            ][0][2] += self.itog_report_month[tariff][1]
+                                month_total_report[tariff][2]
+                            ][0][2] += month_total_report[tariff][1]
                             self.agentreport_dict_month[org]["Итого по группе"][0][
                                 1
-                            ] += self.itog_report_month[tariff][0]
+                            ] += month_total_report[tariff][0]
                             self.agentreport_dict_month[org]["Итого по группе"][0][
                                 2
-                            ] += self.itog_report_month[tariff][1]
+                            ] += month_total_report[tariff][1]
                             if tariff != "Итого по отчету":
                                 self.agentreport_dict_month["Контрольная сумма"][
                                     "Cумма"
-                                ][0][1] += self.itog_report_month[tariff][0]
+                                ][0][1] += month_total_report[tariff][0]
                                 self.agentreport_dict_month["Контрольная сумма"][
                                     "Cумма"
-                                ][0][2] += self.itog_report_month[tariff][1]
+                                ][0][2] += month_total_report[tariff][1]
                 except KeyError:
                     pass
                 except TypeError:
@@ -1150,14 +946,7 @@ class BarsicReport2Service:
             or self.agentreport_dict_month["ИТОГО"][""][1][1]
             != self.agentreport_dict_month["Контрольная сумма"]["Cумма"][0][1]
         ):
-            logger.info(
-                "Несоответствие Контрольных сумм.",
-                f"Итого по отчету ({self.agentreport_dict_month['ИТОГО'][''][1][1]}: "
-                f"{self.agentreport_dict_month['ИТОГО'][''][1][2]}) не равно Контрольной сумме услуг"
-                f"({self.agentreport_dict_month['Контрольная сумма']['Cумма'][0][1]}: "
-                f"{self.agentreport_dict_month['Контрольная сумма']['Cумма'][0][2]})",
-            )
-            logging.error(
+            logger.error(
                 f"Несоответствие Контрольных сумм. "
                 f"Итого по отчету ({self.agentreport_dict_month['ИТОГО'][''][1][1]}: "
                 f"{self.agentreport_dict_month['ИТОГО'][''][1][2]}) не равно Контрольной сумме услуг"
@@ -1365,7 +1154,7 @@ class BarsicReport2Service:
 
         ws[column[1] + next_row()] = "Итого"
         if itog_sum != agentreport_dict["ИТОГО"][1]:
-            logging.error(
+            logger.error(
                 f"Ошибка. Отчет платежного агента: сумма строк "
                 f"({itog_sum}) не равна строке ИТОГО "
                 f'({agentreport_dict["ИТОГО"][1]})'
@@ -1395,13 +1184,13 @@ class BarsicReport2Service:
                 f'{datetime.strftime(agentreport_dict["Дата"][1], "%Y-%m-%d")}'
             )
         path = (
-            self.local_folder
-            + self.report_path
+            settings.local_folder
+            + settings.report_path
             + date_
             + f' Отчет платежного агента {agentreport_dict["Организация"][1]}'
             + ".xlsx"
         )
-        logging.info(
+        logger.info(
             f"Сохранение отчета платежного агента "
             f'{agentreport_dict["Организация"][1]} в {path}'
         )
@@ -1413,7 +1202,7 @@ class BarsicReport2Service:
         """
         Проверяет наличие указанного пути. В случае отсутствия каких-либо папок создает их
         """
-        logging.info("Проверка локальных путей сохранения файлов...")
+        logger.info("Проверка локальных путей сохранения файлов...")
         list_path = path.split("/")
         path = ""
         end_path = ""
@@ -1425,7 +1214,7 @@ class BarsicReport2Service:
         for folder in list_path:
             if folder not in os.listdir():
                 os.mkdir(folder)
-                logging.debug(f'В директории "{os.getcwd()}" создана папка "{folder}"')
+                logger.debug(f'В директории "{os.getcwd()}" создана папка "{folder}"')
                 os.chdir(folder)
             else:
                 os.chdir(folder)
@@ -1442,52 +1231,52 @@ class BarsicReport2Service:
         try:
             file.save(path)
         except PermissionError as e:
-            logging.error(f'Файл "{path}" занят другим процессом.\n{repr(e)}')
+            logger.error(f'Файл "{path}" занят другим процессом.\n{repr(e)}')
 
     def sync_to_yadisk(self, path_list, token, date_from, use_yadisk):
         """Копирует локальные файлы в Яндекс Диск."""
 
-        logging.info("Копирование отчетов в Яндекс.Диск...")
+        logger.info("Копирование отчетов в Яндекс.Диск...")
         if path_list:
             if use_yadisk:
-                logging.info("Соединение с YaDisk...")
+                logger.info("Соединение с YaDisk...")
                 self.yadisk = yadisk.YaDisk(token=token)
                 if self.yadisk.check_token():
-                    path = "" + self.report_path
+                    path = "" + settings.report_path
                     remote_folder = self.create_path_yadisk(path, date_from)
                     for local_path in path_list:
                         remote_path = remote_folder + local_path.split("/")[-1]
                         file_name = f"'{local_path.split('/')[-1]}'"
-                        logging.info(f"Отправка файла {file_name} в YaDisk...")
+                        logger.info(f"Отправка файла {file_name} в YaDisk...")
                         files_list_yandex = list(self.yadisk.listdir(remote_folder))
                         files_list = []
                         for key in files_list_yandex:
                             if key["file"]:
                                 files_list.append(remote_folder + key["name"])
                         if remote_path in files_list:
-                            logging.warning(
+                            logger.warning(
                                 f"Файл {file_name} уже существует в '{remote_folder}' и будет заменен!"
                             )
                             self.yadisk.remove(remote_path, permanently=True)
                         self.yadisk.upload(local_path, remote_path)
-                        logging.info(
+                        logger.info(
                             f"Файл '{file_name}' отправлен в '{remote_folder}' YaDisk..."
                         )
                 else:
                     error_message = "Ошибка YaDisk: token не валиден"
-                    logging.error(error_message)
+                    logger.error(error_message)
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST, detail=error_message
                     )
         else:
-            logging.warning("Нет ни одного отчета для отправки в Yandex.Disk")
+            logger.warning("Нет ни одного отчета для отправки в Yandex.Disk")
 
     def create_path_yadisk(self, path, date_from):
         """Проверяет наличие указанного пути в Яндекс Диске.
 
         В случае отсутствия каких-либо папок создает их.
         """
-        logging.info("Проверка путей сохранения файлов на Яндекс.Диске...")
+        logger.info("Проверка путей сохранения файлов на Яндекс.Диске...")
         list_path = path.split("/")
         if list_path[-1][-4:] == ".xls" or list_path[-1] == "":
             list_path.pop()
@@ -1509,7 +1298,7 @@ class BarsicReport2Service:
 
             if folder not in folders_list:
                 self.yadisk.mkdir(folder)
-                logging.info(f'Создание новой папки в YandexDisk - "{folder}"')
+                logger.info(f'Создание новой папки в YandexDisk - "{folder}"')
                 directory = folder + "/"
             else:
                 directory = folder + "/"
@@ -1520,7 +1309,7 @@ class BarsicReport2Service:
         """
         Формирование и заполнение google-таблицы
         """
-        logging.info("Сохранение Финансового отчета в Google-таблицах...")
+        logger.info("Сохранение Финансового отчета в Google-таблицах...")
         self.sheet_width = 35
         self.sheet2_width = 3
         self.sheet3_width = 14
@@ -1560,11 +1349,7 @@ class BarsicReport2Service:
             self.finreport_dict["Дата"][0] + timedelta(1)
             != self.finreport_dict["Дата"][1]
         ):
-            logging.info("Экспорт отчета в Google Sheet за несколько дней невозможен!")
-            logger.info(
-                "Ошибка экспорта в Google.Sheet",
-                "Экспорт отчета в Google Sheet за несколько дней невозможен!",
-            )
+            logger.info("Экспорт отчета в Google Sheet за несколько дней невозможен!")
         else:
             google_report_id = (
                 await self._report_config_service.get_financial_doc_id_by_date(
@@ -1595,18 +1380,18 @@ class BarsicReport2Service:
                     month=google_doc[0],
                     doc_id=google_doc[1],
                     report_type="financial",
-                    version=self.doc_version,
+                    version=settings.google_api_settings.google_doc_version,
                 )
                 await self._report_config_service.add_google_report_id(google_report_id)
-                logging.info(f"Создана новая таблица с Id: {google_report_id.doc_id}")
+                logger.info(f"Создана новая таблица с Id: {google_report_id.doc_id}")
 
-            if google_report_id.version != self.doc_version:
+            if google_report_id.version != settings.google_api_settings.google_doc_version:
                 error_message = (
-                    f"Версия Финансового отчета ({google_report_id.doc_id}) не соответствует текущей "
-                    f"({self.doc_version}).\nНеобходимо сначала удалить ссылку на старую версию, "
+                    f"Версия Финансового отчета ({google_report_id.version}) не соответствует текущей "
+                    f"({settings.google_api_settings.google_doc_version}).\nНеобходимо сначала удалить ссылку на старую версию, "
                     f"затем заново сформировать отчет с начала месяца."
                 )
-                logging.error(error_message)
+                logger.error(error_message)
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=error_message,
@@ -1622,7 +1407,7 @@ class BarsicReport2Service:
             # -------------------------------- ЗАПОЛНЕНИЕ ДАННЫМИ ------------------------------------------------
 
             # Проверка нет ли текущей даты в таблице
-            logging.info("Проверка нет ли текущей даты в таблице...")
+            logger.info("Проверка нет ли текущей даты в таблице...")
             self.start_line = 1
             self.reprint = 2
 
@@ -1649,7 +1434,7 @@ class BarsicReport2Service:
         """
         Заполнение google-таблицы в случае, если данные уже существуют
         """
-        logging.warning("Перезапись уже существующей строки...")
+        logger.warning("Перезапись уже существующей строки...")
         self.reprint = 1
         self.write_google_sheet(googleservice)
 
@@ -1658,7 +1443,7 @@ class BarsicReport2Service:
         Заполнение google-таблицы
         """
         # SHEET 1
-        logging.info("Заполнение листа 1...")
+        logger.info("Заполнение листа 1...")
         sheetId = 0
         ss = Spreadsheet(
             self.spreadsheet["spreadsheetId"],
@@ -1694,7 +1479,7 @@ class BarsicReport2Service:
         )
 
         if self.finreport_dict["ИТОГО"][1] != control_total_sum:
-            logging.error("Несоответствие данных: Сумма услуг не равна итоговой сумме")
+            logger.error("Несоответствие данных: Сумма услуг не равна итоговой сумме")
             logger.info(
                 f"Несоответствие данных: Сумма услуг по группам + депозит ({control_total_sum}) "
                 f"не равна итоговой сумме ({self.finreport_dict['ИТОГО'][1]}). \n"
@@ -1884,7 +1669,7 @@ class BarsicReport2Service:
 
         # ------------------------------------------- Заполнение ИТОГО --------------------------------------
         # Вычисление последней строки в таблице
-        logging.info("Заполнение строки ИТОГО на листе 1...")
+        logger.info("Заполнение строки ИТОГО на листе 1...")
 
         self.sheet2_line = 1
         for line_table in self.spreadsheet["sheets"][2]["data"][0]["rowData"]:
@@ -2393,7 +2178,7 @@ class BarsicReport2Service:
             )
         ss.runPrepared()
 
-        logging.info("Заполнение листа 2...")
+        logger.info("Заполнение листа 2...")
         sheetId = 1
         ss = Spreadsheet(
             self.spreadsheet["spreadsheetId"],
@@ -2515,7 +2300,7 @@ class BarsicReport2Service:
 
         # ------------------------------------------- Заполнение ИТОГО --------------------------------------
         # Вычисление последней строки в таблице
-        logging.info("Заполнение строки ИТОГО на листе 2...")
+        logger.info("Заполнение строки ИТОГО на листе 2...")
 
         for i, line_table in enumerate(
             self.spreadsheet["sheets"][1]["data"][0]["rowData"]
@@ -2643,7 +2428,7 @@ class BarsicReport2Service:
 
         if self.itog_report_month:
             # SHEET 4
-            logging.info("Заполнение  листа 4...")
+            logger.info("Заполнение  листа 4...")
             sheetId = 3
             ss = Spreadsheet(
                 self.spreadsheet["spreadsheetId"],
@@ -3266,7 +3051,7 @@ class BarsicReport2Service:
             ss.runPrepared()
 
             # SHEET 4
-            logging.info("Заполнение  листа 5...")
+            logger.info("Заполнение  листа 5...")
             sheetId = 4
             ss = Spreadsheet(
                 self.spreadsheet["spreadsheetId"],
@@ -3891,7 +3676,7 @@ class BarsicReport2Service:
             ss.runPrepared()
 
         # Заполнение листа 6
-        logging.info("Заполнение листа 6...")
+        logger.info("Заполнение листа 6...")
         sheetId = 5
         ss = Spreadsheet(
             self.spreadsheet["spreadsheetId"],
@@ -4049,7 +3834,7 @@ class BarsicReport2Service:
             )
 
         # ------------------------------------------- Заполнение ИТОГО --------------------------------------
-        logging.info("Заполнение строки ИТОГО на листе 2...")
+        logger.info("Заполнение строки ИТОГО на листе 2...")
 
         for i, line_table in enumerate(
             self.spreadsheet["sheets"][1]["data"][0]["rowData"]
@@ -4484,7 +4269,7 @@ class BarsicReport2Service:
     def sms_report(self, date_from) -> str:
         """Составляет текстовую версию финансового отчета."""
 
-        logging.info("Составление SMS-отчета...")
+        logger.info("Составление SMS-отчета...")
         resporse = "Отчет по аквапарку за "
 
         if self.finreport_dict["Дата"][0] == self.finreport_dict["Дата"][1] - timedelta(
@@ -4895,8 +4680,7 @@ class BarsicReport2Service:
                 f'"Итого по отчету" из Барса ({bars_total_sum[2]})'
                 f" не совпадает с итоговой суммой по формируемым строкам ({all_sum})."
             )
-            logging.error(f"{error_code} {error_message}")
-            logger.info(error_code, error_message)
+            logger.error(f"{error_code} {error_message}")
             return None
 
         ws[column[12] + self.row].number_format = "#,##0.00 ₽"
@@ -4961,13 +4745,13 @@ class BarsicReport2Service:
                 f'{datetime.strftime(itog_report["Дата"][1] - timedelta(1), "%Y-%m-%d")}'
             )
         path = (
-            self.local_folder
-            + self.report_path
+            settings.local_folder
+            + settings.report_path
             + date_
             + f' Итоговый отчет по {organisation_total["Организация"]["Организация"][0][0]} '
             + ".xlsx"
         )
-        logging.info(
+        logger.info(
             f"Сохранение Итогового отчета "
             f'по {organisation_total["Организация"]["Организация"][0][0]} в {path}'
         )
@@ -5348,13 +5132,13 @@ class BarsicReport2Service:
                 f'{datetime.strftime(cashdesk_report["Дата"][0][1] - timedelta(1), "%Y-%m-%d")}'
             )
         path = (
-            self.local_folder
-            + self.report_path
+            settings.local_folder
+            + settings.report_path
             + date_
             + f' Суммовой отчет по {cashdesk_report["Организация"][0][0]}'
             + ".xlsx"
         )
-        logging.info(
+        logger.info(
             f"Сохранение Суммового отчета "
             f'по {cashdesk_report["Организация"][0][0]} в {path}'
         )
@@ -5569,119 +5353,19 @@ class BarsicReport2Service:
                 f'{datetime.strftime(client_count_totals_org[-2][0], "%Y-%m-%d")}'
             )
         path = (
-            self.local_folder
-            + self.report_path
+            settings.local_folder
+            + settings.report_path
             + date_
             + f" Количество клиентов за день по {client_count_totals_org[0][0]}"
             + ".xlsx"
         )
-        logging.info(
+        logger.info(
             f"Сохранение отчета по количеству клиентов "
             f"по {client_count_totals_org[0][0]} в {path}"
         )
         path = self.create_path(path, date_from)
         self.save_file(path, wb)
         return path
-
-    def uploadToBase(
-        self,
-        server,
-        database,
-        user,
-        password,
-        Id_P,
-        OrderNumber_P,
-        ProductId_P,
-        ProductName_P,
-        OrderDate_P,
-        PayDate_P,
-        Sum_P,
-        Pay_P,
-        Status_P,
-        Client_P,
-    ):
-        """
-        Отправка данных в sql-базу
-        """
-
-        cnxn = mssql_connection(
-            server=server, database=database, user=user, password=password
-        )
-        cursor = cnxn.cursor()
-
-        cursor.execute(
-            f"""
-                        INSERT INTO [Transactions](
-                            [Id],
-                            [OrderNumber],
-                            [ProductId],
-                            [ProductName],
-                            [OrderDate],
-                            [PayDate],
-                            [Sum],
-                            [Pay],
-                            [Status],
-                            [Client]
-                        )
-                        VALUES(
-                            {Id_P},
-                            {OrderNumber_P},
-                            '{ProductId_P}',
-                            '{ProductName_P}',
-                            '{OrderDate_P}',
-                            '{PayDate_P}',
-                            {Sum_P},
-                            {Pay_P},
-                            '{Status_P}',
-                            '{Client_P}'
-                        )
-                       """
-        )
-        cnxn.commit()
-        return "Upload To SQL-Base: Ready"
-
-    def if_in_base(
-        self,
-        server,
-        database,
-        user,
-        password,
-        Id_P,
-    ):
-        cnxn = mssql_connection(
-            server=server, database=database, user=user, password=password
-        )
-        cursor = cnxn.cursor()
-
-        cursor.execute(
-            f"""
-                            SELECT
-                                [Id],
-                                [OrderNumber],
-                                [ProductId],
-                                [ProductName],
-                                [OrderDate],
-                                [PayDate],
-                                [Sum],
-                                [Pay],
-                                [Status],
-                                [Client]
-                            FROM [Transactions]
-                            WHERE
-                                [Id] = {Id_P}
-                           """
-        )
-        result = []
-        while True:
-            row = cursor.fetchone()
-            if row:
-                result.append(row)
-            else:
-                break
-        if len(result) > 0:
-            return False
-        else:
-            return True
 
     async def save_reports(self, date_from):
         """
@@ -5698,7 +5382,7 @@ class BarsicReport2Service:
         self.fin_report_beach()
         if self.itog_report_month:
             self.fin_report_month()
-            self.agent_report_month()
+            self.agent_report_month(self.itog_report_month)
 
         credentials = ServiceAccountCredentials.from_json_keyfile_dict(
             settings.google_api_settings.google_service_account_config,
@@ -5709,14 +5393,14 @@ class BarsicReport2Service:
         )
         httpAuth = credentials.authorize(httplib2.Http())
         try:
-            logging.info("Попытка авторизации с Google-документами ...")
+            logger.info("Попытка авторизации с Google-документами ...")
             googleservice = apiclient.discovery.build(
                 "sheets", "v4", http=httpAuth, cache_discovery=False
             )
 
         except IndexError as e:
             error_message = f"Ошибка {repr(e)}"
-            logging.error(error_message)
+            logger.error(error_message)
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=error_message,
@@ -5773,40 +5457,17 @@ class BarsicReport2Service:
         self.itog_report_org3 = None
         self.itog_report_org4 = None
         self.itog_report_org5 = None
-        self.report_bitrix = None
 
         self.click_select_org()
 
-        self.report_bitrix = self.read_bitrix_base(
-            server=self.server,
-            database=self.database_bitrix,
-            user=self.user,
-            password=self.pwd,
-            date_from=date_from,
-            date_to=date_to,
-        )
-        self.report_bitrix_lastyear = self.read_bitrix_base(
-            server=self.server,
-            database=self.database_bitrix,
-            user=self.user,
-            password=self.pwd,
-            date_from=date_from - relativedelta(years=1),
-            date_to=date_to - relativedelta(years=1),
-        )
+        self.report_bitrix = (0, 0)
+        self.report_bitrix_lastyear = (0, 0)
         self.report_rk = self.rk_report_request(
-            server=self.server_rk,
-            database=self.database_rk,
-            user=self.user_rk,
-            password=self.pwd_rk,
             cash_id=15033,
             date_from=date_from,
             date_to=date_to,
         )
         self.report_rk_lastyear = self.rk_report_request(
-            server=self.server_rk,
-            database=self.database_rk,
-            user=self.user_rk,
-            password=self.pwd_rk,
             cash_id=15033,
             date_from=date_from - relativedelta(years=1),
             date_to=date_to - relativedelta(years=1),
@@ -5814,80 +5475,56 @@ class BarsicReport2Service:
 
         if self.org1:
             self.itog_report_org1 = self.itog_report(
-                server=self.server,
-                database=self.database1,
-                user=self.user,
-                password=self.pwd,
+                database=settings.mssql_database1,
                 org=self.org1[0],
                 org_name=self.org1[1],
                 date_from=date_from,
                 date_to=date_to,
             )
             self.itog_report_org1_lastyear = self.itog_report(
-                server=self.server,
-                database=self.database1,
-                user=self.user,
-                password=self.pwd,
+                database=settings.mssql_database1,
                 org=self.org1[0],
                 org_name=self.org1[1],
                 date_from=date_from - relativedelta(years=1),
                 date_to=date_to - relativedelta(years=1),
             )
             self.itog_report_org3 = self.itog_report(
-                server=self.server,
-                database=self.database1,
-                user=self.user,
-                password=self.pwd,
+                database=settings.mssql_database1,
                 org=self.org3[0],
                 org_name=self.org3[1],
                 date_from=date_from,
                 date_to=date_to,
             )
             self.itog_report_org3_lastyear = self.itog_report(
-                server=self.server,
-                database=self.database1,
-                user=self.user,
-                password=self.pwd,
+                database=settings.mssql_database1,
                 org=self.org3[0],
                 org_name=self.org3[1],
                 date_from=date_from - relativedelta(years=1),
                 date_to=date_to - relativedelta(years=1),
             )
             self.itog_report_org4 = self.itog_report(
-                server=self.server,
-                database=self.database1,
-                user=self.user,
-                password=self.pwd,
+                database=settings.mssql_database1,
                 org=self.org4[0],
                 org_name=self.org4[1],
                 date_from=date_from,
                 date_to=date_to,
             )
             self.itog_report_org4_lastyear = self.itog_report(
-                server=self.server,
-                database=self.database1,
-                user=self.user,
-                password=self.pwd,
+                database=settings.mssql_database1,
                 org=self.org4[0],
                 org_name=self.org4[1],
                 date_from=date_from - relativedelta(years=1),
                 date_to=date_to - relativedelta(years=1),
             )
             self.itog_report_org5 = self.itog_report(
-                server=self.server,
-                database=self.database1,
-                user=self.user,
-                password=self.pwd,
+                database=settings.mssql_database1,
                 org=self.org5[0],
                 org_name=self.org5[1],
                 date_from=date_from,
                 date_to=date_to,
             )
             self.itog_report_org5_lastyear = self.itog_report(
-                server=self.server,
-                database=self.database1,
-                user=self.user,
-                password=self.pwd,
+                database=settings.mssql_database1,
                 org=self.org5[0],
                 org_name=self.org5[1],
                 date_from=date_from - relativedelta(years=1),
@@ -5896,11 +5533,8 @@ class BarsicReport2Service:
             if int((date_to - timedelta(1)).strftime("%y%m")) < int(
                 date_to.strftime("%y%m")
             ):
-                self.itog_report_month = self.itog_report(
-                    server=self.server,
-                    database=self.database1,
-                    user=self.user,
-                    password=self.pwd,
+                itog_report_month_org1 = self.itog_report(
+                    database=settings.mssql_database1,
                     org=self.org1[0],
                     org_name=self.org1[1],
                     date_from=datetime.strptime(
@@ -5909,10 +5543,6 @@ class BarsicReport2Service:
                     date_to=date_to,
                 )
                 self.report_rk_month = self.rk_report_request(
-                    server=self.server_rk,
-                    database=self.database_rk,
-                    user=self.user_rk,
-                    password=self.pwd_rk,
                     cash_id=15033,
                     date_from=datetime.strptime(
                         "01" + (date_to - timedelta(1)).strftime("%m%y"), "%d%m%y"
@@ -5923,26 +5553,17 @@ class BarsicReport2Service:
                 self.itog_report_month = None
 
             self.cashdesk_report_org1 = self.cashdesk_report(
-                server=self.server,
-                database=self.database1,
-                user=self.user,
-                password=self.pwd,
+                database=settings.mssql_database1,
                 date_from=date_from,
                 date_to=date_to,
             )
             self.cashdesk_report_org1_lastyear = self.cashdesk_report(
-                server=self.server,
-                database=self.database1,
-                user=self.user,
-                password=self.pwd,
+                database=settings.mssql_database1,
                 date_from=date_from - relativedelta(years=1),
                 date_to=date_to - relativedelta(years=1),
             )
             self.client_count_totals_org1 = self.client_count_totals_period(
-                server=self.server,
-                database=self.database1,
-                user=self.user,
-                password=self.pwd,
+                database=settings.mssql_database1,
                 org=self.org1[0],
                 org_name=self.org1[1],
                 date_from=date_from,
@@ -5950,28 +5571,19 @@ class BarsicReport2Service:
             )
         if self.org2:
             self.itog_report_org2 = self.itog_report(
-                server=self.server,
-                database=self.database2,
-                user=self.user,
-                password=self.pwd,
+                database=settings.mssql_database2,
                 org=self.org2[0],
                 org_name=self.org2[1],
                 date_from=date_from,
                 date_to=date_to,
             )
             self.cashdesk_report_org2 = self.cashdesk_report(
-                server=self.server,
-                database=self.database2,
-                user=self.user,
-                password=self.pwd,
+                database=settings.mssql_database2,
                 date_from=date_from,
                 date_to=date_to,
             )
             self.client_count_totals_org2 = self.client_count_totals_period(
-                server=self.server,
-                database=self.database2,
-                user=self.user,
-                password=self.pwd,
+                database=settings.mssql_database2,
                 org=self.org2[0],
                 org_name=self.org2[1],
                 date_from=date_from,
@@ -5989,6 +5601,18 @@ class BarsicReport2Service:
                 break
             else:
                 date_from = date_from + timedelta(1)
+
+        # Поиск новых услуг
+        for report_name in ("GoogleReport", "PlatAgentReport"):
+            self._settings_service.choose_db("Aquapark_Ulyanovsk")
+            new_tariffs = await self._settings_service.get_new_tariff(report_name)
+            if new_tariffs:
+                error_message = f"Найдены нераспределенные тарифы в отчете {report_name}: {new_tariffs}"
+                logger.error(error_message)
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=error_message,
+                )
 
         for date in period:
             date_from = date
@@ -6010,28 +5634,29 @@ class BarsicReport2Service:
                     "PlatAgentReport"
                 )
             )
-            # Поиск новых услуг
-            for report_name in ("GoogleReport", "PlatAgentReport"):
-                self._settings_service.choose_db("Aquapark_Ulyanovsk")
-                new_tariffs = await self._settings_service.get_new_tariff(report_name)
-                if new_tariffs:
-                    error_message = f"Найдены нераспределенные тарифы в отчете {report_name}: {new_tariffs}"
-                    logger.error(error_message)
-                    raise HTTPException(
-                        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                        detail=error_message,
-                    )
-
             await self.save_reports(date_from)
 
         # Отправка в яндекс диск
         if use_yadisk:
             self.path_list = filter(lambda x: x is not None, self.path_list)
             self.sync_to_yadisk(
-                self.path_list, self.yadisk_token, date_from, use_yadisk
+                self.path_list, settings.yadisk_token, date_from, use_yadisk
             )
             self.path_list = []
 
 
 def get_legacy_service() -> BarsicReport2Service:
-    return BarsicReport2Service()
+    bars_srv = MsSqlDatabase(
+        server=settings.mssql_server,
+        user=settings.mssql_user,
+        password=settings.mssql_pwd,
+    )
+    rk_srv = MsSqlDatabase(
+        server=settings.mssql_server_rk,
+        user=settings.mssql_user_rk,
+        password=settings.mssql_pwd_rk,
+    )
+    return BarsicReport2Service(
+        bars_srv=bars_srv,
+        rk_srv=rk_srv,
+    )

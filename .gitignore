@@ -45,6 +45,7 @@ fabric.properties
 out
 gen
 dev/backup
+reports
 
 ### Python template
 # Byte-compiled / optimized / DLL files
