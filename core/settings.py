@@ -41,6 +41,7 @@ class AppSettings(BaseSettings):
 
     project_name: str = Field("Barsic", validation_alias="PROJECT_NAME")
     debug: bool = Field(False, validation_alias="DEBUG")
+    show_traceback: bool = Field(False, validation_alias="SHOW_TRACEBACK")
 
     mssql_driver_type: str = Field(validation_alias="MSSQL_DRIVER_TYPE")
     mssql_server: str = Field(validation_alias="MSSQL_SERVER")

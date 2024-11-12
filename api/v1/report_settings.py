@@ -79,3 +79,32 @@ async def get_report_names(
     )
 
     return report_name_full_detail
+
+
+@router.get("/search_duplicates", response_model=dict)
+async def get_report_names(
+    report_name: Annotated[
+        gen_report_name_enum(), Query(description="Наименование отчета")
+    ] = None,
+) -> dict:
+
+    if report_name is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Need any value from report_name")
+
+    raw_report_name = await ReportNameModel.get_by_title(title=report_name.value)
+    report_name_detail = ReportNameDetail.model_validate(raw_report_name)
+
+    elements = {}
+    for group in report_name_detail.groups:
+        raw_report_elements = await ReportElementModel.get_by_group_id(report_group_id=group.id)
+        for raw_element in raw_report_elements:
+            element = ReportElementDetail.model_validate(raw_element)
+            element_group = elements.setdefault(element.title, [])
+            element_group.append(group.title)
+
+    res = {}
+    for element_name, groups in elements.items():
+        if len(groups) > 1:
+            res[element_name] = groups
+
+    return res

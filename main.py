@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-
+from middleware.exceptions import exception_traceback_middleware
 from fastapi import FastAPI
 from fastapi.responses import ORJSONResponse
 from redis.asyncio import Redis
@@ -30,3 +30,4 @@ app = FastAPI(
 )
 
 app.include_router(api_router, prefix="/api")
+app.middleware("http")(exception_traceback_middleware)
