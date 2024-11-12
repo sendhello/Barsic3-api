@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from middleware.exceptions import exception_traceback_middleware
+
 from fastapi import FastAPI
 from fastapi.responses import ORJSONResponse
 from redis.asyncio import Redis
@@ -7,6 +7,7 @@ from redis.asyncio import Redis
 from api import router as api_router
 from core.settings import settings
 from db import redis_db
+from middleware.exceptions import exception_traceback_middleware
 
 
 @asynccontextmanager

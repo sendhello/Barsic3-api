@@ -1,7 +1,7 @@
 from copy import deepcopy
+from decimal import Decimal
 
 from api.v1.report_settings import logger
-from decimal import Decimal
 
 
 def is_int(value):
@@ -59,8 +59,8 @@ def concatenate_itog_reports(*itog_reports: dict[str, tuple]):
 
 
 def create_month_agent_report(
-        month_total_report: dict[str, tuple],
-        agent_dict: dict,
+    month_total_report: dict[str, tuple],
+    agent_dict: dict,
 ):
     """Создает отчет платежного агента за месяц."""
 
@@ -69,9 +69,7 @@ def create_month_agent_report(
     month_agent_report["Контрольная сумма"]["Cумма"] = [["Сумма", 0, 0.0]]
     for org in agent_dict:
         month_agent_report[org] = {}
-        month_agent_report[org]["Итого по группе"] = [
-            ["Итого по группе", 0, 0.0]
-        ]
+        month_agent_report[org]["Итого по группе"] = [["Итого по группе", 0, 0.0]]
         for tariff in agent_dict[org]:
             try:
                 if tariff == "Дата":
@@ -98,9 +96,7 @@ def create_month_agent_report(
                     pass
                 else:
                     try:
-                        if month_agent_report[org][
-                            month_total_report[tariff][2]
-                        ]:
+                        if month_agent_report[org][month_total_report[tariff][2]]:
                             month_agent_report[org][
                                 month_total_report[tariff][2]
                             ].append(
@@ -110,12 +106,12 @@ def create_month_agent_report(
                                     month_total_report[tariff][1],
                                 ]
                             )
-                            month_agent_report[org][
-                                month_total_report[tariff][2]
-                            ][0][1] += month_total_report[tariff][0]
-                            month_agent_report[org][
-                                month_total_report[tariff][2]
-                            ][0][2] += month_total_report[tariff][1]
+                            month_agent_report[org][month_total_report[tariff][2]][0][
+                                1
+                            ] += month_total_report[tariff][0]
+                            month_agent_report[org][month_total_report[tariff][2]][0][
+                                2
+                            ] += month_total_report[tariff][1]
                             month_agent_report[org]["Итого по группе"][0][
                                 1
                             ] += month_total_report[tariff][0]
@@ -123,16 +119,14 @@ def create_month_agent_report(
                                 2
                             ] += month_total_report[tariff][1]
                             if tariff != "Итого по отчету":
-                                month_agent_report["Контрольная сумма"][
-                                    "Cумма"
-                                ][0][1] += month_total_report[tariff][0]
-                                month_agent_report["Контрольная сумма"][
-                                    "Cумма"
-                                ][0][2] += month_total_report[tariff][1]
+                                month_agent_report["Контрольная сумма"]["Cумма"][0][
+                                    1
+                                ] += month_total_report[tariff][0]
+                                month_agent_report["Контрольная сумма"]["Cумма"][0][
+                                    2
+                                ] += month_total_report[tariff][1]
                         else:
-                            month_agent_report[org][
-                                month_total_report[tariff][2]
-                            ] = []
+                            month_agent_report[org][month_total_report[tariff][2]] = []
                             month_agent_report[org][
                                 month_total_report[tariff][2]
                             ].append(["Итого по папке", 0, 0.0])
@@ -145,12 +139,12 @@ def create_month_agent_report(
                                     month_total_report[tariff][1],
                                 ]
                             )
-                            month_agent_report[org][
-                                month_total_report[tariff][2]
-                            ][0][1] += month_total_report[tariff][0]
-                            month_agent_report[org][
-                                month_total_report[tariff][2]
-                            ][0][2] += month_total_report[tariff][1]
+                            month_agent_report[org][month_total_report[tariff][2]][0][
+                                1
+                            ] += month_total_report[tariff][0]
+                            month_agent_report[org][month_total_report[tariff][2]][0][
+                                2
+                            ] += month_total_report[tariff][1]
                             month_agent_report[org]["Итого по группе"][0][
                                 1
                             ] += month_total_report[tariff][0]
@@ -158,34 +152,30 @@ def create_month_agent_report(
                                 2
                             ] += month_total_report[tariff][1]
                             if tariff != "Итого по отчету":
-                                month_agent_report["Контрольная сумма"][
-                                    "Cумма"
-                                ][0][1] += month_total_report[tariff][0]
-                                month_agent_report["Контрольная сумма"][
-                                    "Cумма"
-                                ][0][2] += month_total_report[tariff][1]
+                                month_agent_report["Контрольная сумма"]["Cумма"][0][
+                                    1
+                                ] += month_total_report[tariff][0]
+                                month_agent_report["Контрольная сумма"]["Cумма"][0][
+                                    2
+                                ] += month_total_report[tariff][1]
                     except KeyError:
-                        month_agent_report[org][
-                            month_total_report[tariff][2]
-                        ] = []
-                        month_agent_report[org][
-                            month_total_report[tariff][2]
-                        ].append(["Итого по папке", 0, 0.0])
-                        month_agent_report[org][
-                            month_total_report[tariff][2]
-                        ].append(
+                        month_agent_report[org][month_total_report[tariff][2]] = []
+                        month_agent_report[org][month_total_report[tariff][2]].append(
+                            ["Итого по папке", 0, 0.0]
+                        )
+                        month_agent_report[org][month_total_report[tariff][2]].append(
                             (
                                 tariff,
                                 month_total_report[tariff][0],
                                 month_total_report[tariff][1],
                             )
                         )
-                        month_agent_report[org][
-                            month_total_report[tariff][2]
-                        ][0][1] += month_total_report[tariff][0]
-                        month_agent_report[org][
-                            month_total_report[tariff][2]
-                        ][0][2] += month_total_report[tariff][1]
+                        month_agent_report[org][month_total_report[tariff][2]][0][
+                            1
+                        ] += month_total_report[tariff][0]
+                        month_agent_report[org][month_total_report[tariff][2]][0][
+                            2
+                        ] += month_total_report[tariff][1]
                         month_agent_report[org]["Итого по группе"][0][
                             1
                         ] += month_total_report[tariff][0]
@@ -193,21 +183,21 @@ def create_month_agent_report(
                             2
                         ] += month_total_report[tariff][1]
                         if tariff != "Итого по отчету":
-                            month_agent_report["Контрольная сумма"][
-                                "Cумма"
-                            ][0][1] += month_total_report[tariff][0]
-                            month_agent_report["Контрольная сумма"][
-                                "Cумма"
-                            ][0][2] += month_total_report[tariff][1]
+                            month_agent_report["Контрольная сумма"]["Cумма"][0][
+                                1
+                            ] += month_total_report[tariff][0]
+                            month_agent_report["Контрольная сумма"]["Cумма"][0][
+                                2
+                            ] += month_total_report[tariff][1]
             except KeyError:
                 pass
             except TypeError:
                 pass
     if (
-            month_agent_report["ИТОГО"][""][1][2]
-            != month_agent_report["Контрольная сумма"]["Cумма"][0][2]
-            or month_agent_report["ИТОГО"][""][1][1]
-            != month_agent_report["Контрольная сумма"]["Cумма"][0][1]
+        month_agent_report["ИТОГО"][""][1][2]
+        != month_agent_report["Контрольная сумма"]["Cумма"][0][2]
+        or month_agent_report["ИТОГО"][""][1][1]
+        != month_agent_report["Контрольная сумма"]["Cумма"][0][1]
     ):
         logger.error(
             f"Несоответствие Контрольных сумм. "
@@ -221,17 +211,15 @@ def create_month_agent_report(
 
 
 def create_month_finance_report(
-        itog_report_month: dict[str, tuple],
-        itogreport_group_dict: dict,
-        orgs_dict: dict,
-        report_rk_month: list,
+    itog_report_month: dict[str, tuple],
+    itogreport_group_dict: dict,
+    orgs_dict: dict,
+    report_rk_month: list,
 ):
     """Создает финансовый отчет за месяц."""
 
     month_finance_report = {}
-    control_sum_group = month_finance_report.setdefault(
-        "Контрольная сумма", {}
-    )
+    control_sum_group = month_finance_report.setdefault("Контрольная сумма", {})
     control_sum = control_sum_group.setdefault("Cумма", [["Сумма", 0, 0.0]])
     smile = [
         len(report_rk_month),
@@ -247,7 +235,9 @@ def create_month_finance_report(
             try:
                 for service_name in orgs_dict[oldgroup]:
                     try:
-                        service_count, service_sum, org_name, group_name = itog_report_month[service_name]
+                        service_count, service_sum, org_name, group_name = (
+                            itog_report_month[service_name]
+                        )
 
                         if service_name == "Дата":
                             product_group = finreport_group.setdefault(oldgroup, [])
@@ -306,8 +296,8 @@ def create_month_finance_report(
     month_finance_report["ИТОГО"][""][1][1] += smile[0]
     month_finance_report["ИТОГО"][""][1][2] += smile[1]
     if (
-            month_finance_report["ИТОГО"][""][1][2] != control_sum[0][2]
-            or month_finance_report["ИТОГО"][""][1][1] != control_sum[0][1]
+        month_finance_report["ИТОГО"][""][1][2] != control_sum[0][2]
+        or month_finance_report["ИТОГО"][""][1][1] != control_sum[0][1]
     ):
         logger.error(
             f"Несоответствие Контрольных сумм. "
@@ -356,8 +346,9 @@ def get_total_report(
             int(row[1]) if isinstance(row[1], Decimal) else row[1],
             float(row[0]) if isinstance(row[0], Decimal) else row[0],
             row[6],
-            row[7]
-        ) for row in rows
+            row[7],
+        )
+        for row in rows
     }
     result[org_name] = (0, 0, "Организация", "Организация")
     result[str(org)] = (0, 0, "ID организации", "ID организации")

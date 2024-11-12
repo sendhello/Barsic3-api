@@ -4,7 +4,6 @@ import re
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List
-from copy import deepcopy
 
 import apiclient
 import httplib2
@@ -15,14 +14,14 @@ from oauth2client.service_account import ServiceAccountCredentials
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from starlette import status
-from services.bars import BarsService, get_bars_service
+
 from core.settings import settings
 from db.mssql import MsSqlDatabase
 from legacy import functions
 from legacy.to_google_sheets import Spreadsheet, create_new_google_doc
 from schemas.bars import ClientsCount
 from schemas.google_report_ids import GoogleReportIdCreate
-from services.bars import BarsService
+from services.bars import BarsService, get_bars_service
 from services.report_config import ReportConfigService, get_report_config_service
 from services.settings import SettingsService, get_settings_service
 from sql.clients_count import CLIENTS_COUNT_SQL
@@ -67,7 +66,10 @@ class BarsicReport2Service:
             if not rows:
                 return [ClientsCount(count=0, id=488, zone_name="", code="0003")]
 
-        return [ClientsCount(count=row[0], id=row[1], zone_name=row[2], code=row[3]) for row in rows]
+        return [
+            ClientsCount(count=row[0], id=row[1], zone_name=row[2], code=row[3])
+            for row in rows
+        ]
 
     def count_clients_print(self):
         clients_count = self.get_clients_count()
@@ -614,29 +616,17 @@ class BarsicReport2Service:
             for serv in services:
                 try:
                     if org == "Дата":
-                        self.agentreport_dict[org][0] = self.itog_report_org1[serv][
-                            0
-                        ]
-                        self.agentreport_dict[org][1] = self.itog_report_org1[serv][
-                            1
-                        ]
+                        self.agentreport_dict[org][0] = self.itog_report_org1[serv][0]
+                        self.agentreport_dict[org][1] = self.itog_report_org1[serv][1]
                     elif serv == "Депозит":
-                        self.agentreport_dict[org][1] += self.itog_report_org1[
-                            serv
-                        ][1]
+                        self.agentreport_dict[org][1] += self.itog_report_org1[serv][1]
                     elif serv == "Аквазона":
-                        self.agentreport_dict[org][1] += self.itog_report_org1[
-                            serv
-                        ][1]
+                        self.agentreport_dict[org][1] += self.itog_report_org1[serv][1]
                     elif serv == "Организация":
                         pass
                     else:
-                        self.agentreport_dict[org][0] += self.itog_report_org1[
-                            serv
-                        ][0]
-                        self.agentreport_dict[org][1] += self.itog_report_org1[
-                            serv
-                        ][1]
+                        self.agentreport_dict[org][0] += self.itog_report_org1[serv][0]
+                        self.agentreport_dict[org][1] += self.itog_report_org1[serv][1]
                 except KeyError:
                     pass
                 except TypeError:
@@ -1073,10 +1063,14 @@ class BarsicReport2Service:
                 await self._report_config_service.add_google_report_id(google_report_id)
                 logger.info(f"Создана новая таблица с Id: {google_report_id.doc_id}")
 
-            if google_report_id.version != settings.google_api_settings.google_doc_version:
+            if (
+                google_report_id.version
+                != settings.google_api_settings.google_doc_version
+            ):
                 error_message = (
                     f"Версия Финансового отчета ({google_report_id.version}) не соответствует текущей "
-                    f"({settings.google_api_settings.google_doc_version}).\nНеобходимо сначала удалить ссылку на старую версию, "
+                    f"({settings.google_api_settings.google_doc_version}).\n"
+                    f"Необходимо сначала удалить ссылку на старую версию, "
                     f"затем заново сформировать отчет с начала месяца."
                 )
                 logger.error(error_message)
@@ -5246,11 +5240,14 @@ class BarsicReport2Service:
                             org=organization.super_account_id,
                             org_name=organization.descr,
                             date_from=datetime.strptime(
-                                "01" + (date_to - timedelta(1)).strftime("%m%y"), "%d%m%y"
+                                "01" + (date_to - timedelta(1)).strftime("%m%y"),
+                                "%d%m%y",
                             ),
                             date_to=date_to,
                         )
-                    itog_report_month = functions.concatenate_itog_reports(itog_report_month, itog_report_month_for_org)
+                    itog_report_month = functions.concatenate_itog_reports(
+                        itog_report_month, itog_report_month_for_org
+                    )
 
                 self.itog_report_month = itog_report_month
                 self.report_rk_month = self.rk_report_request(

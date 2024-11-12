@@ -1,8 +1,8 @@
+import logging
 from datetime import date, datetime, timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
-import logging
 
 from constants import gen_db_name_enum
 from core.settings import settings
