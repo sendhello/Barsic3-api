@@ -25,7 +25,7 @@ class ReportElement(IdMixin, ReportElementCreate):
     pass
 
 
-class ReportElementDetail(Model):
+class ReportElementDetail(IdMixin, Model):
     """Элемент отчета."""
 
     title: str = Field(description="Название элемента")
@@ -81,3 +81,9 @@ class ReportNameDetail(ReportName):
     """Тип отчета со списком отчетов."""
 
     groups: list[ReportGroup] = Field(description="Группы отчета")
+
+
+class ReportNameFullDetail(ReportName):
+    """Тип отчета со списком отчетов."""
+
+    groups: list[ReportGroupDetail] = Field(description="Группы отчета")

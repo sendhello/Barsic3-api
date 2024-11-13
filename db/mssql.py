@@ -46,6 +46,9 @@ class MsSqlDatabase:
             self._connection = None
 
     def connect(self) -> Connection:
+        if self._database is None:
+            raise RuntimeError("Mssql Database not set")
+
         if self._connection is None:
             self._connect()
 

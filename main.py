@@ -7,6 +7,7 @@ from redis.asyncio import Redis
 from api import router as api_router
 from core.settings import settings
 from db import redis_db
+from middleware.exceptions import exception_traceback_middleware
 
 
 @asynccontextmanager
@@ -30,3 +31,4 @@ app = FastAPI(
 )
 
 app.include_router(api_router, prefix="/api")
+app.middleware("http")(exception_traceback_middleware)

@@ -83,10 +83,6 @@ class WorkerService:
 
             if total_detail_report is None:
                 report_rk_month = self._legacy_service.rk_report_request(
-                    server=settings.mssql_server_rk,
-                    database=settings.mssql_database_rk,
-                    user=settings.mssql_user_rk,
-                    password=settings.mssql_pwd_rk,
                     cash_id=15033,
                     date_from=current_date,
                     date_to=current_date + timedelta(days=1),
@@ -102,10 +98,7 @@ class WorkerService:
                     )
                 )
                 org_list1 = self._legacy_service.list_organisation(
-                    server=settings.mssql_server,
                     database=settings.mssql_database1,
-                    user=settings.mssql_user,
-                    password=settings.mssql_pwd,
                 )
                 for org in org_list1:
                     if org[0] == 36:
@@ -113,10 +106,7 @@ class WorkerService:
 
                 self._legacy_service.itog_report_month = (
                     self._legacy_service.itog_report(
-                        server=settings.mssql_server,
                         database=settings.mssql_database1,
-                        user=settings.mssql_user,
-                        password=settings.mssql_pwd,
                         org=org1[0],
                         org_name=org1[1],
                         date_from=current_date,
