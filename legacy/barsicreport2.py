@@ -58,7 +58,7 @@ class BarsicReport2Service:
     def get_clients_count(self) -> list[ClientsCount]:
         """Получение количества человек в зоне."""
 
-        self.bars_srv.set_database(settings.database1)
+        self.bars_srv.set_database(settings.mssql_database1)
         with self.bars_srv as connect:
             cursor = connect.cursor()
             cursor.execute(CLIENTS_COUNT_SQL)
