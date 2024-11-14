@@ -8,6 +8,8 @@ import gspread_formatting as gf
 from fastapi import HTTPException
 
 from core.settings import settings
+from db.mssql import MsSqlDatabase
+from legacy import functions
 from legacy.barsicreport2 import BarsicReport2Service, get_legacy_service
 from legacy.to_google_sheets import get_letter_column_name
 from schemas.google_report_ids import GoogleReportIdCreate
@@ -23,11 +25,13 @@ logger = logging.getLogger(__name__)
 class WorkerService:
     def __init__(
         self,
+        bars_srv: MsSqlDatabase,
         bars_service: BarsService,
         report_config_service: ReportConfigService,
         legacy_service: BarsicReport2Service,
         report_service: ReportService,
     ):
+        self._bars_srv = bars_srv
         self._bars_service = bars_service
         self._report_config_service = report_config_service
         self._legacy_service = legacy_service
@@ -104,23 +108,28 @@ class WorkerService:
                     if org[0] == 36:
                         org1 = (org[0], org[2])
 
-                self._legacy_service.itog_report_month = (
-                    self._legacy_service.itog_report(
-                        database=settings.mssql_database1,
+                self._bars_srv.set_database(settings.mssql_database1)
+                with self._bars_srv as connect:
+                    self._legacy_service.itog_report_month = functions.get_total_report(
+                        connect=connect,
                         org=org1[0],
                         org_name=org1[1],
                         date_from=current_date,
                         date_to=current_date + timedelta(days=1),
                     )
-                )
 
                 self._legacy_service.report_rk_month = report_rk_month
                 self._legacy_service.itogreport_group_dict = itogreport_group_dict
-                total_detail_report_data = self._legacy_service.fin_report_month()
+                month_finance_report = functions.create_month_finance_report(
+                    itog_report_month=self._legacy_service.itog_report_month,
+                    itogreport_group_dict=self._legacy_service.itogreport_group_dict,
+                    orgs_dict=self._legacy_service.orgs_dict,
+                    report_rk_month=self._legacy_service.report_rk_month,
+                )
                 total_detail_report = ReportCacheCreate(
                     report_date=current_date.date(),
                     report_type=report_type,
-                    report_data=total_detail_report_data,
+                    report_data=month_finance_report,
                 )
 
                 await self._report_service.save_report(total_detail_report)
@@ -328,7 +337,13 @@ class WorkerService:
 
 
 def get_worker_service():
+    bars_srv = MsSqlDatabase(
+        server=settings.mssql_server,
+        user=settings.mssql_user,
+        password=settings.mssql_pwd,
+    )
     return WorkerService(
+        bars_srv=bars_srv,
         bars_service=get_bars_service(),
         report_config_service=get_report_config_service(),
         legacy_service=get_legacy_service(),
