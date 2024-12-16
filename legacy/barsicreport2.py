@@ -3,7 +3,6 @@ import os
 import re
 from datetime import datetime, timedelta
 from decimal import Decimal
-from typing import Any, Dict, List
 
 import apiclient
 import httplib2
@@ -23,6 +22,7 @@ from schemas.bars import ClientsCount
 from schemas.google_report_ids import GoogleReportIdCreate
 from services.bars import BarsService, get_bars_service
 from services.report_config import ReportConfigService, get_report_config_service
+from services.rk import RKService, get_rk_service
 from services.settings import SettingsService, get_settings_service
 from sql.clients_count import CLIENTS_COUNT_SQL
 
@@ -54,6 +54,7 @@ class BarsicReport2Service:
         self._report_config_service: ReportConfigService = get_report_config_service()
         self._settings_service: SettingsService = get_settings_service()
         self._bars_service: BarsService = get_bars_service()
+        self._rk_service: RKService = get_rk_service()
 
     def get_clients_count(self) -> list[ClientsCount]:
         """Получение количества человек в зоне."""
@@ -337,35 +338,6 @@ class BarsicReport2Service:
             report["Организация"] = [[self.org2[1]]]
         return report
 
-    def rk_report_request(
-        self,
-        cash_id: int,
-        date_from: datetime,
-        date_to: datetime,
-    ) -> List[Dict[str, Any]]:
-        """
-        Делает запрос в базу R-Keeper и возвращает продажи кассы cash_id за запрашиваемый период.
-        """
-        date_from = date_from.strftime("%Y%m%d 00:00:00")
-        date_to = date_to.strftime("%Y%m%d 00:00:00")
-
-        self.rk_srv.set_database(settings.mssql_database_rk)
-        with self.rk_srv as connect:
-            cursor = connect.cursor()
-            cursor.execute(
-                f"""{''}
-                    SELECT OPENTIME, STATIONID, PAIDSUM FROM ORDERS 
-                    WHERE STATIONID = {cash_id} AND OPENTIME > '{date_from}' AND OPENTIME < '{date_to}'
-                """
-            )
-            rows = cursor.fetchall()
-
-        report = [
-            {"station_id": row[0], "open_time": row[1], "paid_sum": row[2]}
-            for row in rows
-        ]
-        return report
-
     def fin_report(self):
         """
         Форминует финансовый отчет в установленном формате
@@ -450,10 +422,8 @@ class BarsicReport2Service:
         self.finreport_dict["Online Продажи"][0] += self.report_bitrix[0]
         self.finreport_dict["Online Продажи"][1] += self.report_bitrix[1]
 
-        self.finreport_dict["Смайл"][0] = len(self.report_rk)
-        self.finreport_dict["Смайл"][1] = float(
-            sum([line["paid_sum"] for line in self.report_rk])
-        )
+        self.finreport_dict["Смайл"][0] = self.smile_report.total_count
+        self.finreport_dict["Смайл"][1] = self.smile_report.total_sum
 
         total_cashdesk_report = self.cashdesk_report_org1["Итого"][0]
         self.finreport_dict["MaxBonus"] = (
@@ -550,10 +520,10 @@ class BarsicReport2Service:
         self.finreport_dict_lastyear["Online Продажи"][
             1
         ] += self.report_bitrix_lastyear[1]
-        self.finreport_dict_lastyear["Смайл"][0] = len(self.report_rk_lastyear)
-        self.finreport_dict_lastyear["Смайл"][1] = float(
-            sum([line["paid_sum"] for line in self.report_rk_lastyear])
-        )
+        self.finreport_dict_lastyear["Смайл"][
+            0
+        ] = self.smile_report_lastyear.total_count
+        self.finreport_dict_lastyear["Смайл"][1] = self.smile_report_lastyear.total_sum
 
         total_cashdesk_report = self.cashdesk_report_org1_lastyear["Итого"][0]
         self.finreport_dict_lastyear["MaxBonus"] = (
@@ -1876,8 +1846,8 @@ class BarsicReport2Service:
             [
                 [
                     datetime.strftime(self.finreport_dict["Дата"][0], "%d.%m.%Y"),
-                    len(self.report_rk),
-                    float(sum([line["paid_sum"] for line in self.report_rk])),
+                    self.smile_report.total_count,
+                    self.smile_report.total_sum,
                 ]
             ],
             "ROWS",
@@ -5069,7 +5039,7 @@ class BarsicReport2Service:
                 itog_report_month=self.itog_report_month,
                 itogreport_group_dict=self.itogreport_group_dict,
                 orgs_dict=self.orgs_dict,
-                report_rk_month=self.report_rk_month,
+                smile_report_month=self.smile_report_month,
             )
             self.agentreport_dict_month = functions.create_month_agent_report(
                 month_total_report=self.itog_report_month,
@@ -5154,13 +5124,11 @@ class BarsicReport2Service:
 
         self.report_bitrix = (0, 0)
         self.report_bitrix_lastyear = (0, 0)
-        self.report_rk = self.rk_report_request(
-            cash_id=15033,
+        self.smile_report = self._rk_service.get_smile_report(
             date_from=date_from,
             date_to=date_to,
         )
-        self.report_rk_lastyear = self.rk_report_request(
-            cash_id=15033,
+        self.smile_report_lastyear = self._rk_service.get_smile_report(
             date_from=date_from - relativedelta(years=1),
             date_to=date_to - relativedelta(years=1),
         )
@@ -5250,8 +5218,7 @@ class BarsicReport2Service:
                     )
 
                 self.itog_report_month = itog_report_month
-                self.report_rk_month = self.rk_report_request(
-                    cash_id=15033,
+                self.smile_report_month = self._rk_service.get_smile_report(
                     date_from=datetime.strptime(
                         "01" + (date_to - timedelta(1)).strftime("%m%y"), "%d%m%y"
                     ),

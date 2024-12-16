@@ -4,6 +4,7 @@ from pyodbc import ProgrammingError, Row
 
 from core.settings import settings
 from db.mssql import MsSqlDatabase
+from repositories.base import BaseRepository
 from sql.category import GET_TARIFFS_SQL
 from sql.sp_report_totals_v2 import (
     SP_REPORT_TOTALS_V2_OLD_VERSION_SQL,
@@ -12,20 +13,7 @@ from sql.sp_report_totals_v2 import (
 from sql.super_account import GET_ORGANISATIONS_SQL
 
 
-class BarsRepository:
-    def __init__(self, db: MsSqlDatabase):
-        self._db = db
-
-    def set_database(self, db_name: str) -> None:
-        self._db.set_database(db_name)
-
-    def _run_sql(self, sql: str) -> list[Row]:
-        with self._db as conn:
-            cursor = conn.cursor()
-            cursor.execute(sql)
-            rows = cursor.fetchall()
-            return rows
-
+class BarsRepository(BaseRepository):
     def get_tariffs(self, organization_id: int) -> list[Row]:
         sql = GET_TARIFFS_SQL.format(organization_id=organization_id)
         return self._run_sql(sql)
