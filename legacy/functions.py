@@ -2,6 +2,7 @@ from copy import deepcopy
 from decimal import Decimal
 
 from api.v1.report_settings import logger
+from schemas.rk import SmileReport
 
 
 def is_int(value):
@@ -214,17 +215,13 @@ def create_month_finance_report(
     itog_report_month: dict[str, tuple],
     itogreport_group_dict: dict,
     orgs_dict: dict,
-    report_rk_month: list,
+    smile_report_month: SmileReport,
 ):
     """Создает финансовый отчет за месяц."""
 
     month_finance_report = {}
     control_sum_group = month_finance_report.setdefault("Контрольная сумма", {})
     control_sum = control_sum_group.setdefault("Cумма", [["Сумма", 0, 0.0]])
-    smile = [
-        len(report_rk_month),
-        float(sum([line["paid_sum"] for line in report_rk_month])),
-    ]
 
     for group_name, groups in itogreport_group_dict.items():
         finreport_group = month_finance_report.setdefault(group_name, {})
@@ -281,20 +278,30 @@ def create_month_finance_report(
                     "Общепит (Смайл)",
                     [["Итого по папке", 0, 0.0]],
                 )
-                product_group.append(["Смайл", smile[0], smile[1]])
-                product_group[0][1] += smile[0]
-                product_group[0][2] += smile[1]
-                finreport_group_total[0][1] += smile[0]
-                finreport_group_total[0][2] += smile[1]
+                product_group.append(
+                    [
+                        "Смайл",
+                        smile_report_month.total_count,
+                        smile_report_month.total_sum,
+                    ]
+                )
+                product_group[0][1] += smile_report_month.total_count
+                product_group[0][2] += smile_report_month.total_sum
+                finreport_group_total[0][1] += smile_report_month.total_count
+                finreport_group_total[0][2] += smile_report_month.total_sum
 
-    control_sum[0][1] += smile[0]
-    control_sum[0][2] += smile[1]
-    month_finance_report["ИТОГО"]["Итого по группе"][0][1] += smile[0]
-    month_finance_report["ИТОГО"]["Итого по группе"][0][2] += smile[1]
-    month_finance_report["ИТОГО"][""][0][1] += smile[0]
-    month_finance_report["ИТОГО"][""][0][2] += smile[1]
-    month_finance_report["ИТОГО"][""][1][1] += smile[0]
-    month_finance_report["ИТОГО"][""][1][2] += smile[1]
+    control_sum[0][1] += smile_report_month.total_count
+    control_sum[0][2] += smile_report_month.total_sum
+    month_finance_report["ИТОГО"]["Итого по группе"][0][
+        1
+    ] += smile_report_month.total_count
+    month_finance_report["ИТОГО"]["Итого по группе"][0][
+        2
+    ] += smile_report_month.total_sum
+    month_finance_report["ИТОГО"][""][0][1] += smile_report_month.total_count
+    month_finance_report["ИТОГО"][""][0][2] += smile_report_month.total_sum
+    month_finance_report["ИТОГО"][""][1][1] += smile_report_month.total_count
+    month_finance_report["ИТОГО"][""][1][2] += smile_report_month.total_sum
     if (
         month_finance_report["ИТОГО"][""][1][2] != control_sum[0][2]
         or month_finance_report["ИТОГО"][""][1][1] != control_sum[0][1]

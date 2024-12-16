@@ -17,6 +17,7 @@ from schemas.report_cache import ReportCacheCreate
 from services.bars import BarsService, get_bars_service
 from services.report_config import ReportConfigService, get_report_config_service
 from services.reports import ReportService, get_report_service
+from services.rk import RKService, get_rk_service
 
 
 logger = logging.getLogger(__name__)
@@ -27,12 +28,14 @@ class WorkerService:
         self,
         bars_srv: MsSqlDatabase,
         bars_service: BarsService,
+        rk_service: RKService,
         report_config_service: ReportConfigService,
         legacy_service: BarsicReport2Service,
         report_service: ReportService,
     ):
         self._bars_srv = bars_srv
         self._bars_service = bars_service
+        self._rk_service = rk_service
         self._report_config_service = report_config_service
         self._legacy_service = legacy_service
         self._report_service = report_service
@@ -86,8 +89,7 @@ class WorkerService:
                 )
 
             if total_detail_report is None:
-                report_rk_month = self._legacy_service.rk_report_request(
-                    cash_id=15033,
+                smile_report_month = self._rk_service.get_smile_report(
                     date_from=current_date,
                     date_to=current_date + timedelta(days=1),
                 )
@@ -118,13 +120,13 @@ class WorkerService:
                         date_to=current_date + timedelta(days=1),
                     )
 
-                self._legacy_service.report_rk_month = report_rk_month
+                self._legacy_service.smile_report_month = smile_report_month
                 self._legacy_service.itogreport_group_dict = itogreport_group_dict
                 month_finance_report = functions.create_month_finance_report(
                     itog_report_month=self._legacy_service.itog_report_month,
                     itogreport_group_dict=self._legacy_service.itogreport_group_dict,
                     orgs_dict=self._legacy_service.orgs_dict,
-                    report_rk_month=self._legacy_service.report_rk_month,
+                    smile_report_month=self._legacy_service.smile_report_month,
                 )
                 total_detail_report = ReportCacheCreate(
                     report_date=current_date.date(),
@@ -345,6 +347,7 @@ def get_worker_service():
     return WorkerService(
         bars_srv=bars_srv,
         bars_service=get_bars_service(),
+        rk_service=get_rk_service(),
         report_config_service=get_report_config_service(),
         legacy_service=get_legacy_service(),
         report_service=get_report_service(),
