@@ -12,7 +12,10 @@ class RKRepository(BaseRepository):
         date_from: datetime,
         date_to: datetime,
     ) -> dict:
-        sql = RK_SMILE_TOTAL_SUM.format(date_from=date_from, date_to=date_to)
+        sql = RK_SMILE_TOTAL_SUM.format(
+            date_from=date_from.strftime("%Y%m%d 00:00:00"),
+            date_to=date_to.strftime("%Y%m%d 00:00:00"),
+        )
         res = self._run_sql_to_dict(sql)
         return res[0]
 
