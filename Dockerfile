@@ -37,7 +37,7 @@ RUN apt-get update -yqq \
     && rm -rf /var/lib/apt/lists/*
 
 COPY poetry.lock pyproject.toml ./
-RUN pip install poetry && poetry install --no-dev
+RUN pip install poetry && poetry install
 COPY . .
 
 ENTRYPOINT sh barsic_web.sh
