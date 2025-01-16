@@ -355,9 +355,11 @@ class BarsicReport2Service:
                             self.finreport_dict[org][0] = self.itog_report_org1[serv][0]
                             self.finreport_dict[org][1] = self.itog_report_org1[serv][1]
                         elif serv == "Депозит":
+                            logger.warning(f"TEMP: {org=},\n{serv=},\n{self.itog_report_org1[serv][1]=}")
                             self.finreport_dict[org][1] += self.itog_report_org1[serv][
                                 1
                             ]
+                            logger.warning(f"TEMP: {self.finreport_dict[org][1]=}")
                         elif serv == "Аквазона":
                             self.finreport_dict["Кол-во проходов"] = [
                                 self.itog_report_org1[serv][0],
