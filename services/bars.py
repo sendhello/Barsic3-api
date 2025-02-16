@@ -1,8 +1,16 @@
 import logging
 from datetime import datetime
+from decimal import Decimal
 
 from repositories.bars import BarsRepository, get_bars_repo
-from schemas.bars import Category, Organisation, TotalReport, TotalReportElement
+from schemas.bars import (
+    Category,
+    ClientTransaction,
+    ExtendedService,
+    Organisation,
+    TotalReport,
+    TotalReportElement,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -43,6 +51,40 @@ class BarsService:
         return TotalReport(
             elements=[TotalReportElement.model_validate(el) for el in total_report_],
         )
+
+    def get_transactions_by_service_name_pattern(
+        self,
+        date_from: datetime,
+        date_to: datetime,
+        service_name_pattern: str,
+    ) -> list[ExtendedService]:
+        companies = [
+            Organisation.model_validate(org) for org in self._repo.get_organisations()
+        ]
+        _transactions = self._repo.get_transactions_by_service_name_pattern(
+            date_from=date_from,
+            date_to=date_to,
+            service_name_pattern=service_name_pattern,
+            companies_ids=[company.super_account_id for company in companies],
+        )
+        client_transactions = [
+            ClientTransaction.model_validate(el) for el in _transactions
+        ]
+
+        extended_services = {}
+        for client_transaction in client_transactions:
+            if client_transaction.name is None:
+                continue
+
+            extended_service = extended_services.setdefault(
+                client_transaction.name, ExtendedService(name=client_transaction.name)
+            )
+            extended_service.count += int(client_transaction.count)
+            extended_service.summ += client_transaction.price * int(
+                client_transaction.count
+            )
+
+        return list(extended_services.values())
 
 
 def get_bars_service():
