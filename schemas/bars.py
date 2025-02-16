@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 from uuid import UUID
 
 from pydantic import Field
@@ -83,3 +84,40 @@ class ClientsCount(Model):
     id: int
     zone_name: str
     code: str
+
+
+class MasterTransactionBase(Model):
+    master_transaction_id: int = Field(alias="MasterTransactionId")
+    trans_time: datetime = Field(alias="TransTime")
+    super_account_from: int | None = Field(alias="SuperAccountFrom")
+    super_account_to: int | None = Field(alias="SuperAccountTo")
+    user_id: str = Field(alias="UserId")
+    service_point_id: int | None = Field(alias="ServicePointId")
+    server_time: datetime | None = Field(alias="ServerTime")
+    check_detail_id: int | None = Field(alias="CheckDetailId")
+    external_id: str | None = Field(alias="ExternalId")
+    machine: str | None = Field(alias="Machine")
+    sec_subject_id: int | None = Field(alias="SecSubjectId")
+    guid: UUID | None = Field(alias="Guid")
+    extended_data: str | None = Field(alias="ExtendedData")
+
+
+class CheckDetailBase(Model):
+    check_id: int | None = Field(alias="CheckId")
+    name: str | None = Field(alias="Name")
+    count: Decimal | None = Field(alias="Count")
+    price: Decimal | None = Field(alias="Price")
+    card_code: str | None = Field(alias="CardCode")
+    category_id: int | None = Field(alias="CategoryId")
+    type_good: int | None = Field(alias="TypeGood")
+    account: int | None = Field(alias="Account")
+
+
+class ClientTransaction(MasterTransactionBase, CheckDetailBase):
+    super_account: int | None = Field(alias="SuperAccount")
+
+
+class ExtendedService(Model):
+    name: str
+    count: int = Field(default_factory=int)
+    summ: Decimal = Field(default_factory=Decimal)
