@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime
-from decimal import Decimal
 
 from repositories.bars import BarsRepository, get_bars_repo
 from schemas.bars import (
