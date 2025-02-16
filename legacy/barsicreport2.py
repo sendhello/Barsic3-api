@@ -1,12 +1,10 @@
 import logging
-import os
 import re
 from datetime import datetime, timedelta
 from decimal import Decimal
 
 import apiclient
 import httplib2
-import yadisk
 from dateutil.relativedelta import relativedelta
 from fastapi.exceptions import HTTPException
 from oauth2client.service_account import ServiceAccountCredentials
@@ -18,6 +16,7 @@ from core.settings import settings
 from db.mssql import MsSqlDatabase
 from legacy import functions
 from legacy.to_google_sheets import Spreadsheet, create_new_google_doc
+from repositories.yandex import YandexRepository, get_yandex_repo
 from schemas.bars import ClientsCount
 from schemas.google_report_ids import GoogleReportIdCreate
 from services.bars import BarsService, get_bars_service
@@ -55,6 +54,7 @@ class BarsicReport2Service:
         self._settings_service: SettingsService = get_settings_service()
         self._bars_service: BarsService = get_bars_service()
         self._rk_service: RKService = get_rk_service()
+        self._yandex_repo: YandexRepository = get_yandex_repo()
 
     def get_clients_count(self) -> list[ClientsCount]:
         """Получение количества человек в зоне."""
@@ -842,115 +842,8 @@ class BarsicReport2Service:
             f"Сохранение отчета платежного агента "
             f'{agentreport_dict["Организация"][1]} в {path}'
         )
-        path = self.create_path(path, date_from)
-        self.save_file(path, wb)
-        return path
-
-    def create_path(self, path, date_from):
-        """
-        Проверяет наличие указанного пути. В случае отсутствия каких-либо папок создает их
-        """
-        logger.info("Проверка локальных путей сохранения файлов...")
-        list_path = path.split("/")
-        path = ""
-        end_path = ""
-        if list_path[-1][-4:] == ".xls" or list_path[-1]:
-            end_path = list_path.pop()
-        list_path.append(date_from.strftime("%Y"))
-        list_path.append(date_from.strftime("%m") + "-" + date_from.strftime("%B"))
-        directory = os.getcwd()
-        for folder in list_path:
-            if folder not in os.listdir():
-                os.mkdir(folder)
-                logger.debug(f'В директории "{os.getcwd()}" создана папка "{folder}"')
-                os.chdir(folder)
-            else:
-                os.chdir(folder)
-            path += folder + "/"
-        path += end_path
-        os.chdir(directory)
-        return path
-
-    def save_file(self, path, file):
-        """
-        Проверяет не занят ли файл другим процессом и если нет, то перезаписывает его, в противном
-        случае выводит диалоговое окно с предложением закрыть файл и продолжить
-        """
-        try:
-            file.save(path)
-        except PermissionError as e:
-            logger.error(f'Файл "{path}" занят другим процессом.\n{repr(e)}')
-
-    def sync_to_yadisk(self, path_list, token, date_from, use_yadisk):
-        """Копирует локальные файлы в Яндекс Диск."""
-
-        logger.info("Копирование отчетов в Яндекс.Диск...")
-        if path_list:
-            if use_yadisk:
-                logger.info("Соединение с YaDisk...")
-                self.yadisk = yadisk.YaDisk(token=token)
-                if self.yadisk.check_token():
-                    path = "" + settings.report_path
-                    remote_folder = self.create_path_yadisk(path, date_from)
-                    for local_path in path_list:
-                        remote_path = remote_folder + local_path.split("/")[-1]
-                        file_name = f"'{local_path.split('/')[-1]}'"
-                        logger.info(f"Отправка файла {file_name} в YaDisk...")
-                        files_list_yandex = list(self.yadisk.listdir(remote_folder))
-                        files_list = []
-                        for key in files_list_yandex:
-                            if key["file"]:
-                                files_list.append(remote_folder + key["name"])
-                        if remote_path in files_list:
-                            logger.warning(
-                                f"Файл {file_name} уже существует в '{remote_folder}' и будет заменен!"
-                            )
-                            self.yadisk.remove(remote_path, permanently=True)
-                        self.yadisk.upload(local_path, remote_path)
-                        logger.info(
-                            f"Файл '{file_name}' отправлен в '{remote_folder}' YaDisk..."
-                        )
-                else:
-                    error_message = "Ошибка YaDisk: token не валиден"
-                    logger.error(error_message)
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST, detail=error_message
-                    )
-        else:
-            logger.warning("Нет ни одного отчета для отправки в Yandex.Disk")
-
-    def create_path_yadisk(self, path, date_from):
-        """Проверяет наличие указанного пути в Яндекс Диске.
-
-        В случае отсутствия каких-либо папок создает их.
-        """
-        logger.info("Проверка путей сохранения файлов на Яндекс.Диске...")
-        list_path = path.split("/")
-        if list_path[-1][-4:] == ".xls" or list_path[-1] == "":
-            list_path.pop()
-        list_path.append(date_from.strftime("%Y"))
-        list_path.append(date_from.strftime("%m") + "-" + date_from.strftime("%B"))
-        directory = "/"
-        list_path_yandex = []
-        for folder in list_path:
-            folder = directory + folder
-            directory = folder + "/"
-            list_path_yandex.append(folder)
-        directory = "/"
-        for folder in list_path_yandex:
-            folders_list = []
-            folders_list_yandex = list(self.yadisk.listdir(directory))
-            for key in folders_list_yandex:
-                if not key["file"]:
-                    folders_list.append(directory + key["name"])
-
-            if folder not in folders_list:
-                self.yadisk.mkdir(folder)
-                logger.info(f'Создание новой папки в YandexDisk - "{folder}"')
-                directory = folder + "/"
-            else:
-                directory = folder + "/"
-        path = list_path_yandex[-1] + "/"
+        path = self._yandex_repo.create_path(path, date_from)
+        self._yandex_repo.save_file(path, wb)
         return path
 
     async def export_to_google_sheet(self, date_from, http_auth, googleservice):
@@ -4407,8 +4300,8 @@ class BarsicReport2Service:
             f"Сохранение Итогового отчета "
             f'по {organisation_total["Организация"]["Организация"][0][0]} в {path}'
         )
-        path = self.create_path(path, date_from)
-        self.save_file(path, wb)
+        path = self._yandex_repo.create_path(path, date_from)
+        self._yandex_repo.save_file(path, wb)
         return path
 
     def save_cashdesk_report(self, cashdesk_report, date_from):
@@ -4794,8 +4687,8 @@ class BarsicReport2Service:
             f"Сохранение Суммового отчета "
             f'по {cashdesk_report["Организация"][0][0]} в {path}'
         )
-        path = self.create_path(path, date_from)
-        self.save_file(path, wb)
+        path = self._yandex_repo.create_path(path, date_from)
+        self._yandex_repo.save_file(path, wb)
         return path
 
     def save_client_count_totals(self, client_count_totals_org, date_from):
@@ -5015,8 +4908,8 @@ class BarsicReport2Service:
             f"Сохранение отчета по количеству клиентов "
             f"по {client_count_totals_org[0][0]} в {path}"
         )
-        path = self.create_path(path, date_from)
-        self.save_file(path, wb)
+        path = self._yandex_repo.create_path(path, date_from)
+        self._yandex_repo.save_file(path, wb)
         return path
 
     async def save_reports(self, date_from):
@@ -5316,8 +5209,8 @@ class BarsicReport2Service:
         # Отправка в яндекс диск
         if use_yadisk:
             self.path_list = filter(lambda x: x is not None, self.path_list)
-            self.sync_to_yadisk(
-                self.path_list, settings.yadisk_token, date_from, use_yadisk
+            self._yandex_repo.sync_to_yadisk(
+                self.path_list, settings.yadisk_token, date_from
             )
             self.path_list = []
 
