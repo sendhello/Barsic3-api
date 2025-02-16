@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime
-from decimal import Decimal
 
 from repositories.bars import BarsRepository, get_bars_repo
 from schemas.bars import (
@@ -52,24 +51,44 @@ class BarsService:
             elements=[TotalReportElement.model_validate(el) for el in total_report_],
         )
 
-    def get_transactions_by_service_name_pattern(
+    def get_transactions_by_service_names(
         self,
         date_from: datetime,
         date_to: datetime,
-        service_name_pattern: str,
+        service_names: list[str],
+        use_like: bool = True,
     ) -> list[ExtendedService]:
         companies = [
             Organisation.model_validate(org) for org in self._repo.get_organisations()
         ]
-        _transactions = self._repo.get_transactions_by_service_name_pattern(
-            date_from=date_from,
-            date_to=date_to,
-            service_name_pattern=service_name_pattern,
-            companies_ids=[company.super_account_id for company in companies],
-        )
-        client_transactions = [
-            ClientTransaction.model_validate(el) for el in _transactions
-        ]
+        companies_ids = [company.super_account_id for company in companies]
+
+        if use_like:
+            _unique_transactions = {}
+            for service_name in service_names:
+                _transactions = self._repo.get_transactions_by_service_name_pattern(
+                    date_from=date_from,
+                    date_to=date_to,
+                    service_name_pattern=service_name,
+                    companies_ids=companies_ids,
+                )
+                for tr in _transactions:
+                    client_transaction = ClientTransaction.model_validate(tr)
+                    _unique_transactions[client_transaction.master_transaction_id] = (
+                        client_transaction
+                    )
+
+            client_transactions = _unique_transactions.values()
+        else:
+            _transactions = self._repo.get_transactions_by_service_names(
+                date_from=date_from,
+                date_to=date_to,
+                service_names=service_names,
+                companies_ids=companies_ids,
+            )
+            client_transactions = [
+                ClientTransaction.model_validate(el) for el in _transactions
+            ]
 
         extended_services = {}
         for client_transaction in client_transactions:

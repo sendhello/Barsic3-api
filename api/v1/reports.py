@@ -88,3 +88,28 @@ async def create_total_report_by_day(
         date_from, date_to, use_cache=use_cache
     )
     return res
+
+
+@router.post("/create_purchased_goods_report", response_model=dict)
+async def create_purchased_goods_report(
+    db_name: Annotated[gen_db_name_enum(), Query(description="База данных")],
+    date_from: datetime = datetime.combine(date.today(), datetime.min.time()),
+    date_to: datetime = datetime.combine(date.today(), datetime.min.time()),
+    goods: list[str] = Query(default_factory=list),
+    use_like: bool = False,
+    save_to_yandex: bool = False,
+    hide_zero: bool = False,
+    worker_service: WorkerService = Depends(get_worker_service),
+) -> dict:
+    """Список Организаций."""
+
+    worker_service.choose_db(db_name=db_name.value)
+    res = await worker_service.create_purchased_goods_report(
+        date_from=date_from,
+        date_to=date_to,
+        goods=goods,
+        use_like=use_like,
+        save_to_yandex=save_to_yandex,
+        hide_zero=hide_zero,
+    )
+    return res

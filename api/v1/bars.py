@@ -69,9 +69,10 @@ async def get_transactions_by_service_name_pattern(
     db_name: Annotated[gen_db_name_enum(), Query(description="База данных")],
     date_from: datetime = datetime.combine(date.today(), datetime.min.time()),
     date_to: datetime = datetime.combine(date.today(), datetime.min.time()),
-    service_name_pattern: str = Annotated[
-        str, Query(description="Паттерн услуги для поиска клиентов")
+    service_names: list[str] = Annotated[
+        list[str], Query(description="Паттерн услуги для поиска клиентов")
     ],
+    use_like: bool = True,
     bars_service: BarsService = Depends(get_bars_service),
 ) -> list[ExtendedService]:
     """Список купленных услуг группой клиентов."""
@@ -80,5 +81,6 @@ async def get_transactions_by_service_name_pattern(
     return bars_service.get_transactions_by_service_name_pattern(
         date_from=date_from,
         date_to=date_to,
-        service_name_pattern=service_name_pattern,
+        service_names=service_names,
+        use_like=use_like,
     )

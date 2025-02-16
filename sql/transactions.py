@@ -1,4 +1,4 @@
-GET_TRANSACTIONS_BY_SERVICE_NAME_PATTERN = """
+_GET_TRANSACTIONS_BY_SERVICE_NAME = """
     WITH accounts AS (
         SELECT mt0.SuperAccountTo AS SuperAccountId
         FROM [AquaPark_Ulyanovsk].[dbo].[MasterTransaction] mt0 
@@ -10,7 +10,7 @@ GET_TRANSACTIONS_BY_SERVICE_NAME_PATTERN = """
                 FROM [AquaPark_Ulyanovsk].[dbo].[Check]
                 WHERE [Data] > '{date_from}' AND [Data] < '{date_to}' AND [Status] = 1
             ) ch0 ON cd0.CheckId = ch0.CheckId
-            WHERE [Name] LIKE '%{service_name_pattern}%'
+            WHERE {condition}
         ) cdetail ON mt0.CheckDetailId = cdetail.Id
         WHERE SuperAccountTo NOT IN ({companies_ids})
     )
@@ -46,3 +46,16 @@ GET_TRANSACTIONS_BY_SERVICE_NAME_PATTERN = """
         mt.CheckDetailId IS NOT NULL OR mt.ExtendedData IS NOT NULL
     )
 """
+
+GET_TRANSACTIONS_BY_SERVICE_NAME_PATTERN = _GET_TRANSACTIONS_BY_SERVICE_NAME.format(
+    condition="[Name] LIKE '%{service_name_pattern}%'",
+    date_from="{date_from}",
+    date_to="{date_to}",
+    companies_ids="{companies_ids}",
+)
+GET_TRANSACTIONS_BY_SERVICE_NAMES = _GET_TRANSACTIONS_BY_SERVICE_NAME.format(
+    condition="[Name] IN ({service_names})",
+    date_from="{date_from}",
+    date_to="{date_to}",
+    companies_ids="{companies_ids}",
+)

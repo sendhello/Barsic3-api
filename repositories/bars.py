@@ -11,7 +11,10 @@ from sql.sp_report_totals_v2 import (
     SP_REPORT_TOTALS_V2_OLD_VERSION_SQL,
     SP_REPORT_TOTALS_V2_SQL,
 )
-from sql.transactions import GET_TRANSACTIONS_BY_SERVICE_NAME_PATTERN
+from sql.transactions import (
+    GET_TRANSACTIONS_BY_SERVICE_NAME_PATTERN,
+    GET_TRANSACTIONS_BY_SERVICE_NAMES,
+)
 
 
 class BarsRepository(BaseRepository):
@@ -82,6 +85,32 @@ class BarsRepository(BaseRepository):
             date_from=_date_from,
             date_to=_date_to,
             service_name_pattern=service_name_pattern,
+            companies_ids=_companies_ids,
+        )
+        return self._run_sql(sql)
+
+    def get_transactions_by_service_names(
+        self,
+        date_from: datetime,
+        date_to: datetime,
+        service_names: list[str],
+        companies_ids: list[int],
+    ) -> list[Row]:
+        """Возвращает список всех транзакций клиентов, у которых есть транзакция с именем услуги, указанной в паттерне.
+
+        В паттерне указывается часть названия услуги для поиска, например "КОРП" найдет все услуги,
+        в названии которых встречается строка КОРП
+        """
+        _date_from = date_from.isoformat()
+        _date_to = date_to.isoformat()
+        _companies_ids = ",".join(str(_id) for _id in companies_ids)
+
+        sql = GET_TRANSACTIONS_BY_SERVICE_NAMES.format(
+            date_from=_date_from,
+            date_to=_date_to,
+            service_names=", ".join(
+                f"'{service_name}'" for service_name in service_names
+            ),
             companies_ids=_companies_ids,
         )
         return self._run_sql(sql)
