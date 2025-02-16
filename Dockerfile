@@ -1,4 +1,4 @@
-FROM python:3.12-slim-bullseye
+FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -37,7 +37,7 @@ RUN apt-get update -yqq \
     && rm -rf /var/lib/apt/lists/*
 
 COPY poetry.lock pyproject.toml ./
-RUN pip install poetry && poetry install --no-dev
+RUN pip install poetry==1.8 && poetry install --no-dev
 COPY . .
 
 ENTRYPOINT sh barsic_web.sh
