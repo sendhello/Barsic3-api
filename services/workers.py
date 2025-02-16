@@ -12,6 +12,7 @@ from db.mssql import MsSqlDatabase
 from legacy import functions
 from legacy.barsicreport2 import BarsicReport2Service, get_legacy_service
 from legacy.to_google_sheets import get_letter_column_name
+from repositories.yandex import YandexRepository, get_yandex_repo
 from schemas.google_report_ids import GoogleReportIdCreate
 from schemas.report_cache import ReportCacheCreate
 from services.bars import BarsService, get_bars_service
@@ -32,6 +33,7 @@ class WorkerService:
         report_config_service: ReportConfigService,
         legacy_service: BarsicReport2Service,
         report_service: ReportService,
+        yandex_repo: YandexRepository,
     ):
         self._bars_srv = bars_srv
         self._bars_service = bars_service
@@ -39,6 +41,7 @@ class WorkerService:
         self._report_config_service = report_config_service
         self._legacy_service = legacy_service
         self._report_service = report_service
+        self._yandex_repo = yandex_repo
 
     def choose_db(self, db_name: str):
         self._bars_service.choose_db(db_name)
@@ -337,6 +340,34 @@ class WorkerService:
 
         return {"ok": True, "Google Report": google_doc.url}
 
+    async def create_corp_services_sum_report(
+        self,
+        date_from: datetime,
+        date_to: datetime,
+        save_to_yandex: bool,
+        hide_zero: bool,
+    ) -> dict:
+        extended_services_report = (
+            self._bars_service.get_transactions_by_service_name_pattern(
+                date_from=date_from,
+                date_to=date_to,
+                service_name_pattern="КОРП",
+            )
+        )
+        result = self._yandex_repo.save_corp_services_sum_report(
+            report=extended_services_report,
+            date_from=date_from,
+            date_to=date_to,
+            hide_zero=hide_zero,
+        )
+        if save_to_yandex:
+            links = self._yandex_repo.sync_to_yadisk(
+                [result], settings.yadisk_token, date_from
+            )
+            return {"ok": True, "link": links[0].get_download_link()}
+
+        return {"ok": True, "link": "<local only>"}
+
 
 def get_worker_service():
     bars_srv = MsSqlDatabase(
@@ -351,4 +382,5 @@ def get_worker_service():
         report_config_service=get_report_config_service(),
         legacy_service=get_legacy_service(),
         report_service=get_report_service(),
+        yandex_repo=get_yandex_repo(),
     )
