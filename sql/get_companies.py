@@ -1,4 +1,4 @@
-GET_ORGANISATIONS_SQL = """
+GET_COMPANIES_SQL = """
     SELECT [SuperAccountId],
            [Type],
            [Descr],
