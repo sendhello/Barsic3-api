@@ -16,7 +16,7 @@ ENV APP_PATH="/opt/app"
 
 WORKDIR $APP_PATH
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl build-essential libpq-dev
+RUN apt-get update && apt-get install -y --no-install-recommends curl build-essential libpq-dev unixodbc unixodbc-dev
 
 # Установка драйвера Microsoft ODBC 18
 RUN if ! [[ "9 10 11 12" == *"$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2 | cut -d '.' -f 1)"* ]]; \
