@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from constants import gen_db_name_enum
-from schemas.bars import Category, Organisation, TotalReport
+from schemas.bars import Category, ExtendedService, Organisation, TotalReport
 from services.bars import BarsService, get_bars_service
 
 
@@ -59,4 +59,28 @@ async def get_total_report(
         hide_zeroes=hide_zeroes,
         hide_internal=hide_internal,
         hide_discount=hide_discount,
+    )
+
+
+@router.post(
+    "/transactions_by_service_name_pattern", response_model=list[ExtendedService]
+)
+async def get_transactions_by_service_name_pattern(
+    db_name: Annotated[gen_db_name_enum(), Query(description="База данных")],
+    date_from: datetime = datetime.combine(date.today(), datetime.min.time()),
+    date_to: datetime = datetime.combine(date.today(), datetime.min.time()),
+    service_names: list[str] = Annotated[
+        list[str], Query(description="Паттерн услуги для поиска клиентов")
+    ],
+    use_like: bool = True,
+    bars_service: BarsService = Depends(get_bars_service),
+) -> list[ExtendedService]:
+    """Список купленных услуг группой клиентов."""
+
+    bars_service.choose_db(db_name=db_name.value)
+    return bars_service.get_transactions_by_service_name_pattern(
+        date_from=date_from,
+        date_to=date_to,
+        service_names=service_names,
+        use_like=use_like,
     )
