@@ -19,15 +19,21 @@ WORKDIR $APP_PATH
 RUN apt-get update && apt-get install -y --no-install-recommends curl build-essential libpq-dev
 
 # Установка драйвера Microsoft ODBC 18
-RUN curl https://packages.microsoft.com/keys/microsoft.asc | tee /etc/apt/trusted.gpg.d/microsoft.asc \
-    && curl https://packages.microsoft.com/config/debian/11/prod.list | tee /etc/apt/sources.list.d/mssql-release.list \
-    && apt-get update \
-    && ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
-    && ACCEPT_EULA=Y apt-get install -y mssql-tools18 \
-    && echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> ~/.bashrc \
-    && /bin/bash -c 'source ~/.bashrc' \
-    && apt-get install -y unixodbc-dev \
-    && apt-get install -y libgssapi-krb5-2
+RUN if ! [[ "9 10 11 12" == *"$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2 | cut -d '.' -f 1)"* ]]; \
+then \
+    echo "Debian $(grep VERSION_ID /etc/os-release | cut -d '"' -f 2 | cut -d '.' -f 1) is not currently supported."; \
+    exit; \
+fi \
+&& curl -sSL -O https://packages.microsoft.com/config/debian/$(grep VERSION_ID /etc/os-release | cut -d '"' -f 2 | cut -d '.' -f 1)/packages-microsoft-prod.deb \
+&& dpkg -i packages-microsoft-prod.deb \
+&& rm packages-microsoft-prod.deb \
+&& apt-get update \
+&& ACCEPT_EULA=Y apt-get install -y msodbcsql18 \
+&& ACCEPT_EULA=Y apt-get install -y mssql-tools18 \
+&& echo 'export PATH="$PATH:/opt/mssql-tools18/bin"' >> ~/.bashrc \
+&& /bin/bash -c 'source ~/.bashrc' \
+&& apt-get install -y unixodbc-dev \
+&& apt-get install -y libgssapi-krb5-2
 
 # Понижения уровня безопасности для работы с MSSQL 2014
 RUN apt-get update -yqq \
@@ -37,7 +43,7 @@ RUN apt-get update -yqq \
     && rm -rf /var/lib/apt/lists/*
 
 COPY poetry.lock pyproject.toml ./
-RUN pip install poetry==1.8 && poetry install --no-dev
+RUN pip install poetry && poetry install
 COPY . .
 
 ENTRYPOINT sh barsic_web.sh
