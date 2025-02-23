@@ -178,7 +178,7 @@ class YandexRepository:
             start_row=self.row, start_column=3, end_row=self.row, end_column=12
         )
         ws[column[1] + next_row()] = ""
-        ws[column[3] + next_row()] = ""
+        ws[column[3] + next_row()] = f"По товарам: {', '.join(goods)}"
         ws.merge_cells(
             start_row=self.row, start_column=3, end_row=self.row, end_column=12
         )
@@ -312,6 +312,9 @@ class YandexRepository:
 
         for line in report:
             if hide_zero and line.summ == Decimal(0):
+                continue
+
+            if line.name in goods:
                 continue
 
             ws[column[2] + next_row()] = (
