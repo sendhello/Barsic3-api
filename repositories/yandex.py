@@ -326,8 +326,12 @@ class YandexRepository:
             merge_table()
 
         ws[column[2] + next_row()] = "Итого"
-        ws[column[10] + self.row] = sum(line.count for line in report if line.name not in goods)
-        ws[column[12] + self.row] = sum(line.summ for line in report if line.name not in goods)
+        ws[column[10] + self.row] = sum(
+            line.count for line in report if line.name not in goods
+        )
+        ws[column[12] + self.row] = sum(
+            line.summ for line in report if line.name not in goods
+        )
         ws[column[12] + self.row].number_format = "#,##0.00 ₽"
         merge_table_h2()
         ws[column[2] + self.row].alignment = ReportStyle.align_bottom
