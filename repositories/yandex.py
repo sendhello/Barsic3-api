@@ -67,6 +67,16 @@ class ReportStyle:
         strike=False,
         color="FF000000",
     )
+    font_red = Font(
+        name="Times New Roman",
+        size=9,
+        bold=True,
+        italic=False,
+        vertAlign=None,
+        underline="none",
+        strike=False,
+        color="FFFF0000",
+    )
     align_bottom = Alignment(
         horizontal="general",
         vertical="bottom",
