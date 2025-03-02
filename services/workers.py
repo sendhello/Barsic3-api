@@ -81,16 +81,18 @@ class WorkerService:
         ):
             report_type = "total_detail"
 
-            if use_cache:
-                total_detail_report = await self._report_service.get_report_by_date(
-                    report_type, current_date.date()
-                )
-            else:
-                total_detail_report = None
+            # Если не используем кеш - удаляем отчет из кеша (если он там есть)
+            if not use_cache:
                 await self._report_service.delete_report(
                     report_type, current_date.date()
                 )
 
+            # Пробуем достать отчет из кеша
+            total_detail_report = await self._report_service.get_report_by_date(
+                report_type, current_date.date()
+            )
+
+            # если в кеше его нет - формируем заново
             if total_detail_report is None:
                 smile_report_month = self._rk_service.get_smile_report(
                     date_from=current_date,
@@ -106,19 +108,16 @@ class WorkerService:
                         "GoogleReport"
                     )
                 )
-                org_list1 = self._legacy_service.list_organisation(
-                    database=settings.mssql_database1,
-                )
-                for org in org_list1:
-                    if org[0] == 36:
-                        org1 = (org[0], org[2])
+                self._bars_service.choose_db(settings.mssql_database1)
+                organizations = self._bars_service.get_organisations()
+                company = next(org for org in organizations if org.super_account_id == 36)
 
                 self._bars_srv.set_database(settings.mssql_database1)
                 with self._bars_srv as connect:
                     self._legacy_service.itog_report_month = functions.get_total_report(
                         connect=connect,
-                        org=org1[0],
-                        org_name=org1[1],
+                        org=company.super_account_id,
+                        org_name=company.descr,
                         date_from=current_date,
                         date_to=current_date + timedelta(days=1),
                     )

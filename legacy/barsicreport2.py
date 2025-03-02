@@ -15,13 +15,12 @@ from db.mssql import MsSqlDatabase
 from legacy import functions
 from legacy.to_google_sheets import Spreadsheet, create_new_google_doc
 from repositories.yandex import YandexRepository, get_yandex_repo
-from schemas.bars import ClientsCount
+from schemas.bars import ClientsCount, Organisation
 from schemas.google_report_ids import GoogleReportIdCreate
 from services.bars import BarsService, get_bars_service
 from services.report_config import ReportConfigService, get_report_config_service
 from services.rk import RKService, get_rk_service
 from services.settings import SettingsService, get_settings_service
-from sql.clients_count import CLIENTS_COUNT_SQL
 
 
 logger = logging.getLogger("barsicreport2")
@@ -36,11 +35,11 @@ class BarsicReport2Service:
         self.bars_srv = bars_srv
         self.rk_srv = rk_srv
 
-        self.org1 = None
-        self.org2 = None
-        self.org3 = None
-        self.org4 = None
-        self.org5 = None
+        self.org1: Organisation = None
+        self.org2: Organisation = None
+        self.org3: Organisation = None
+        self.org4: Organisation = None
+        self.org5: Organisation = None
 
         self.count_sql_error = 0
         self.org_for_finreport = {}
@@ -54,31 +53,14 @@ class BarsicReport2Service:
         self._rk_service: RKService = get_rk_service()
         self._yandex_repo: YandexRepository = get_yandex_repo()
 
-    def get_clients_count(self) -> list[ClientsCount]:
-        """Получение количества человек в зоне."""
-
-        self.bars_srv.set_database(settings.mssql_database1)
-        with self.bars_srv as connect:
-            cursor = connect.cursor()
-            cursor.execute(CLIENTS_COUNT_SQL)
-            rows = cursor.fetchall()
-            if not rows:
-                return [ClientsCount(count=0, id=488, zone_name="", code="0003")]
-
-        return [
-            ClientsCount(count=row[0], id=row[1], zone_name=row[2], code=row[3])
-            for row in rows
-        ]
-
     def count_clients_print(self):
-        clients_count = self.get_clients_count()
-        self.click_select_org()
         self.bars_srv.set_database(settings.mssql_database1)
         with self.bars_srv as connect:
+            clients_count = functions.get_clients_count(connect)
             total_report = functions.get_total_report(
                 connect=connect,
-                org=self.org1[0],
-                org_name=self.org1[1],
+                org=36,
+                org_name='',
                 date_from=datetime.now(),
                 date_to=datetime.now() + timedelta(1),
             )
@@ -90,7 +72,7 @@ class BarsicReport2Service:
         try:
             count_clients_allday = self.reportClientCountTotals(
                 database=settings.mssql_database1,
-                org=self.org1[0],
+                org=36,
                 date_from=datetime.now(),
                 date_to=datetime.now() + timedelta(1),
             )[0][1]
@@ -102,58 +84,29 @@ class BarsicReport2Service:
             clients_count[0].zone_name: clients_count[0].count,
         }
 
-    def click_select_org(self):
+    def click_select_org(self) -> dict[int, Organisation]:
         """
         Выбор первой организации из списка организаций
         """
-        org_list1 = self.list_organisation(
-            database=settings.mssql_database1,
-        )
-        org_list2 = self.list_organisation(
-            database=settings.mssql_database2,
-        )
-        for org in org_list1:
-            if org[0] == 36:
-                self.org1 = (org[0], org[2])
-            if org[0] == 7203673:
-                self.org3 = (org[0], org[2])
-            if org[0] == 7203674:
-                self.org4 = (org[0], org[2])
-            if org[0] == 13240081:
-                self.org5 = (org[0], org[2])
+        self._bars_service.choose_db(settings.mssql_database1)
+        organizations = self._bars_service.get_organisations()
+        companies = {_org.super_account_id: _org for _org in organizations}
+        for org in organizations:
+            if org.super_account_id == 36:
+                self.org1 = org
+            if org.super_account_id == 7203673:
+                self.org3 = org
+            if org.super_account_id == 7203674:
+                self.org4 = org
+            if org.super_account_id == 13240081:
+                self.org5 = org
 
-        self.org2 = (org_list2[0][0], org_list2[0][2])
-        logger.info(f"Выбраны организации {org_list1[0][2]} и {org_list2[0][2]}")
+        self._bars_service.choose_db(settings.mssql_database2)
+        beach_company = self._bars_service.get_organisations()[0]
+        self.org2 = beach_company
+        companies.update({beach_company.super_account_id: beach_company})
 
-    def list_organisation(
-        self,
-        database,
-    ):
-        """Функция делает запрос в базу Барс и возвращает список заведенных
-        в базе организаций в виде списка кортежей."""
-
-        self.bars_srv.set_database(database)
-        with self.bars_srv as connect:
-            cursor = connect.cursor()
-            id_type = 1
-            cursor.execute(
-                f"""
-                SELECT
-                    SuperAccountId, Type, Descr, CanRegister, CanPass, IsStuff, IsBlocked, 
-                    BlockReason, DenyReturn, ClientCategoryId, DiscountCard, PersonalInfoId, 
-                    Address, Inn, ExternalId, RegisterTime,LastTransactionTime, 
-                    LegalEntityRelationTypeId, SellServicePointId, DepositServicePointId, 
-                    AllowIgnoreStoredPledge, Email, Latitude, Longitude, Phone, WebSite, 
-                    TNG_ProfileId
-                FROM
-                    SuperAccount
-                WHERE
-                    Type={id_type}
-                """
-            )
-            rows = cursor.fetchall()
-
-        return rows
+        return companies
 
     def reportClientCountTotals(
         self,
@@ -214,7 +167,7 @@ class BarsicReport2Service:
 
     def cash_report_request(
         self,
-        database,
+        connect,
         date_from,
         date_to,
     ):
@@ -223,54 +176,46 @@ class BarsicReport2Service:
         date_from = date_from.strftime("%Y%m%d 00:00:00")
         date_to = date_to.strftime("%Y%m%d 00:00:00")
 
-        self.bars_srv.set_database(database)
-        with self.bars_srv as connect:
-            cursor = connect.cursor()
-            cursor.execute(
-                f"exec sp_reportCashDeskMoney @from='{date_from}', @to='{date_to}'"
-            )
-            rows = cursor.fetchall()
-
+        cursor = connect.cursor()
+        cursor.execute(
+            f"exec sp_reportCashDeskMoney @from='{date_from}', @to='{date_to}'"
+        )
+        rows = cursor.fetchall()
         return rows
 
     def service_point_request(
         self,
-        database,
+        connect,
     ):
         """Делает запрос в базу Барс и возвращает список рабочих мест."""
 
-        self.bars_srv.set_database(database)
-        with self.bars_srv as connect:
-            cursor = connect.cursor()
-            cursor.execute(
-                """
-                    SELECT
-                        ServicePointId, Name, SuperAccountId, Type, Code, IsInternal
-                    FROM 
-                        ServicePoint
-                """
-            )
-            rows = cursor.fetchall()
-
+        cursor = connect.cursor()
+        cursor.execute(
+            """
+                SELECT
+                    ServicePointId, Name, SuperAccountId, Type, Code, IsInternal
+                FROM 
+                    ServicePoint
+            """
+        )
+        rows = cursor.fetchall()
         return rows
 
     def cashdesk_report(
         self,
-        database,
+        connect,
         date_from,
         date_to,
     ):
-        """
-        Преобразует запросы из базы в суммовой отчет
-        :return: dict
-        """
+        """Преобразует запросы из базы в суммовой отчет"""
+
         cash_report = self.cash_report_request(
-            database=database,
+            connect=connect,
             date_from=date_from,
             date_to=date_to,
         )
         service_point = self.service_point_request(
-            database=database,
+            connect=connect,
         )
         service_point_dict = {}
         for point in service_point:
@@ -330,38 +275,32 @@ class BarsicReport2Service:
             report[typpe].append(type_sum)
         report["Итого"] = [all_sum]
         report["Дата"] = [[date_from, date_to]]
-        if database == settings.mssql_database1:
-            report["Организация"] = [[self.org1[1]]]
-        elif database == settings.mssql_database2:
-            report["Организация"] = [[self.org2[1]]]
         return report
 
-    def fin_report(self):
-        """
-        Форминует финансовый отчет в установленном формате
-        :return - dict
-        """
-        logger.info("Формирование финансового отчета")
-        self.finreport_dict = {}
+    def fin_report(self, total_report: dict) -> dict:
+        """Формирует финансовый отчет"""
+
+        logger.debug("Формирование финансового отчета")
+        finance_report = {}
         is_aquazona = None
         for org, services in self.orgs_dict.items():
             if org != "Не учитывать":
-                self.finreport_dict[org] = [0, 0.00]
+                finance_report[org] = [0, 0.00]
                 for serv in services:
                     try:
                         if org == "Дата":
-                            self.finreport_dict[org][0] = self.itog_report_org1[serv][0]
-                            self.finreport_dict[org][1] = self.itog_report_org1[serv][1]
+                            finance_report[org][0] = total_report[serv][0]
+                            finance_report[org][1] = total_report[serv][1]
                         elif serv == "Депозит":
-                            self.finreport_dict[org][1] += self.itog_report_org1[serv][
+                            finance_report[org][1] += total_report[serv][
                                 1
                             ]
                         elif serv == "Аквазона":
-                            self.finreport_dict["Кол-во проходов"] = [
-                                self.itog_report_org1[serv][0],
+                            finance_report["Кол-во проходов"] = [
+                                total_report[serv][0],
                                 0,
                             ]
-                            self.finreport_dict[org][1] += self.itog_report_org1[serv][
+                            finance_report[org][1] += total_report[serv][
                                 1
                             ]
                             is_aquazona = True
@@ -369,43 +308,43 @@ class BarsicReport2Service:
                             pass
                         else:
                             if (
-                                self.itog_report_org1.get(serv)
-                                and self.itog_report_org1[serv][1] != 0.0
+                                total_report.get(serv)
+                                and total_report[serv][1] != 0.0
                             ):
-                                self.finreport_dict[org][0] += self.itog_report_org1[
+                                finance_report[org][0] += total_report[
                                     serv
                                 ][0]
-                                self.finreport_dict[org][1] += self.itog_report_org1[
+                                finance_report[org][1] += total_report[
                                     serv
                                 ][1]
                             if (
                                 self.itog_report_org3.get(serv)
                                 and self.itog_report_org3[serv][1] != 0.0
                             ):
-                                self.finreport_dict[org][0] += self.itog_report_org3[
+                                finance_report[org][0] += self.itog_report_org3[
                                     serv
                                 ][0]
-                                self.finreport_dict[org][1] += self.itog_report_org3[
+                                finance_report[org][1] += self.itog_report_org3[
                                     serv
                                 ][1]
                             if (
                                 self.itog_report_org4.get(serv)
                                 and self.itog_report_org4[serv][1] != 0.0
                             ):
-                                self.finreport_dict[org][0] += self.itog_report_org4[
+                                finance_report[org][0] += self.itog_report_org4[
                                     serv
                                 ][0]
-                                self.finreport_dict[org][1] += self.itog_report_org4[
+                                finance_report[org][1] += self.itog_report_org4[
                                     serv
                                 ][1]
                             if (
                                 self.itog_report_org5.get(serv)
                                 and self.itog_report_org5[serv][1] != 0.0
                             ):
-                                self.finreport_dict[org][0] += self.itog_report_org5[
+                                finance_report[org][0] += self.itog_report_org5[
                                     serv
                                 ][0]
-                                self.finreport_dict[org][1] += self.itog_report_org5[
+                                finance_report[org][1] += self.itog_report_org5[
                                     serv
                                 ][1]
                     except KeyError:
@@ -414,120 +353,95 @@ class BarsicReport2Service:
                         pass
 
         if not is_aquazona:
-            self.finreport_dict["Кол-во проходов"] = [0, 0.00]
+            finance_report["Кол-во проходов"] = [0, 0.00]
 
-        self.finreport_dict.setdefault("Online Продажи", [0, 0.0])
-        self.finreport_dict["Online Продажи"][0] += self.report_bitrix[0]
-        self.finreport_dict["Online Продажи"][1] += self.report_bitrix[1]
+        finance_report.setdefault("Online Продажи", [0, 0.0])
+        finance_report["Online Продажи"][0] += self.report_bitrix[0]
+        finance_report["Online Продажи"][1] += self.report_bitrix[1]
 
-        self.finreport_dict["Смайл"][0] = self.smile_report.total_count
-        self.finreport_dict["Смайл"][1] = self.smile_report.total_sum
+        finance_report["Смайл"][0] = self.smile_report.total_count
+        finance_report["Смайл"][1] = self.smile_report.total_sum
 
         total_cashdesk_report = self.cashdesk_report_org1["Итого"][0]
-        self.finreport_dict["MaxBonus"] = (
+        finance_report["MaxBonus"] = (
             0,
             float(total_cashdesk_report[6] - total_cashdesk_report[7]),
         )
 
-    def fin_report_lastyear(self):
+        return finance_report
+
+    def fin_report_lastyear(self, total_report_lastyear: dict) -> dict:
         """
         Форминует финансовый отчет за предыдущий год в установленном формате
         :return - dict
         """
         logger.info("Формирование финансового отчета за прошлый год")
-        self.finreport_dict_lastyear = {}
+        finance_report = {}
         is_aquazona = None
         for org, services in self.orgs_dict.items():
             if org != "Не учитывать":
-                self.finreport_dict_lastyear[org] = [0, 0.00]
+                finance_report[org] = [0, 0.00]
                 for serv in services:
                     try:
                         if org == "Дата":
-                            self.finreport_dict_lastyear[org][0] = (
-                                self.itog_report_org1_lastyear[serv][0]
+                            finance_report[org][0] = (
+                                total_report_lastyear[serv][0]
                             )
-                            self.finreport_dict_lastyear[org][1] = (
-                                self.itog_report_org1_lastyear[serv][1]
+                            finance_report[org][1] = (
+                                total_report_lastyear[serv][1]
                             )
                         elif serv == "Депозит":
-                            self.finreport_dict_lastyear[org][
+                            finance_report[org][
                                 1
-                            ] += self.itog_report_org1_lastyear[serv][1]
+                            ] += total_report_lastyear[serv][1]
                         elif serv == "Аквазона":
-                            self.finreport_dict_lastyear["Кол-во проходов"] = [
-                                self.itog_report_org1_lastyear[serv][0],
+                            finance_report["Кол-во проходов"] = [
+                                total_report_lastyear[serv][0],
                                 0,
                             ]
-                            self.finreport_dict_lastyear[org][
+                            finance_report[org][
                                 1
-                            ] += self.itog_report_org1_lastyear[serv][1]
+                            ] += total_report_lastyear[serv][1]
                             is_aquazona = True
                         elif serv == "Организация":
                             pass
                         else:
                             if (
-                                self.itog_report_org1_lastyear.get(serv)
-                                and self.itog_report_org1_lastyear[serv][1] != 0.0
+                                total_report_lastyear.get(serv)
+                                and total_report_lastyear[serv][1] != 0.0
                             ):
-                                self.finreport_dict_lastyear[org][
+                                finance_report[org][
                                     0
-                                ] += self.itog_report_org1_lastyear[serv][0]
-                                self.finreport_dict_lastyear[org][
+                                ] += total_report_lastyear[serv][0]
+                                finance_report[org][
                                     1
-                                ] += self.itog_report_org1_lastyear[serv][1]
-                            if (
-                                self.itog_report_org3_lastyear.get(serv)
-                                and self.itog_report_org3_lastyear[serv][1] != 0.0
-                            ):
-                                self.finreport_dict_lastyear[org][
-                                    0
-                                ] += self.itog_report_org3_lastyear[serv][0]
-                                self.finreport_dict_lastyear[org][
-                                    1
-                                ] += self.itog_report_org3_lastyear[serv][1]
-                            if (
-                                self.itog_report_org4_lastyear.get(serv)
-                                and self.itog_report_org4_lastyear[serv][1] != 0.0
-                            ):
-                                self.finreport_dict_lastyear[org][
-                                    0
-                                ] += self.itog_report_org4_lastyear[serv][0]
-                                self.finreport_dict_lastyear[org][
-                                    1
-                                ] += self.itog_report_org4_lastyear[serv][1]
-                            if (
-                                self.itog_report_org5_lastyear.get(serv)
-                                and self.itog_report_org5_lastyear[serv][1] != 0.0
-                            ):
-                                self.finreport_dict_lastyear[org][
-                                    0
-                                ] += self.itog_report_org5_lastyear[serv][0]
-                                self.finreport_dict_lastyear[org][
-                                    1
-                                ] += self.itog_report_org5_lastyear[serv][1]
+                                ] += total_report_lastyear[serv][1]
+
                     except KeyError:
                         pass
                     except TypeError:
                         pass
+
         if not is_aquazona:
-            self.finreport_dict_lastyear["Кол-во проходов"] = [0, 0.00]
-        self.finreport_dict_lastyear.setdefault("Online Продажи", [0, 0.0])
-        self.finreport_dict_lastyear["Online Продажи"][
+            finance_report["Кол-во проходов"] = [0, 0.00]
+        finance_report.setdefault("Online Продажи", [0, 0.0])
+        finance_report["Online Продажи"][
             0
         ] += self.report_bitrix_lastyear[0]
-        self.finreport_dict_lastyear["Online Продажи"][
+        finance_report["Online Продажи"][
             1
         ] += self.report_bitrix_lastyear[1]
-        self.finreport_dict_lastyear["Смайл"][
+        finance_report["Смайл"][
             0
         ] = self.smile_report_lastyear.total_count
-        self.finreport_dict_lastyear["Смайл"][1] = self.smile_report_lastyear.total_sum
+        finance_report["Смайл"][1] = self.smile_report_lastyear.total_sum
 
         total_cashdesk_report = self.cashdesk_report_org1_lastyear["Итого"][0]
-        self.finreport_dict_lastyear["MaxBonus"] = (
+        finance_report["MaxBonus"] = (
             0,
             total_cashdesk_report[6] - total_cashdesk_report[7],
         )
+        return finance_report
 
     def fin_report_beach(self):
         """
@@ -571,34 +485,36 @@ class BarsicReport2Service:
         if "Выход с пляжа" not in self.finreport_dict_beach:
             self.finreport_dict_beach["Выход с пляжа"] = 0, 0
 
-    def agent_report(self):
+    def agent_report(self, company: Organisation, total_report: dict) -> dict:
         """Форминует отчет платежного агента в установленном формате."""
 
-        self.agentreport_dict = {}
-        self.agentreport_dict["Организация"] = [self.org1[0], self.org1[1]]
+        agentreport_dict = {}
+        agentreport_dict["Организация"] = [company.super_account_id, company.descr]
         for org, services in self.agent_dict.items():
             if org == "Не учитывать":
                 continue
 
-            self.agentreport_dict[org] = [0, 0]
+            agentreport_dict[org] = [0, 0]
             for serv in services:
                 try:
                     if org == "Дата":
-                        self.agentreport_dict[org][0] = self.itog_report_org1[serv][0]
-                        self.agentreport_dict[org][1] = self.itog_report_org1[serv][1]
+                        agentreport_dict[org][0] = total_report[serv][0]
+                        agentreport_dict[org][1] = total_report[serv][1]
                     elif serv == "Депозит":
-                        self.agentreport_dict[org][1] += self.itog_report_org1[serv][1]
+                        agentreport_dict[org][1] += total_report[serv][1]
                     elif serv == "Аквазона":
-                        self.agentreport_dict[org][1] += self.itog_report_org1[serv][1]
+                        agentreport_dict[org][1] += total_report[serv][1]
                     elif serv == "Организация":
                         pass
                     else:
-                        self.agentreport_dict[org][0] += self.itog_report_org1[serv][0]
-                        self.agentreport_dict[org][1] += self.itog_report_org1[serv][1]
+                        agentreport_dict[org][0] += total_report[serv][0]
+                        agentreport_dict[org][1] += total_report[serv][1]
                 except KeyError:
                     pass
                 except TypeError:
                     pass
+
+        return agentreport_dict
 
     async def export_to_google_sheet(self, date_from, http_auth, googleservice):
         """
@@ -1725,7 +1641,7 @@ class BarsicReport2Service:
             )
         ss.runPrepared()
 
-        if self.itog_report_month:
+        if self.total_report_month:
             # SHEET 4
             logger.info("Заполнение  листа 4...")
             sheetId = 3
@@ -3625,29 +3541,28 @@ class BarsicReport2Service:
         return resporse
 
     async def save_reports(self, date_from):
-        """
-        Функция управления
-        """
-        self.fin_report()
-        self.agent_report()
+        """Функция управления"""
+
+        self.finreport_dict = self.fin_report(self.total_report)
+        self.agentreport_dict = self.agent_report(company='NONAME', total_report=self.total_report)
         # agentreport_xls
         self.path_list.append(
             self._yandex_repo.export_agent_report(self.agentreport_dict, date_from)
         )
         # finreport_google
-        self.fin_report_lastyear()
+        self.finreport_dict_lastyear = self.fin_report_lastyear(total_report_lastyear=self.total_report_lastyear)
         self.fin_report_beach()
 
         self.finreport_dict_month = None
-        if self.itog_report_month:
+        if self.total_report_month:
             self.finreport_dict_month = functions.create_month_finance_report(
-                itog_report_month=self.itog_report_month,
+                itog_report_month=self.total_report_month,
                 itogreport_group_dict=self.itogreport_group_dict,
                 orgs_dict=self.orgs_dict,
                 smile_report_month=self.smile_report_month,
             )
             self.agentreport_dict_month = functions.create_month_agent_report(
-                month_total_report=self.itog_report_month,
+                month_total_report=self.total_report_month,
                 agent_dict=self.agent_dict,
             )
 
@@ -3757,66 +3672,35 @@ class BarsicReport2Service:
         )
 
         if self.org1:
-            self.bars_srv.set_database(settings.mssql_database1)
+            self._bars_service.choose_db(settings.mssql_database1)
+            organizations = self._bars_service.get_organisations()
+            _itog_report = {}
+            _itog_report_lastyear = {}
             with self.bars_srv as connect:
-                self.itog_report_org1 = functions.get_total_report(
-                    connect=connect,
-                    org=self.org1[0],
-                    org_name=self.org1[1],
-                    date_from=date_from,
-                    date_to=date_to,
-                )
-                self.itog_report_org1_lastyear = functions.get_total_report(
-                    connect=connect,
-                    org=self.org1[0],
-                    org_name=self.org1[1],
-                    date_from=date_from - relativedelta(years=1),
-                    date_to=date_to - relativedelta(years=1),
-                )
-                self.itog_report_org3 = functions.get_total_report(
-                    connect=connect,
-                    org=self.org3[0],
-                    org_name=self.org3[1],
-                    date_from=date_from,
-                    date_to=date_to,
-                )
-                self.itog_report_org3_lastyear = functions.get_total_report(
-                    connect=connect,
-                    org=self.org3[0],
-                    org_name=self.org3[1],
-                    date_from=date_from - relativedelta(years=1),
-                    date_to=date_to - relativedelta(years=1),
-                )
-                self.itog_report_org4 = functions.get_total_report(
-                    connect=connect,
-                    org=self.org4[0],
-                    org_name=self.org4[1],
-                    date_from=date_from,
-                    date_to=date_to,
-                )
-                self.itog_report_org4_lastyear = functions.get_total_report(
-                    connect=connect,
-                    org=self.org4[0],
-                    org_name=self.org4[1],
-                    date_from=date_from - relativedelta(years=1),
-                    date_to=date_to - relativedelta(years=1),
-                )
-                self.itog_report_org5 = functions.get_total_report(
-                    connect=connect,
-                    org=self.org5[0],
-                    org_name=self.org5[1],
-                    date_from=date_from,
-                    date_to=date_to,
-                )
-                self.itog_report_org5_lastyear = functions.get_total_report(
-                    connect=connect,
-                    org=self.org5[0],
-                    org_name=self.org5[1],
-                    date_from=date_from - relativedelta(years=1),
-                    date_to=date_to - relativedelta(years=1),
-                )
+                for company in organizations:
+                    _company_itog_report = functions.get_total_report(
+                        connect=connect,
+                        company=company,
+                        date_from=date_from,
+                        date_to=date_to,
+                    )
+                    _itog_report = functions.concatenate_itog_reports(
+                        _itog_report, _company_itog_report
+                    )
+                    _company_itog_report_lastyear = functions.get_total_report(
+                        connect=connect,
+                        company=company,
+                        date_from=date_from - relativedelta(years=1),
+                        date_to=date_to - relativedelta(years=1),
+                    )
+                    _itog_report_lastyear = functions.concatenate_itog_reports(
+                        _itog_report_lastyear, _company_itog_report_lastyear
+                    )
 
-            self.itog_report_month = None
+            self.total_report = _itog_report
+            self.total_report_lastyear = _itog_report_lastyear
+
+            self.total_report_month = None
             if int((date_to - timedelta(1)).strftime("%y%m")) < int(
                 date_to.strftime("%y%m")
             ):
@@ -3828,8 +3712,7 @@ class BarsicReport2Service:
                     with self.bars_srv as connect:
                         itog_report_month_for_org = functions.get_total_report(
                             connect=connect,
-                            org=organization.super_account_id,
-                            org_name=organization.descr,
+                            company=organization,
                             date_from=datetime.strptime(
                                 "01" + (date_to - timedelta(1)).strftime("%m%y"),
                                 "%d%m%y",
@@ -3840,7 +3723,7 @@ class BarsicReport2Service:
                         itog_report_month, itog_report_month_for_org
                     )
 
-                self.itog_report_month = itog_report_month
+                self.total_report_month = itog_report_month
                 self.smile_report_month = self._rk_service.get_smile_report(
                     date_from=datetime.strptime(
                         "01" + (date_to - timedelta(1)).strftime("%m%y"), "%d%m%y"
@@ -3848,20 +3731,23 @@ class BarsicReport2Service:
                     date_to=date_to,
                 )
 
-            self.cashdesk_report_org1 = self.cashdesk_report(
-                database=settings.mssql_database1,
-                date_from=date_from,
-                date_to=date_to,
-            )
-            self.cashdesk_report_org1_lastyear = self.cashdesk_report(
-                database=settings.mssql_database1,
-                date_from=date_from - relativedelta(years=1),
-                date_to=date_to - relativedelta(years=1),
-            )
+            self.bars_srv.set_database(settings.mssql_database1)
+            with self.bars_srv as connect:
+                self.cashdesk_report_org1 = self.cashdesk_report(
+                    connect=connect,
+                    date_from=date_from,
+                    date_to=date_to,
+                )
+                self.cashdesk_report_org1_lastyear = self.cashdesk_report(
+                    connect=connect,
+                    date_from=date_from - relativedelta(years=1),
+                    date_to=date_to - relativedelta(years=1),
+                )
+
             self.client_count_totals_org1 = self.client_count_totals_period(
                 database=settings.mssql_database1,
-                org=self.org1[0],
-                org_name=self.org1[1],
+                org=self.org1.super_account_id,
+                org_name=self.org1.descr,
                 date_from=date_from,
                 date_to=date_to,
             )
@@ -3870,22 +3756,25 @@ class BarsicReport2Service:
             with self.bars_srv as connect:
                 self.itog_report_org2 = functions.get_total_report(
                     connect=connect,
-                    org=self.org2[0],
-                    org_name=self.org2[1],
+                    org=self.org2.super_account_id,
+                    org_name=self.org2.descr,
                     date_from=date_from,
                     date_to=date_to,
                     is_legacy_database=True,
                 )
 
-            self.cashdesk_report_org2 = self.cashdesk_report(
-                database=settings.mssql_database2,
-                date_from=date_from,
-                date_to=date_to,
-            )
+            self.bars_srv.set_database(settings.mssql_database2)
+            with self.bars_srv as connect:
+                self.cashdesk_report_org2 = self.cashdesk_report(
+                    connect=connect,
+                    date_from=date_from,
+                    date_to=date_to,
+                )
+
             self.client_count_totals_org2 = self.client_count_totals_period(
                 database=settings.mssql_database2,
-                org=self.org2[0],
-                org_name=self.org2[1],
+                org=self.org2.super_account_id,
+                org_name=self.org2.descr,
                 date_from=date_from,
                 date_to=date_to,
             )

@@ -3,6 +3,8 @@ from decimal import Decimal
 
 from api.v1.report_settings import logger
 from schemas.rk import SmileReport
+from sql.clients_count import CLIENTS_COUNT_SQL
+from schemas.bars import ClientsCount, Organisation
 
 
 def is_int(value):
@@ -318,15 +320,14 @@ def create_month_finance_report(
 
 def get_total_report(
     connect,
-    org,
-    org_name,
+    company: Organisation,
     date_from,
     date_to,
     hide_zeroes="0",
     hide_internal="1",
     hide_discount="0",
     is_legacy_database=False,
-):
+) -> dict:
     """Делает запрос в базу Барс и возвращает итоговый отчет за запрашиваемый период."""
 
     date_from_date = date_from.strftime("%Y%m%d 00:00:00")
@@ -334,7 +335,7 @@ def get_total_report(
 
     SQL_REQUEST = (
         f"exec sp_reportOrganizationTotals_v2 "
-        f"@sa={org},"
+        f"@sa={company.super_account_id},"
         f"@from='{date_from_date}',"
         f"@to='{date_to_date}',"
         f"@hideZeroes={hide_zeroes},"
@@ -357,8 +358,8 @@ def get_total_report(
         )
         for row in rows
     }
-    result[org_name] = (0, 0, "Организация", "Организация")
-    result[str(org)] = (0, 0, "ID организации", "ID организации")
+    result[company.descr] = (0, 0, "Организация", "Организация")
+    result[str(company.super_account_id)] = (0, 0, "ID организации", "ID организации")
 
     # добавление строки "Итого по отчету"
     sum_service = 0
@@ -374,3 +375,18 @@ def get_total_report(
     result["Дата"] = (date_from, date_to, "", "")
 
     return result
+
+
+def get_clients_count(connect) -> list[ClientsCount]:
+    """Получение количества человек в зоне."""
+
+    cursor = connect.cursor()
+    cursor.execute(CLIENTS_COUNT_SQL)
+    rows = cursor.fetchall()
+    if not rows:
+        return [ClientsCount(count=0, id=488, zone_name="", code="0003")]
+
+    return [
+        ClientsCount(count=row[0], id=row[1], zone_name=row[2], code=row[3])
+        for row in rows
+    ]
