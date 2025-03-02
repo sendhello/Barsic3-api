@@ -41,6 +41,8 @@ class BarsicReport2Service:
         self.org3 = None
         self.org4 = None
         self.org5 = None
+        self.org6 = None
+        self.org7 = None
 
         self.count_sql_error = 0
         self.org_for_finreport = {}
@@ -121,6 +123,10 @@ class BarsicReport2Service:
                 self.org4 = (org[0], org[2])
             if org[0] == 13240081:
                 self.org5 = (org[0], org[2])
+            if org[0] == 15826592:
+                self.org6 = (org[0], org[2])
+            if org[0] == 16049033:
+                self.org7 = (org[0], org[2])
 
         self.org2 = (org_list2[0][0], org_list2[0][2])
         logger.info(f"Выбраны организации {org_list1[0][2]} и {org_list2[0][2]}")
@@ -408,6 +414,26 @@ class BarsicReport2Service:
                                 self.finreport_dict[org][1] += self.itog_report_org5[
                                     serv
                                 ][1]
+                            if (
+                                self.itog_report_org6.get(serv)
+                                and self.itog_report_org6[serv][1] != 0.0
+                            ):
+                                self.finreport_dict[org][0] += self.itog_report_org6[
+                                    serv
+                                ][0]
+                                self.finreport_dict[org][1] += self.itog_report_org6[
+                                    serv
+                                ][1]
+                            if (
+                                self.itog_report_org7.get(serv)
+                                and self.itog_report_org7[serv][1] != 0.0
+                            ):
+                                self.finreport_dict[org][0] += self.itog_report_org7[
+                                    serv
+                                ][0]
+                                self.finreport_dict[org][1] += self.itog_report_org7[
+                                    serv
+                                ][1]
                     except KeyError:
                         pass
                     except TypeError:
@@ -505,6 +531,26 @@ class BarsicReport2Service:
                                 self.finreport_dict_lastyear[org][
                                     1
                                 ] += self.itog_report_org5_lastyear[serv][1]
+                            if (
+                                self.itog_report_org6_lastyear.get(serv)
+                                and self.itog_report_org6_lastyear[serv][1] != 0.0
+                            ):
+                                self.finreport_dict_lastyear[org][
+                                    0
+                                ] += self.itog_report_org6_lastyear[serv][0]
+                                self.finreport_dict_lastyear[org][
+                                    1
+                                ] += self.itog_report_org6_lastyear[serv][1]
+                            if (
+                                self.itog_report_org7_lastyear.get(serv)
+                                and self.itog_report_org7_lastyear[serv][1] != 0.0
+                            ):
+                                self.finreport_dict_lastyear[org][
+                                    0
+                                ] += self.itog_report_org7_lastyear[serv][0]
+                                self.finreport_dict_lastyear[org][
+                                    1
+                                ] += self.itog_report_org7_lastyear[serv][1]
                     except KeyError:
                         pass
                     except TypeError:
@@ -3707,6 +3753,18 @@ class BarsicReport2Service:
                     self.itog_report_org5, date_from
                 )
             )
+        if self.itog_report_org6["Итого по отчету"][1]:
+            self.path_list.append(
+                self._yandex_repo.save_organisation_total(
+                    self.itog_report_org6, date_from
+                )
+            )
+        if self.itog_report_org7["Итого по отчету"][1]:
+            self.path_list.append(
+                self._yandex_repo.save_organisation_total(
+                    self.itog_report_org7, date_from
+                )
+            )
         # check_cashreport_xls:
         if self.cashdesk_report_org1["Итого"][0][1]:
             self.path_list.append(
@@ -3742,6 +3800,8 @@ class BarsicReport2Service:
         self.itog_report_org3 = None
         self.itog_report_org4 = None
         self.itog_report_org5 = None
+        self.itog_report_org6 = None
+        self.itog_report_org7 = None
 
         self.click_select_org()
 
@@ -3808,10 +3868,38 @@ class BarsicReport2Service:
                     date_from=date_from,
                     date_to=date_to,
                 )
+                self.itog_report_org6 = functions.get_total_report(
+                    connect=connect,
+                    org=self.org6[0],
+                    org_name=self.org6[1],
+                    date_from=date_from,
+                    date_to=date_to,
+                )
+                self.itog_report_org7 = functions.get_total_report(
+                    connect=connect,
+                    org=self.org7[0],
+                    org_name=self.org7[1],
+                    date_from=date_from,
+                    date_to=date_to,
+                )
                 self.itog_report_org5_lastyear = functions.get_total_report(
                     connect=connect,
                     org=self.org5[0],
                     org_name=self.org5[1],
+                    date_from=date_from - relativedelta(years=1),
+                    date_to=date_to - relativedelta(years=1),
+                )
+                self.itog_report_org6_lastyear = functions.get_total_report(
+                    connect=connect,
+                    org=self.org6[0],
+                    org_name=self.org6[1],
+                    date_from=date_from - relativedelta(years=1),
+                    date_to=date_to - relativedelta(years=1),
+                )
+                self.itog_report_org7_lastyear = functions.get_total_report(
+                    connect=connect,
+                    org=self.org7[0],
+                    org_name=self.org7[1],
                     date_from=date_from - relativedelta(years=1),
                     date_to=date_to - relativedelta(years=1),
                 )

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 @router.get("/", response_model=list[GoogleReportId])
 async def get_report_elements(
-    paginate: Annotated[PaginateQueryParams, Depends(PaginateQueryParams)]
+    paginate: Annotated[PaginateQueryParams, Depends(PaginateQueryParams)],
 ) -> list[GoogleReportId]:
     report_elements = await GoogleReportIdModel.get_part(
         page=paginate.page, page_size=paginate.page_size
