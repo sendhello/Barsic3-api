@@ -617,34 +617,38 @@ class BarsicReport2Service:
         if "Выход с пляжа" not in self.finreport_dict_beach:
             self.finreport_dict_beach["Выход с пляжа"] = 0, 0
 
-    def agent_report(self):
+    def create_payment_agent_report(
+        self, total_report: dict[str, tuple]
+    ) -> dict[str, list]:
         """Форминует отчет платежного агента в установленном формате."""
 
-        self.agentreport_dict = {}
-        self.agentreport_dict["Организация"] = [self.org1[0], self.org1[1]]
+        result = {}
+        result["Организация"] = [self.org1[0], self.org1[1]]
         for org, services in self.agent_dict.items():
             if org == "Не учитывать":
                 continue
 
-            self.agentreport_dict[org] = [0, 0]
-            for serv in services:
+            result[org] = [0, 0]
+            for service in services:
                 try:
                     if org == "Дата":
-                        self.agentreport_dict[org][0] = self.itog_report_org1[serv][0]
-                        self.agentreport_dict[org][1] = self.itog_report_org1[serv][1]
-                    elif serv == "Депозит":
-                        self.agentreport_dict[org][1] += self.itog_report_org1[serv][1]
-                    elif serv == "Аквазона":
-                        self.agentreport_dict[org][1] += self.itog_report_org1[serv][1]
-                    elif serv == "Организация":
+                        result[org][0] = total_report[service][0]
+                        result[org][1] = total_report[service][1]
+                    elif service == "Депозит":
+                        result[org][1] += total_report[service][1]
+                    elif service == "Аквазона":
+                        result[org][1] += total_report[service][1]
+                    elif service == "Организация":
                         pass
                     else:
-                        self.agentreport_dict[org][0] += self.itog_report_org1[serv][0]
-                        self.agentreport_dict[org][1] += self.itog_report_org1[serv][1]
+                        result[org][0] += total_report[service][0]
+                        result[org][1] += total_report[service][1]
                 except KeyError:
                     pass
                 except TypeError:
                     pass
+
+        return result
 
     async def export_to_google_sheet(self, date_from, http_auth, googleservice):
         """
@@ -3675,10 +3679,17 @@ class BarsicReport2Service:
         Функция управления
         """
         self.fin_report()
-        self.agent_report()
+        payment_agent_report = self.create_payment_agent_report(
+            functions.concatenate_total_reports(
+                self.itog_report_org1,
+                {"Смайл": (self.smile_report.total_count, self.smile_report.total_sum)},
+            )
+        )
         # agentreport_xls
         self.path_list.append(
-            self._yandex_repo.export_agent_report(self.agentreport_dict, date_from)
+            self._yandex_repo.export_payment_agent_report(
+                payment_agent_report, date_from
+            )
         )
         # finreport_google
         self.fin_report_lastyear()
@@ -3695,6 +3706,7 @@ class BarsicReport2Service:
             self.agentreport_dict_month = functions.create_month_agent_report(
                 month_total_report=self.itog_report_month,
                 agent_dict=self.agent_dict,
+                smile_report_month=self.smile_report_month,
             )
 
         credentials = ServiceAccountCredentials.from_json_keyfile_dict(
@@ -3924,7 +3936,7 @@ class BarsicReport2Service:
                             ),
                             date_to=date_to,
                         )
-                    itog_report_month = functions.concatenate_itog_reports(
+                    itog_report_month = functions.concatenate_total_reports(
                         itog_report_month, itog_report_month_for_org
                     )
 

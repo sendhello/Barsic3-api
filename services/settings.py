@@ -31,6 +31,8 @@ class SettingsService:
             )
             all_tariffs.extend([tariff.name for tariff in organization_tariffs])
 
+        all_tariffs.append("Смайл")
+
         distributed_tariffs = await self._report_config_service.get_report_elements(
             report_name
         )

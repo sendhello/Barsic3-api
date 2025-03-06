@@ -413,7 +413,7 @@ class YandexRepository:
         self.save_file(path, wb)
         return path
 
-    def export_agent_report(self, agentreport_dict, date_from):
+    def export_payment_agent_report(self, report: dict[str, list], date_from: datetime):
         """Сохраняет отчет платежного агента в виде Excel-файла в локальную директорию"""
 
         table_color = PatternFill(
@@ -468,7 +468,7 @@ class YandexRepository:
         # Высота строк
         ws.row_dimensions[1].height = 24
 
-        ws[column[1] + next_row()] = f'{agentreport_dict["Организация"][1]}'
+        ws[column[1] + next_row()] = f'{report["Организация"][1]}'
         ws.merge_cells(
             start_row=self.row,
             start_column=1,
@@ -481,15 +481,15 @@ class YandexRepository:
         ws[column[1] + next_row()] = "За период с:"
         ws[column[1] + self.row].font = ReportStyle.font
         ws[column[1] + self.row].alignment = ReportStyle.align_top
-        ws[column[2] + self.row] = (agentreport_dict["Дата"][0]).strftime("%d.%m.%Y")
+        ws[column[2] + self.row] = (report["Дата"][0]).strftime("%d.%m.%Y")
         ws[column[2] + self.row].font = ReportStyle.font_bold
         ws[column[2] + self.row].alignment = ReportStyle.align_top
         ws[column[3] + self.row] = "по"
         ws[column[3] + self.row].font = ReportStyle.font
         ws[column[3] + self.row].alignment = ReportStyle.align_top
-        ws[column[4] + self.row] = (
-            agentreport_dict["Дата"][1] - timedelta(1)
-        ).strftime("%d.%m.%Y")
+        ws[column[4] + self.row] = (report["Дата"][1] - timedelta(1)).strftime(
+            "%d.%m.%Y"
+        )
         ws[column[4] + self.row].font = ReportStyle.font_bold
         ws[column[4] + self.row].alignment = ReportStyle.align_top
 
@@ -541,28 +541,28 @@ class YandexRepository:
             b += 1
 
         itog_sum = 0
-        for line in agentreport_dict:
+        for line in report:
             if line != "Организация" and line != "Дата" and line != "ИТОГО":
                 try:
-                    itog_sum += agentreport_dict[line][1]
+                    itog_sum += report[line][1]
                     ws[column[1] + next_row()] = line
-                    ws[column[5] + self.row] = agentreport_dict[line][1]
+                    ws[column[5] + self.row] = report[line][1]
                     merge_table()
                 except AttributeError:
                     pass
 
         ws[column[1] + next_row()] = "Итого"
-        if itog_sum != agentreport_dict["ИТОГО"][1]:
+        if itog_sum != report["ИТОГО"][1]:
             logger.error(
                 f"Ошибка. Отчет платежного агента: сумма строк "
                 f"({itog_sum}) не равна строке ИТОГО "
-                f'({agentreport_dict["ИТОГО"][1]})'
+                f'({report["ИТОГО"][1]})'
             )
             logger.info(
                 "Ошибка. Отчет платежного агента",
                 "Ошибка. Отчет платежного агента: сумма строк "
                 f"({itog_sum}) не равна строке ИТОГО "
-                f'({agentreport_dict["ИТОГО"][1]})',
+                f'({report["ИТОГО"][1]})',
             )
         ws[column[5] + self.row] = itog_sum
         ws[column[5] + self.row].number_format = "#,##0.00 ₽"
@@ -575,23 +575,23 @@ class YandexRepository:
             rd = ws.row_dimensions[i]
             rd.height = 18
             i += 1
-        if agentreport_dict["Дата"][0] == agentreport_dict["Дата"][1] - timedelta(1):
-            date_ = datetime.strftime(agentreport_dict["Дата"][0], "%Y-%m-%d")
+        if report["Дата"][0] == report["Дата"][1] - timedelta(1):
+            date_ = datetime.strftime(report["Дата"][0], "%Y-%m-%d")
         else:
             date_ = (
-                f'{datetime.strftime(agentreport_dict["Дата"][0], "%Y-%m-%d")} - '
-                f'{datetime.strftime(agentreport_dict["Дата"][1], "%Y-%m-%d")}'
+                f'{datetime.strftime(report["Дата"][0], "%Y-%m-%d")} - '
+                f'{datetime.strftime(report["Дата"][1], "%Y-%m-%d")}'
             )
         path = (
             settings.local_folder
             + settings.report_path
             + date_
-            + f' Отчет платежного агента {agentreport_dict["Организация"][1]}'
+            + f' Отчет платежного агента {report["Организация"][1]}'
             + ".xlsx"
         )
         logger.info(
             f"Сохранение отчета платежного агента "
-            f'{agentreport_dict["Организация"][1]} в {path}'
+            f'{report["Организация"][1]} в {path}'
         )
         path = self.create_path(path, date_from)
         self.save_file(path, wb)
@@ -1394,7 +1394,7 @@ class YandexRepository:
         self.save_file(path, wb)
         return path
 
-    def create_path(self, path, date_from):
+    def create_path(self, path: str, date_from: datetime):
         """Проверяет наличие указанного пути. В случае отсутствия каких-либо папок создает их."""
 
         logger.info("Проверка локальных путей сохранения файлов...")
