@@ -51,7 +51,7 @@ class BarsService:
             elements=[TotalReportElement.model_validate(el) for el in total_report_],
         )
 
-    def get_transactions_by_service_names(
+    def get_loan_transactions_by_service_names(
         self,
         date_from: datetime,
         date_to: datetime,
@@ -66,11 +66,13 @@ class BarsService:
         if use_like:
             _unique_transactions = {}
             for service_name in service_names:
-                _transactions = self._repo.get_transactions_by_service_name_pattern(
-                    date_from=date_from,
-                    date_to=date_to,
-                    service_name_pattern=service_name,
-                    companies_ids=companies_ids,
+                _transactions = (
+                    self._repo.get_loan_transactions_by_service_name_pattern(
+                        date_from=date_from,
+                        date_to=date_to,
+                        service_name_pattern=service_name,
+                        companies_ids=companies_ids,
+                    )
                 )
                 for tr in _transactions:
                     client_transaction = ClientTransaction.model_validate(tr)
@@ -80,7 +82,7 @@ class BarsService:
 
             client_transactions = _unique_transactions.values()
         else:
-            _transactions = self._repo.get_transactions_by_service_names(
+            _transactions = self._repo.get_loan_transactions_by_service_names(
                 date_from=date_from,
                 date_to=date_to,
                 service_names=service_names,

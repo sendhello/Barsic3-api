@@ -65,7 +65,7 @@ async def get_total_report(
 @router.post(
     "/transactions_by_service_name_pattern", response_model=list[ExtendedService]
 )
-async def get_transactions_by_service_name_pattern(
+async def get_loan_transactions_by_service_name_pattern(
     db_name: Annotated[gen_db_name_enum(), Query(description="База данных")],
     date_from: datetime = datetime.combine(date.today(), datetime.min.time()),
     date_to: datetime = datetime.combine(date.today(), datetime.min.time()),
@@ -78,7 +78,7 @@ async def get_transactions_by_service_name_pattern(
     """Список купленных услуг группой клиентов."""
 
     bars_service.choose_db(db_name=db_name.value)
-    return bars_service.get_transactions_by_service_name_pattern(
+    return bars_service.get_loan_transactions_by_service_names(
         date_from=date_from,
         date_to=date_to,
         service_names=service_names,

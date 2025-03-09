@@ -1,4 +1,4 @@
-_GET_TRANSACTIONS_BY_SERVICE_NAME = """
+_GET_LOAN_TRANSACTIONS_BY_SERVICE_NAME = """
     WITH accounts AS (
         SELECT mt0.SuperAccountTo AS SuperAccountId
         FROM [AquaPark_Ulyanovsk].[dbo].[MasterTransaction] mt0 
@@ -44,16 +44,21 @@ _GET_TRANSACTIONS_BY_SERVICE_NAME = """
         OR mt.SuperAccountTo IN (SELECT SuperAccountId FROM accounts)
     ) AND (
         mt.CheckDetailId IS NOT NULL OR mt.ExtendedData IS NOT NULL
+    ) AND (
+        [Name] LIKE '%Долг за %'
     )
 """
 
-GET_TRANSACTIONS_BY_SERVICE_NAME_PATTERN = _GET_TRANSACTIONS_BY_SERVICE_NAME.format(
-    condition="[Name] LIKE '%{service_name_pattern}%'",
-    date_from="{date_from}",
-    date_to="{date_to}",
-    companies_ids="{companies_ids}",
+GET_LOAN_TRANSACTIONS_BY_SERVICE_NAME_PATTERN = (
+    _GET_LOAN_TRANSACTIONS_BY_SERVICE_NAME.format(
+        condition="[Name] LIKE '%{service_name_pattern}%'",
+        date_from="{date_from}",
+        date_to="{date_to}",
+        companies_ids="{companies_ids}",
+    )
 )
-GET_TRANSACTIONS_BY_SERVICE_NAMES = _GET_TRANSACTIONS_BY_SERVICE_NAME.format(
+
+GET_LOAN_TRANSACTIONS_BY_SERVICE_NAMES = _GET_LOAN_TRANSACTIONS_BY_SERVICE_NAME.format(
     condition="[Name] IN ({service_names})",
     date_from="{date_from}",
     date_to="{date_to}",

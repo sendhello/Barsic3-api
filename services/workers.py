@@ -349,11 +349,13 @@ class WorkerService:
         save_to_yandex: bool,
         hide_zero: bool,
     ) -> dict:
-        extended_services_report = self._bars_service.get_transactions_by_service_names(
-            date_from=date_from,
-            date_to=date_to,
-            service_names=goods,
-            use_like=use_like,
+        extended_services_report = (
+            self._bars_service.get_loan_transactions_by_service_names(
+                date_from=date_from,
+                date_to=date_to,
+                service_names=goods,
+                use_like=use_like,
+            )
         )
         report_path = self._yandex_repo.save_purchased_goods_report(
             report=extended_services_report,

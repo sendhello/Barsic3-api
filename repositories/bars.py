@@ -12,8 +12,8 @@ from sql.sp_report_totals_v2 import (
     SP_REPORT_TOTALS_V2_SQL,
 )
 from sql.transactions import (
-    GET_TRANSACTIONS_BY_SERVICE_NAME_PATTERN,
-    GET_TRANSACTIONS_BY_SERVICE_NAMES,
+    GET_LOAN_TRANSACTIONS_BY_SERVICE_NAME_PATTERN,
+    GET_LOAN_TRANSACTIONS_BY_SERVICE_NAMES,
 )
 
 
@@ -65,7 +65,7 @@ class BarsRepository(BaseRepository):
             )
             return self._run_sql(sql)
 
-    def get_transactions_by_service_name_pattern(
+    def get_loan_transactions_by_service_name_pattern(
         self,
         date_from: datetime,
         date_to: datetime,
@@ -81,7 +81,7 @@ class BarsRepository(BaseRepository):
         _date_to = date_to.isoformat()
         _companies_ids = ",".join(str(_id) for _id in companies_ids)
 
-        sql = GET_TRANSACTIONS_BY_SERVICE_NAME_PATTERN.format(
+        sql = GET_LOAN_TRANSACTIONS_BY_SERVICE_NAME_PATTERN.format(
             date_from=_date_from,
             date_to=_date_to,
             service_name_pattern=service_name_pattern,
@@ -89,7 +89,7 @@ class BarsRepository(BaseRepository):
         )
         return self._run_sql(sql)
 
-    def get_transactions_by_service_names(
+    def get_loan_transactions_by_service_names(
         self,
         date_from: datetime,
         date_to: datetime,
@@ -105,7 +105,7 @@ class BarsRepository(BaseRepository):
         _date_to = date_to.isoformat()
         _companies_ids = ",".join(str(_id) for _id in companies_ids)
 
-        sql = GET_TRANSACTIONS_BY_SERVICE_NAMES.format(
+        sql = GET_LOAN_TRANSACTIONS_BY_SERVICE_NAMES.format(
             date_from=_date_from,
             date_to=_date_to,
             service_names=", ".join(
