@@ -324,11 +324,8 @@ class YandexRepository:
             if hide_zero and line.summ == Decimal(0):
                 continue
 
-            if line.name in goods:
-                continue
-
             ws[column[2] + next_row()] = (
-                line.name[7:] if line.name.startswith("Долг за") else line.name
+                line.name[8:] if line.name.startswith("Долг за") else line.name
             )
             ws[column[10] + self.row] = line.count
             ws[column[12] + self.row] = line.summ
