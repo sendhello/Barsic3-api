@@ -4,7 +4,7 @@ from core.settings import settings
 
 
 ANONYMOUS = "anonymous"
-
+GOOGLE_DOC_VERSION = 13
 GOOGLE_SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
