@@ -896,7 +896,7 @@ class BarsicReport2Service:
                     + self.finreport_dict["Сопутствующие товары"][1],
                     self.finreport_dict["Online Продажи"][0],
                     self.finreport_dict["Online Продажи"][1],
-                    f"=IFERROR(AU{self.nex_line}/AT{self.nex_line};0)",
+                    f"=IFERROR(AW{self.nex_line}/AV{self.nex_line};0)",
                     0,
                     0,
                 ]
