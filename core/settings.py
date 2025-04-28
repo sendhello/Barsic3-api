@@ -65,7 +65,6 @@ class AppSettings(BaseSettings):
 class GoogleApiSettings(BaseSettings):
     """Настройки google API."""
 
-    google_doc_version: int = Field(validation_alias="GOOGLE_DOC_VERSION")
     google_all_read: str = Field(validation_alias="GOOGLE_ALL_READ")
     google_reader_list: str = Field(validation_alias="GOOGLE_READER_LIST")
     google_writer_list: str = Field(validation_alias="GOOGLE_WRITER_LIST")
