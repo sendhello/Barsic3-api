@@ -386,9 +386,13 @@ class BarsicReport2Service:
                                     serv
                                 ][1]
                                 if org == "Прочее":
-                                    logger.debug(f"_ПРОЧЕЕ: {self.itog_report_org1[serv][3]}")
+                                    logger.debug(
+                                        f"_ПРОЧЕЕ: {self.itog_report_org1[serv][3]}"
+                                    )
                                 if org == "Сопутствующие товары":
-                                    logger.debug(f"_СОПУТСТВУЮЩИЕ_ТОВАРЫ: {self.itog_report_org1[serv][3]}")
+                                    logger.debug(
+                                        f"_СОПУТСТВУЮЩИЕ_ТОВАРЫ: {self.itog_report_org1[serv][3]}"
+                                    )
                             if (
                                 self.itog_report_org3.get(serv)
                                 and self.itog_report_org3[serv][1] != 0.0
@@ -400,9 +404,13 @@ class BarsicReport2Service:
                                     serv
                                 ][1]
                                 if org == "Прочее":
-                                    logger.debug(f"_ПРОЧЕЕ: {self.itog_report_org3[serv][3]}")
+                                    logger.debug(
+                                        f"_ПРОЧЕЕ: {self.itog_report_org3[serv][3]}"
+                                    )
                                 if org == "Сопутствующие товары":
-                                    logger.debug(f"_СОПУТСТВУЮЩИЕ_ТОВАРЫ: {self.itog_report_org3[serv][3]}")
+                                    logger.debug(
+                                        f"_СОПУТСТВУЮЩИЕ_ТОВАРЫ: {self.itog_report_org3[serv][3]}"
+                                    )
                             if (
                                 self.itog_report_org4.get(serv)
                                 and self.itog_report_org4[serv][1] != 0.0
@@ -414,9 +422,13 @@ class BarsicReport2Service:
                                     serv
                                 ][1]
                                 if org == "Прочее":
-                                    logger.debug(f"_ПРОЧЕЕ: {self.itog_report_org4[serv][3]}")
+                                    logger.debug(
+                                        f"_ПРОЧЕЕ: {self.itog_report_org4[serv][3]}"
+                                    )
                                 if org == "Сопутствующие товары":
-                                    logger.debug(f"_СОПУТСТВУЮЩИЕ_ТОВАРЫ: {self.itog_report_org4[serv][3]}")
+                                    logger.debug(
+                                        f"_СОПУТСТВУЮЩИЕ_ТОВАРЫ: {self.itog_report_org4[serv][3]}"
+                                    )
                             if (
                                 self.itog_report_org5.get(serv)
                                 and self.itog_report_org5[serv][1] != 0.0
@@ -428,9 +440,13 @@ class BarsicReport2Service:
                                     serv
                                 ][1]
                                 if org == "Прочее":
-                                    logger.debug(f"_ПРОЧЕЕ: {self.itog_report_org5[serv][3]}")
+                                    logger.debug(
+                                        f"_ПРОЧЕЕ: {self.itog_report_org5[serv][3]}"
+                                    )
                                 if org == "Сопутствующие товары":
-                                    logger.debug(f"_СОПУТСТВУЮЩИЕ_ТОВАРЫ: {self.itog_report_org5[serv][3]}")
+                                    logger.debug(
+                                        f"_СОПУТСТВУЮЩИЕ_ТОВАРЫ: {self.itog_report_org5[serv][3]}"
+                                    )
                             if (
                                 self.itog_report_org6.get(serv)
                                 and self.itog_report_org6[serv][1] != 0.0
@@ -442,9 +458,13 @@ class BarsicReport2Service:
                                     serv
                                 ][1]
                                 if org == "Прочее":
-                                    logger.debug(f"_ПРОЧЕЕ: {self.itog_report_org6[serv][3]}")
+                                    logger.debug(
+                                        f"_ПРОЧЕЕ: {self.itog_report_org6[serv][3]}"
+                                    )
                                 if org == "Сопутствующие товары":
-                                    logger.debug(f"_СОПУТСТВУЮЩИЕ_ТОВАРЫ: {self.itog_report_org6[serv][3]}")
+                                    logger.debug(
+                                        f"_СОПУТСТВУЮЩИЕ_ТОВАРЫ: {self.itog_report_org6[serv][3]}"
+                                    )
                             if (
                                 self.itog_report_org7.get(serv)
                                 and self.itog_report_org7[serv][1] != 0.0
@@ -456,9 +476,13 @@ class BarsicReport2Service:
                                     serv
                                 ][1]
                                 if org == "Прочее":
-                                    logger.debug(f"_ПРОЧЕЕ: {self.itog_report_org7[serv][3]}")
+                                    logger.debug(
+                                        f"_ПРОЧЕЕ: {self.itog_report_org7[serv][3]}"
+                                    )
                                 if org == "Сопутствующие товары":
-                                    logger.debug(f"_СОПУТСТВУЮЩИЕ_ТОВАРЫ: {self.itog_report_org7[serv][3]}")
+                                    logger.debug(
+                                        f"_СОПУТСТВУЮЩИЕ_ТОВАРЫ: {self.itog_report_org7[serv][3]}"
+                                    )
                     except KeyError:
                         pass
                     except TypeError:
