@@ -477,11 +477,11 @@ class BarsicReport2Service:
                                 ][1]
                                 if org == "Прочее":
                                     logger.debug(
-                                        f"_ПРОЧЕЕ: {self.itog_report_org7[serv][3]}"
+                                        f"_ПРОЧЕЕ: {self.itog_report_org7[serv]}"
                                     )
                                 if org == "Сопутствующие товары":
                                     logger.debug(
-                                        f"_СОПУТСТВУЮЩИЕ_ТОВАРЫ: {self.itog_report_org7[serv][3]}"
+                                        f"_СОПУТСТВУЮЩИЕ_ТОВАРЫ: {self.itog_report_org7[serv]}"
                                     )
                     except KeyError:
                         pass
