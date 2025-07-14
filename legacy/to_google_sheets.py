@@ -453,55 +453,125 @@ def create_new_google_doc(
     ss.prepare_setColumnWidth(39, 65)
     ss.prepare_setColumnWidth(40, 120)
     ss.prepare_setColumnWidth(41, 100)
-    # Билеты КОРП
+    # Аренда полотенец ПЛАН
     ss.prepare_setColumnWidth(42, 65)
     ss.prepare_setColumnWidth(43, 120)
     ss.prepare_setColumnWidth(44, 100)
-    # Прочее
+    # Аренда полотенец ФАКТ
     ss.prepare_setColumnWidth(45, 65)
     ss.prepare_setColumnWidth(46, 120)
+    ss.prepare_setColumnWidth(47, 100)
+    # Аренда полотенец LASTYEAR
+    ss.prepare_setColumnWidth(48, 65)
+    ss.prepare_setColumnWidth(49, 120)
+    ss.prepare_setColumnWidth(50, 100)
+    # Фишпиллинг ПЛАН
+    ss.prepare_setColumnWidth(51, 65)
+    ss.prepare_setColumnWidth(52, 120)
+    ss.prepare_setColumnWidth(53, 100)
+    # Фишпиллинг ФАКТ
+    ss.prepare_setColumnWidth(54, 65)
+    ss.prepare_setColumnWidth(55, 120)
+    ss.prepare_setColumnWidth(56, 100)
+    # Фишпиллинг LASTYEAR
+    ss.prepare_setColumnWidth(57, 65)
+    ss.prepare_setColumnWidth(58, 120)
+    ss.prepare_setColumnWidth(59, 100)
+    # Билеты КОРП
+    ss.prepare_setColumnWidth(60, 65)
+    ss.prepare_setColumnWidth(61, 120)
+    ss.prepare_setColumnWidth(62, 100)
+    # Прочее
+    ss.prepare_setColumnWidth(63, 65)
+    ss.prepare_setColumnWidth(64, 120)
     # Online Продажи
-    ss.prepare_setColumnWidth(47, 65)
-    ss.prepare_setColumnWidth(48, 120)
-    ss.prepare_setColumnWidth(49, 100)
+    ss.prepare_setColumnWidth(64, 65)
+    ss.prepare_setColumnWidth(66, 120)
+    ss.prepare_setColumnWidth(67, 100)
+    # Нулевые
+    ss.prepare_setColumnWidth(68, 65)
+    ss.prepare_setColumnWidth(69, 120)
+    ss.prepare_setColumnWidth(70, 100)
     # Сумма безнал
-    ss.prepare_setColumnWidth(50, 120)
+    ss.prepare_setColumnWidth(71, 120)
     # Онлайн прочее
-    ss.prepare_setColumnWidth(51, 120)
+    ss.prepare_setColumnWidth(72, 120)
 
     # Объединение ячеек
+
+    # Дата
     ss.prepare_mergeCells("A1:A2")
+    # День недели
     ss.prepare_mergeCells("B1:B2")
+    # Кол-во проходов ПЛАН
     ss.prepare_mergeCells("C1:C2")
+    # Кол-во проходов ФАКТ
     ss.prepare_mergeCells("D1:D2")
+    # Кол-во проходов LASTYEAR
     ss.prepare_mergeCells("E1:E2")
+    # Общая сумма ПЛАН
     ss.prepare_mergeCells("F1:F2")
+    # Общая сумма ФАКТ
     ss.prepare_mergeCells("G1:G2")
+    # Средний чек ФАКТ
     ss.prepare_mergeCells("H1:H2")
+    # Бонусы
     ss.prepare_mergeCells("I1:I2")
+    # Общая сумма LASTYEAR
     ss.prepare_mergeCells("J1:J2")
+    # Билеты
     ss.prepare_mergeCells("K1:M1")
+    # Депозит
     ss.prepare_mergeCells("N1:N2")
+    # Штраф
     ss.prepare_mergeCells("O1:O2")
+    # Общепит ПЛАН
     ss.prepare_mergeCells("P1:R1")
+    # Общепит ФАКТ
     ss.prepare_mergeCells("S1:U1")
+    # Общепит LASTYEAR
     ss.prepare_mergeCells("V1:X1")
+    # Фотоуслуги ПЛАН
     ss.prepare_mergeCells("Y1:AA1")
+    # Фотоуслуги ФАКТ
     ss.prepare_mergeCells("AB1:AD1")
+    # Фотоуслуги LASTYEAR
     ss.prepare_mergeCells("AE1:AG1")
+    # УЛËТSHOP ПЛАН
     ss.prepare_mergeCells("AH1:AJ1")
+    # УЛËТSHOP ФАКТ
     ss.prepare_mergeCells("AK1:AM1")
+    # УЛËТSHOP LASTYEAR
     ss.prepare_mergeCells("AN1:AP1")
+    # Аренда полотенец ПЛАН
     ss.prepare_mergeCells("AQ1:AS1")
-    ss.prepare_mergeCells("AT1:AU1")
-    ss.prepare_mergeCells("AV1:AX1")
-    ss.prepare_mergeCells("AY1:AY2")
-    ss.prepare_mergeCells("AZ1:AZ2")
+    # Аренда полотенец ФАКТ
+    ss.prepare_mergeCells("AT1:AV1")
+    # Аренда полотенец LASTYEAR
+    ss.prepare_mergeCells("AW1:AY1")
+    # Фишпиллинг ПЛАН
+    ss.prepare_mergeCells("AZ1:BB1")
+    # Фишпиллинг ФАКТ
+    ss.prepare_mergeCells("BC1:BE1")
+    # Фишпиллинг LASTYEAR
+    ss.prepare_mergeCells("BF1:BH1")
+    # Билеты КОРП
+    ss.prepare_mergeCells("BI1:BK1")
+    # Прочее
+    ss.prepare_mergeCells("BL1:BM1")
+    # Online Продажи
+    ss.prepare_mergeCells("BN1:BP1")
+    # Нулевые
+    ss.prepare_mergeCells("BQ1:BS1")
+    # Сумма безнал
+    ss.prepare_mergeCells("BT1:BT2")
+    # Онлайн прочее
+    ss.prepare_mergeCells("BU1:BU2")
 
     # Задание параметров группе ячеек
     # Жирный, по центру
     ss.prepare_setCellsFormat(
-        "A1:AZ2",
+        "A1:BU2",
         {"horizontalAlignment": "CENTER", "textFormat": {"bold": True}},
     )
     # ss.prepare_setCellsFormat('E4:E8', {'numberFormat': {'pattern': '[h]:mm:ss', 'type': 'TIME'}},
@@ -509,7 +579,7 @@ def create_new_google_doc(
 
     # Заполнение таблицы
     ss.prepare_setValues(
-        "A1:AZ2",
+        "A1:BU2",
         [
             [
                 "Дата",
@@ -559,12 +629,35 @@ def create_new_google_doc(
                 f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
                 "",
                 "",
+                "Аренда полотенец ПЛАН",
+                "",
+                "",
+                "Аренда полотенец ФАКТ",
+                "",
+                "",
+                f"Аренда полотенец {data_report} "
+                f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
+                "",
+                "",
+                "Фишпиллинг ПЛАН",
+                "",
+                "",
+                "Фишпиллинг ФАКТ",
+                "",
+                "",
+                f"Фишпиллинг {data_report} "
+                f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
+                "",
+                "",
                 "Билеты КОРП",
                 "",
                 "",
                 "Прочее",
                 "",
                 "Online Продажи",
+                "",
+                "",
+                "Нулевые",
                 "",
                 "",
                 "Сумма безнал",
@@ -618,6 +711,27 @@ def create_new_google_doc(
                 "Средний чек",
                 "Кол-во",
                 "Сумма",
+                "Средний чек",
+                "Кол-во",
+                "Сумма",
+                "Средний чек",
+                "Кол-во",
+                "Сумма",
+                "Средний чек",
+                "Кол-во",
+                "Сумма",
+                "Средний чек",
+                "Кол-во",
+                "Сумма",
+                "Средний чек",
+                "Кол-во",
+                "Сумма",
+                "Средний чек",
+                "Кол-во",
+                "Сумма",
+                "Кол-во",
+                "Сумма",
+                "Средний чек",
                 "Кол-во",
                 "Сумма",
                 "Средний чек",
@@ -631,7 +745,7 @@ def create_new_google_doc(
 
     # Цвет фона ячеек
     ss.prepare_setCellsFormat(
-        "A1:AZ2",
+        "A1:BU2",
         {"backgroundColor": functions.htmlColorToJSON("#f7cb4d")},
         fields="userEnteredFormat.backgroundColor",
     )
@@ -829,39 +943,70 @@ def create_new_google_doc(
         googleservice,
         spreadsheet["sheets"][sheetId]["properties"]["title"],
     )
+    # Дата, День недели
     ss.prepare_setColumnsWidth(0, 1, 100)
+    # Кол-во проходов ПРОГНОЗ - Общая сумма {month} {year}
     ss.prepare_setColumnsWidth(2, 7, 120)
+    # Общепит ПЛАН
     ss.prepare_setColumnWidth(8, 65)
     ss.prepare_setColumnWidth(9, 120)
     ss.prepare_setColumnWidth(10, 100)
+    # Фотоуслуги ПЛАН
     ss.prepare_setColumnWidth(11, 65)
     ss.prepare_setColumnWidth(12, 120)
     ss.prepare_setColumnWidth(13, 100)
+    # УЛËТSHOP ПЛАН
     ss.prepare_setColumnWidth(14, 65)
     ss.prepare_setColumnWidth(15, 120)
     ss.prepare_setColumnWidth(16, 100)
+    # Aренда полотенец ПЛАН
+    ss.prepare_setColumnWidth(14, 65)
+    ss.prepare_setColumnWidth(15, 120)
+    ss.prepare_setColumnWidth(16, 100)
+    # Фишпиллинг ПЛАН
+    ss.prepare_setColumnWidth(14, 65)
+    ss.prepare_setColumnWidth(15, 120)
+    ss.prepare_setColumnWidth(16, 100)
+    # Пляж ПЛАН
     ss.prepare_setColumnWidth(17, 65)
     ss.prepare_setColumnWidth(18, 120)
     ss.prepare_setColumnWidth(19, 100)
 
     # Объединение ячеек
+
+    # Дата
     ss.prepare_mergeCells("A1:A2")
+    # День недели
     ss.prepare_mergeCells("B1:B2")
+    # Кол-во проходов ПРОГНОЗ
     ss.prepare_mergeCells("C1:C2")
+    # Кол-во проходов ФАКТ
     ss.prepare_mergeCells("D1:D2")
+    # Общая сумма ПРОГНОЗ
     ss.prepare_mergeCells("E1:E2")
+    # Общая сумма ФАКТ
     ss.prepare_mergeCells("F1:F2")
+    # Средний чек ПРОГНОЗ
     ss.prepare_mergeCells("G1:G2")
+    # Средний чек ФАКТ
     ss.prepare_mergeCells("H1:H2")
+    # Общепит ПЛАН
     ss.prepare_mergeCells("I1:K1")
+    # Фотоуслуги ПЛАН
     ss.prepare_mergeCells("L1:N1")
+    # УЛËТSHOP ПЛАН
     ss.prepare_mergeCells("O1:Q1")
+    # Аренда полотенец ПЛАН
     ss.prepare_mergeCells("R1:T1")
+    # Фишпиллинг ПЛАН
+    ss.prepare_mergeCells("U1:W1")
+    # Пляж ПЛАН
+    ss.prepare_mergeCells("X1:Z1")
 
     # Задание параметров группе ячеек
     # Жирный, по центру
     ss.prepare_setCellsFormat(
-        "A1:T2",
+        "A1:Z2",
         {"horizontalAlignment": "CENTER", "textFormat": {"bold": True}},
     )
     # ss.prepare_setCellsFormat('E4:E8', {'numberFormat': {'pattern': '[h]:mm:ss', 'type': 'TIME'}},
@@ -869,7 +1014,7 @@ def create_new_google_doc(
 
     # Заполнение таблицы
     ss.prepare_setValues(
-        "A1:T2",
+        "A1:Z2",
         [
             [
                 "Дата",
@@ -887,6 +1032,12 @@ def create_new_google_doc(
                 "",
                 "",
                 "УЛËТSHOP ПЛАН",
+                "",
+                "",
+                "Аренда полотенец ПЛАН",
+                "",
+                "",
+                "Фишпиллинг ПЛАН",
                 "",
                 "",
                 "Пляж ПЛАН",
@@ -911,6 +1062,12 @@ def create_new_google_doc(
                 "Кол-во",
                 "Сумма",
                 "Средний чек",
+                "Кол-во",
+                "Сумма",
+                "Средний чек",
+                "Кол-во",
+                "Сумма",
+                "Средний чек",
                 "Трафик",
                 "Общая сумма",
                 "Средний чек",
@@ -922,7 +1079,7 @@ def create_new_google_doc(
 
     # Цвет фона ячеек
     ss.prepare_setCellsFormat(
-        "A1:T2",
+        "A1:Z2",
         {"backgroundColor": functions.htmlColorToJSON("#f7cb4d")},
         fields="userEnteredFormat.backgroundColor",
     )
@@ -1021,7 +1178,7 @@ def create_new_google_doc(
     sheet2_line = 3
     while dateline < enddate:
         ss.prepare_setValues(
-            f"A{sheet2_line}:T{sheet2_line}",
+            f"A{sheet2_line}:Z{sheet2_line}",
             [
                 [
                     datetime.strftime(dateline, "%d.%m.%Y"),
@@ -1046,6 +1203,12 @@ def create_new_google_doc(
                     "",
                     "",
                     f"=IFERROR(S{sheet2_line}/R{sheet2_line};0)",
+                    "",
+                    "",
+                    f"=IFERROR(V{sheet2_line}/U{sheet2_line};0)",
+                    "",
+                    "",
+                    f"=IFERROR(Y{sheet2_line}/X{sheet2_line};0)",
                 ]
             ],
             "ROWS",
@@ -1053,7 +1216,7 @@ def create_new_google_doc(
 
         # Задание форматы вывода строки
         ss.prepare_setCellsFormats(
-            f"A{sheet2_line}:T{sheet2_line}",
+            f"A{sheet2_line}:Z{sheet2_line}",
             [
                 [
                     {
@@ -1147,7 +1310,7 @@ def create_new_google_doc(
         # Цвет фона ячеек
         if sheet2_line % 2 != 0:
             ss.prepare_setCellsFormat(
-                f"A{sheet2_line}:T{sheet2_line}",
+                f"A{sheet2_line}:Z{sheet2_line}",
                 {"backgroundColor": functions.htmlColorToJSON("#fef8e3")},
                 fields="userEnteredFormat.backgroundColor",
             )
@@ -1247,7 +1410,7 @@ def create_new_google_doc(
 
     # ИТОГО
     ss.prepare_setValues(
-        f"A{sheet2_line}:T{sheet2_line}",
+        f"A{sheet2_line}:Z{sheet2_line}",
         [
             [
                 "ИТОГО",
@@ -1270,6 +1433,12 @@ def create_new_google_doc(
                 f"=SUM(R3:R{sheet2_line - 1})",
                 f"=SUM(S3:S{sheet2_line - 1})",
                 f"=IFERROR(S{sheet2_line}/R{sheet2_line};0)",
+                f"=SUM(U3:U{sheet2_line - 1})",
+                f"=SUM(V3:V{sheet2_line - 1})",
+                f"=IFERROR(V{sheet2_line}/U{sheet2_line};0)",
+                f"=SUM(X3:X{sheet2_line - 1})",
+                f"=SUM(Y3:Y{sheet2_line - 1})",
+                f"=IFERROR(Y{sheet2_line}/X{sheet2_line};0)",
             ]
         ],
         "ROWS",
@@ -1277,7 +1446,7 @@ def create_new_google_doc(
 
     # Задание форматы вывода строки
     ss.prepare_setCellsFormats(
-        f"A{sheet2_line}:T{sheet2_line}",
+        f"A{sheet2_line}:Z{sheet2_line}",
         [
             [
                 {
@@ -1424,7 +1593,7 @@ def create_new_google_doc(
     )
     # Цвет фона ячеек
     ss.prepare_setCellsFormat(
-        f"A{sheet2_line}:T{sheet2_line}",
+        f"A{sheet2_line}:Z{sheet2_line}",
         {"backgroundColor": functions.htmlColorToJSON("#fce8b2")},
         fields="userEnteredFormat.backgroundColor",
     )

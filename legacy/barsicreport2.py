@@ -2,6 +2,7 @@ import logging
 import re
 from datetime import datetime, timedelta
 from decimal import Decimal
+from enum import StrEnum
 
 import apiclient
 import httplib2
@@ -24,7 +25,6 @@ from services.report_config import ReportConfigService, get_report_config_servic
 from services.rk import RKService, get_rk_service
 from services.settings import SettingsService, get_settings_service
 from sql.clients_count import CLIENTS_COUNT_SQL
-from enum import StrEnum
 
 
 logger = logging.getLogger("barsicreport2")
@@ -572,9 +572,9 @@ class BarsicReport2Service:
         Формирование и заполнение google-таблицы
         """
         logger.info("Сохранение Финансового отчета в Google-таблицах...")
-        self.sheet_width = 59
+        self.sheet_width = 73
         self.sheet2_width = 3
-        self.sheet3_width = 20
+        self.sheet3_width = 26
         self.sheet4_width = 3
         self.sheet5_width = 3
         self.sheet6_width = 16
@@ -761,6 +761,9 @@ class BarsicReport2Service:
                 fin_report["Online Продажи"][1],
                 fin_report["Фотоуслуги"][1],
                 fin_report["УЛËТSHOP"][1],
+                fin_report["Аренда полотенец"][1],
+                fin_report["Фишпиллинг"][1],
+                fin_report["Нулевые"][1],
             ]
         )
 
@@ -773,7 +776,7 @@ class BarsicReport2Service:
             )
 
         ss.prepare_setValues(
-            f"A{self.nex_line}:AZ{self.nex_line}",
+            f"A{self.nex_line}:BU{self.nex_line}",
             [
                 [
                     datetime.strftime(fin_report["Дата"][0], "%d.%m.%Y"),
@@ -783,7 +786,7 @@ class BarsicReport2Service:
                     f"{fin_report_last_year['Кол-во проходов'][0]}",
                     f"='План'!E{self.nex_line}",
                     f"={str(fin_report['ИТОГО'][1]).replace('.', ',')}"
-                    f"-I{self.nex_line}+AY{self.nex_line}+AZ{self.nex_line}+'Смайл'!C{self.nex_line}",
+                    f"-I{self.nex_line}+BT{self.nex_line}+BU{self.nex_line}+'Смайл'!C{self.nex_line}",
                     f"=IFERROR(G{self.nex_line}/D{self.nex_line};0)",
                     f"={str(fin_report['MaxBonus'][1]).replace('.', ',')}",
                     f"={str(fin_report_last_year['ИТОГО'][1]).replace('.', ',')}"
@@ -826,17 +829,39 @@ class BarsicReport2Service:
                     fin_report_last_year["УЛËТSHOP"][0],
                     fin_report_last_year["УЛËТSHOP"][1],
                     f"=IFERROR(AO{self.nex_line}/AN{self.nex_line};0)",
+                    # Аренда полотенец
+                    f"='План'!R{self.nex_line}",
+                    f"='План'!S{self.nex_line}",
+                    f"=IFERROR(AR{self.nex_line}/AQ{self.nex_line};0)",
+                    fin_report["Аренда полотенец"][0],
+                    fin_report["Аренда полотенец"][1],
+                    f"=IFERROR(AU{self.nex_line}/AT{self.nex_line};0)",
+                    fin_report_last_year["Аренда полотенец"][0],
+                    fin_report_last_year["Аренда полотенец"][1],
+                    f"=IFERROR(AX{self.nex_line}/AW{self.nex_line};0)",
+                    # Фишпиллинг
+                    f"='План'!U{self.nex_line}",
+                    f"='План'!V{self.nex_line}",
+                    f"=IFERROR(BA{self.nex_line}/AZ{self.nex_line};0)",
+                    fin_report["Фишпиллинг"][0],
+                    fin_report["Фишпиллинг"][1],
+                    f"=IFERROR(BD{self.nex_line}/BC{self.nex_line};0)",
+                    fin_report_last_year["Фишпиллинг"][0],
+                    fin_report_last_year["Фишпиллинг"][1],
+                    f"=IFERROR(BG{self.nex_line}/BF{self.nex_line};0)",
                     # Билеты аквапарка КОРП
                     fin_report["Билеты аквапарка КОРП"][0],
                     fin_report["Билеты аквапарка КОРП"][1],
-                    f"=IFERROR(AR{self.nex_line}/AQ{self.nex_line};0)",
-                    fin_report["Прочее"][0]
-                    + fin_report["Сопутствующие товары"][0],
-                    fin_report["Прочее"][1]
-                    + fin_report["Сопутствующие товары"][1],
+                    f"=IFERROR(BJ{self.nex_line}/BI{self.nex_line};0)",
+                    fin_report["Прочее"][0] + fin_report["Сопутствующие товары"][0],
+                    fin_report["Прочее"][1] + fin_report["Сопутствующие товары"][1],
                     fin_report["Online Продажи"][0],
                     fin_report["Online Продажи"][1],
-                    f"=IFERROR(AW{self.nex_line}/AV{self.nex_line};0)",
+                    f"=IFERROR(BO{self.nex_line}/BN{self.nex_line};0)",
+                    # Нулевые
+                    fin_report["Нулевые"][0],
+                    fin_report["Нулевые"][1],
+                    f"=IFERROR(BR{self.nex_line}/BQ{self.nex_line};0)",
                     0,
                     0,
                 ]
@@ -846,7 +871,7 @@ class BarsicReport2Service:
 
         # Задание форматы вывода строки
         ss.prepare_setCellsFormats(
-            f"A{self.nex_line}:AZ{self.nex_line}",
+            f"A{self.nex_line}:BU{self.nex_line}",
             [
                 [
                     {
@@ -888,6 +913,7 @@ class BarsicReport2Service:
                     {"numberFormat": {}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # УЛËТSHOP
                     {"numberFormat": {}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
@@ -897,12 +923,40 @@ class BarsicReport2Service:
                     {"numberFormat": {}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Аренда полотенец
                     {"numberFormat": {}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
                     {"numberFormat": {}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Фишпиллинг
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Прочее
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # ONLINE ПРОДАЖИ
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Нулевые
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Сумма безнал
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Online Прочее
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
                 ]
             ],
@@ -910,7 +964,7 @@ class BarsicReport2Service:
         # Цвет фона ячеек
         if self.nex_line % 2 != 0:
             ss.prepare_setCellsFormat(
-                f"A{self.nex_line}:AZ{self.nex_line}",
+                f"A{self.nex_line}:BU{self.nex_line}",
                 {"backgroundColor": functions.htmlColorToJSON("#fef8e3")},
                 fields="userEnteredFormat.backgroundColor",
             )
@@ -1019,7 +1073,7 @@ class BarsicReport2Service:
                 pass
 
         ss.prepare_setValues(
-            f"A{height_table}:AZ{height_table}",
+            f"A{height_table}:BU{height_table}",
             [
                 [
                     "ИТОГО",
@@ -1067,11 +1121,32 @@ class BarsicReport2Service:
                     f"=SUM(AQ3:AQ{height_table - 1})",
                     f"=SUM(AR3:AR{height_table - 1})",
                     f"=IFERROR(ROUND(AR{height_table}/AQ{height_table};2);0)",
+                    f"=SUM(AQ3:AQ{height_table - 1})",
+                    f"=SUM(AR3:AR{height_table - 1})",
+                    f"=IFERROR(ROUND(AU{height_table}/AT{height_table};2);0)",
+                    f"=SUM(AQ3:AQ{height_table - 1})",
+                    f"=SUM(AR3:AR{height_table - 1})",
+                    f"=IFERROR(ROUND(AX{height_table}/AW{height_table};2);0)",
+                    f"=SUM(AQ3:AQ{height_table - 1})",
+                    f"=SUM(AR3:AR{height_table - 1})",
+                    f"=IFERROR(ROUND(BA{height_table}/AZ{height_table};2);0)",
+                    f"=SUM(AQ3:AQ{height_table - 1})",
+                    f"=SUM(AR3:AR{height_table - 1})",
+                    f"=IFERROR(ROUND(BD{height_table}/BC{height_table};2);0)",
+                    f"=SUM(AQ3:AQ{height_table - 1})",
+                    f"=SUM(AR3:AR{height_table - 1})",
+                    f"=IFERROR(ROUND(BG{height_table}/BF{height_table};2);0)",
+                    f"=SUM(AQ3:AQ{height_table - 1})",
+                    f"=SUM(AR3:AR{height_table - 1})",
+                    f"=IFERROR(ROUND(BJ{height_table}/BI{height_table};2);0)",
                     f"=SUM(AT3:AT{height_table - 1})",
                     f"=SUM(AU3:AU{height_table - 1})",
                     f"=SUM(AV3:AV{height_table - 1})",
                     f"=SUM(AW3:AW{height_table - 1})",
-                    f"=IFERROR(ROUND(AW{height_table}/AV{height_table};2);0)",
+                    f"=IFERROR(ROUND(BO{height_table}/BN{height_table};2);0)",
+                    f"=SUM(AV3:AV{height_table - 1})",
+                    f"=SUM(AW3:AW{height_table - 1})",
+                    f"=IFERROR(ROUND(BR{height_table}/BQ{height_table};2);0)",
                     f"=SUM(AY3:AY{height_table - 1})",
                     f"=SUM(AZ3:AZ{height_table - 1})",
                 ]
@@ -1105,7 +1180,7 @@ class BarsicReport2Service:
 
         # Задание формата вывода строки
         ss.prepare_setCellsFormats(
-            f"A{height_table}:AZ{height_table}",
+            f"A{height_table}:BU{height_table}",
             [
                 [
                     {"textFormat": {"bold": True}},
@@ -1270,6 +1345,83 @@ class BarsicReport2Service:
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
                     {
                         "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
                         "horizontalAlignment": "RIGHT",
@@ -1343,7 +1495,7 @@ class BarsicReport2Service:
 
         # Цвет фона ячеек
         ss.prepare_setCellsFormat(
-            f"A{height_table}:AZ{height_table}",
+            f"A{height_table}:BU{height_table}",
             {"backgroundColor": functions.htmlColorToJSON("#fce8b2")},
             fields="userEnteredFormat.backgroundColor",
         )
@@ -3784,7 +3936,9 @@ class BarsicReport2Service:
         )
 
         # finreport_telegram:
-        self.sms_report_list.append(self.sms_report(date_from, fin_report=self.fin_report))
+        self.sms_report_list.append(
+            self.sms_report(date_from, fin_report=self.fin_report)
+        )
 
         # check_itogreport_xls:
         for itog_report in self.itog_reports:
