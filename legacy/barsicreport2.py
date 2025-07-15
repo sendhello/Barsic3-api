@@ -2,12 +2,14 @@ import logging
 import re
 from datetime import datetime, timedelta
 from decimal import Decimal
+from enum import StrEnum
 
 import apiclient
 import httplib2
 from dateutil.relativedelta import relativedelta
 from fastapi.exceptions import HTTPException
 from oauth2client.service_account import ServiceAccountCredentials
+from pydantic import BaseModel
 from starlette import status
 
 from constants import GOOGLE_DOC_VERSION
@@ -28,6 +30,24 @@ from sql.clients_count import CLIENTS_COUNT_SQL
 logger = logging.getLogger("barsicreport2")
 
 
+AQUA_COMPANIES_IDS = (36, 7203673, 7203674, 13240081, 15826592, 16049033)
+
+
+class DBName(StrEnum):
+    """Название базы данных."""
+
+    AQUA = "aqua"
+    BEACH = "beach"
+
+
+class Company(BaseModel):
+    """Информация об организации."""
+
+    id: int
+    name: str
+    db_name: DBName
+
+
 class BarsicReport2Service:
     """
     Функционал предыдущей версии.
@@ -36,14 +56,6 @@ class BarsicReport2Service:
     def __init__(self, bars_srv: MsSqlDatabase, rk_srv: MsSqlDatabase):
         self.bars_srv = bars_srv
         self.rk_srv = rk_srv
-
-        self.org1 = None
-        self.org2 = None
-        self.org3 = None
-        self.org4 = None
-        self.org5 = None
-        self.org6 = None
-        self.org7 = None
 
         self.count_sql_error = 0
         self.org_for_finreport = {}
@@ -74,14 +86,16 @@ class BarsicReport2Service:
         ]
 
     def count_clients_print(self):
+        """Получение количества человек в зоне Аквазоны."""
+
+        aqua_company = self.get_companies()[0]
         clients_count = self.get_clients_count()
-        self.click_select_org()
         self.bars_srv.set_database(settings.mssql_database1)
         with self.bars_srv as connect:
             total_report = functions.get_total_report(
                 connect=connect,
-                org=self.org1[0],
-                org_name=self.org1[1],
+                org=aqua_company.id,
+                org_name=aqua_company.name,
                 date_from=datetime.now(),
                 date_to=datetime.now() + timedelta(1),
             )
@@ -93,7 +107,7 @@ class BarsicReport2Service:
         try:
             count_clients_allday = self.reportClientCountTotals(
                 database=settings.mssql_database1,
-                org=self.org1[0],
+                org=aqua_company.id,
                 date_from=datetime.now(),
                 date_to=datetime.now() + timedelta(1),
             )[0][1]
@@ -105,32 +119,29 @@ class BarsicReport2Service:
             clients_count[0].zone_name: clients_count[0].count,
         }
 
-    def click_select_org(self):
-        """
-        Выбор первой организации из списка организаций
-        """
-        org_list1 = self.list_organisation(
-            database=settings.mssql_database1,
-        )
-        org_list2 = self.list_organisation(
-            database=settings.mssql_database2,
-        )
-        for org in org_list1:
-            if org[0] == 36:
-                self.org1 = (org[0], org[2])
-            if org[0] == 7203673:
-                self.org3 = (org[0], org[2])
-            if org[0] == 7203674:
-                self.org4 = (org[0], org[2])
-            if org[0] == 13240081:
-                self.org5 = (org[0], org[2])
-            if org[0] == 15826592:
-                self.org6 = (org[0], org[2])
-            if org[0] == 16049033:
-                self.org7 = (org[0], org[2])
+    def get_companies(self) -> list[Company]:
+        """Получение списка организаций из баз данных Аквапарка и Пляжа."""
 
-        self.org2 = (org_list2[0][0], org_list2[0][2])
-        logger.info(f"Выбраны организации {org_list1[0][2]} и {org_list2[0][2]}")
+        aqua_companies_db = self.list_organisation(database=settings.mssql_database1)
+        aqua_companies_map = {
+            company_db[0]: company_db[2] for company_db in aqua_companies_db
+        }
+        companies = [
+            Company(id=id_, name=name, db_name=DBName.AQUA)
+            for id_, name in aqua_companies_map.items()
+            if id_ in AQUA_COMPANIES_IDS
+        ]
+
+        beach_companies_db = self.list_organisation(database=settings.mssql_database2)
+        companies.append(
+            Company(
+                id=beach_companies_db[0][0],
+                name=beach_companies_db[0][2],
+                db_name=DBName.BEACH,
+            )
+        )
+
+        return companies
 
     def list_organisation(
         self,
@@ -263,6 +274,7 @@ class BarsicReport2Service:
 
     def cashdesk_report(
         self,
+        companies: list[Company],
         database,
         date_from,
         date_to,
@@ -338,293 +350,195 @@ class BarsicReport2Service:
         report["Итого"] = [all_sum]
         report["Дата"] = [[date_from, date_to]]
         if database == settings.mssql_database1:
-            report["Организация"] = [[self.org1[1]]]
+            report["Организация"] = [[companies[0].id]]
         elif database == settings.mssql_database2:
-            report["Организация"] = [[self.org2[1]]]
+            beach_company = next(
+                company for company in companies if company.db_name == DBName.BEACH
+            )
+            report["Организация"] = [[beach_company.name]]
         return report
 
-    def fin_report(self):
-        """
-        Форминует финансовый отчет в установленном формате
-        :return - dict
-        """
+    def create_fin_report(self) -> dict:
+        """Форминует финансовый отчет в установленном формате"""
+
         logger.info("Формирование финансового отчета")
-        self.finreport_dict = {}
+        fin_report = {}
         is_aquazona = None
+
         for org, services in self.orgs_dict.items():
             if org != "Не учитывать":
-                self.finreport_dict[org] = [0, 0.00]
+                fin_report[org] = [0, 0.00]
                 for serv in services:
+                    itog_report_aqua = self.itog_reports[0]
                     try:
                         if org == "Дата":
-                            self.finreport_dict[org][0] = self.itog_report_org1[serv][0]
-                            self.finreport_dict[org][1] = self.itog_report_org1[serv][1]
+                            fin_report[org][0] = itog_report_aqua[serv][0]
+                            fin_report[org][1] = itog_report_aqua[serv][1]
+
                         elif serv == "Депозит":
-                            self.finreport_dict[org][1] += self.itog_report_org1[serv][
-                                1
-                            ]
+                            fin_report[org][1] += itog_report_aqua[serv][1]
+
                         elif serv == "Аквазона":
-                            self.finreport_dict["Кол-во проходов"] = [
-                                self.itog_report_org1[serv][0],
+                            fin_report["Кол-во проходов"] = [
+                                itog_report_aqua[serv][0],
                                 0,
                             ]
-                            self.finreport_dict[org][1] += self.itog_report_org1[serv][
-                                1
-                            ]
+                            fin_report[org][1] += itog_report_aqua[serv][1]
                             is_aquazona = True
+
                         elif serv == "Организация":
                             pass
+
                         else:
-                            if (
-                                self.itog_report_org1.get(serv)
-                                and self.itog_report_org1[serv][1] != 0.0
-                            ):
-                                self.finreport_dict[org][0] += self.itog_report_org1[
-                                    serv
-                                ][0]
-                                self.finreport_dict[org][1] += self.itog_report_org1[
-                                    serv
-                                ][1]
-                            if (
-                                self.itog_report_org3.get(serv)
-                                and self.itog_report_org3[serv][1] != 0.0
-                            ):
-                                self.finreport_dict[org][0] += self.itog_report_org3[
-                                    serv
-                                ][0]
-                                self.finreport_dict[org][1] += self.itog_report_org3[
-                                    serv
-                                ][1]
-                            if (
-                                self.itog_report_org4.get(serv)
-                                and self.itog_report_org4[serv][1] != 0.0
-                            ):
-                                self.finreport_dict[org][0] += self.itog_report_org4[
-                                    serv
-                                ][0]
-                                self.finreport_dict[org][1] += self.itog_report_org4[
-                                    serv
-                                ][1]
-                            if (
-                                self.itog_report_org5.get(serv)
-                                and self.itog_report_org5[serv][1] != 0.0
-                            ):
-                                self.finreport_dict[org][0] += self.itog_report_org5[
-                                    serv
-                                ][0]
-                                self.finreport_dict[org][1] += self.itog_report_org5[
-                                    serv
-                                ][1]
-                            if (
-                                self.itog_report_org6.get(serv)
-                                and self.itog_report_org6[serv][1] != 0.0
-                            ):
-                                self.finreport_dict[org][0] += self.itog_report_org6[
-                                    serv
-                                ][0]
-                                self.finreport_dict[org][1] += self.itog_report_org6[
-                                    serv
-                                ][1]
-                            if (
-                                self.itog_report_org7.get(serv)
-                                and self.itog_report_org7[serv][1] != 0.0
-                            ):
-                                self.finreport_dict[org][0] += self.itog_report_org7[
-                                    serv
-                                ][0]
-                                self.finreport_dict[org][1] += self.itog_report_org7[
-                                    serv
-                                ][1]
+                            for itog_report in self.itog_reports:
+                                if (
+                                    itog_report.get(serv)
+                                    and itog_report[serv][1] != 0.0
+                                ):
+                                    fin_report[org][0] += itog_report[serv][0]
+                                    fin_report[org][1] += itog_report[serv][1]
+
                     except KeyError:
                         pass
                     except TypeError:
                         pass
 
         if not is_aquazona:
-            self.finreport_dict["Кол-во проходов"] = [0, 0.00]
+            fin_report["Кол-во проходов"] = [0, 0.00]
 
-        self.finreport_dict.setdefault("Online Продажи", [0, 0.0])
-        self.finreport_dict["Online Продажи"][0] += self.report_bitrix[0]
-        self.finreport_dict["Online Продажи"][1] += self.report_bitrix[1]
+        fin_report.setdefault("Online Продажи", [0, 0.0])
+        fin_report["Online Продажи"][0] += self.report_bitrix[0]
+        fin_report["Online Продажи"][1] += self.report_bitrix[1]
 
-        self.finreport_dict["Смайл"][0] = self.smile_report.total_count
-        self.finreport_dict["Смайл"][1] = self.smile_report.total_sum
+        fin_report["Смайл"][0] = self.smile_report.total_count
+        fin_report["Смайл"][1] = self.smile_report.total_sum
 
         total_cashdesk_report = self.cashdesk_report_org1["Итого"][0]
-        self.finreport_dict["MaxBonus"] = (
+        fin_report["MaxBonus"] = (
             0,
             float(total_cashdesk_report[6] - total_cashdesk_report[7]),
         )
+        return fin_report
 
-    def fin_report_lastyear(self):
-        """
-        Форминует финансовый отчет за предыдущий год в установленном формате
-        :return - dict
-        """
+    def create_fin_report_last_year(self) -> dict:
+        """Форминует финансовый отчет за прошлый год в установленном формате."""
+
         logger.info("Формирование финансового отчета за прошлый год")
-        self.finreport_dict_lastyear = {}
+        fin_report_last_year = {}
         is_aquazona = None
+
         for org, services in self.orgs_dict.items():
             if org != "Не учитывать":
-                self.finreport_dict_lastyear[org] = [0, 0.00]
+                fin_report_last_year[org] = [0, 0.00]
                 for serv in services:
+                    itog_report_aqua_lastyear = self.itog_reports_lastyear[0]
                     try:
                         if org == "Дата":
-                            self.finreport_dict_lastyear[org][0] = (
-                                self.itog_report_org1_lastyear[serv][0]
-                            )
-                            self.finreport_dict_lastyear[org][1] = (
-                                self.itog_report_org1_lastyear[serv][1]
-                            )
+                            fin_report_last_year[org][0] = itog_report_aqua_lastyear[
+                                serv
+                            ][0]
+                            fin_report_last_year[org][1] = itog_report_aqua_lastyear[
+                                serv
+                            ][1]
                         elif serv == "Депозит":
-                            self.finreport_dict_lastyear[org][
-                                1
-                            ] += self.itog_report_org1_lastyear[serv][1]
+                            fin_report_last_year[org][1] += itog_report_aqua_lastyear[
+                                serv
+                            ][1]
                         elif serv == "Аквазона":
-                            self.finreport_dict_lastyear["Кол-во проходов"] = [
-                                self.itog_report_org1_lastyear[serv][0],
+                            fin_report_last_year["Кол-во проходов"] = [
+                                itog_report_aqua_lastyear[serv][0],
                                 0,
                             ]
-                            self.finreport_dict_lastyear[org][
-                                1
-                            ] += self.itog_report_org1_lastyear[serv][1]
+                            fin_report_last_year[org][1] += itog_report_aqua_lastyear[
+                                serv
+                            ][1]
                             is_aquazona = True
+
                         elif serv == "Организация":
                             pass
+
                         else:
-                            if (
-                                self.itog_report_org1_lastyear.get(serv)
-                                and self.itog_report_org1_lastyear[serv][1] != 0.0
-                            ):
-                                self.finreport_dict_lastyear[org][
-                                    0
-                                ] += self.itog_report_org1_lastyear[serv][0]
-                                self.finreport_dict_lastyear[org][
-                                    1
-                                ] += self.itog_report_org1_lastyear[serv][1]
-                            if (
-                                self.itog_report_org3_lastyear.get(serv)
-                                and self.itog_report_org3_lastyear[serv][1] != 0.0
-                            ):
-                                self.finreport_dict_lastyear[org][
-                                    0
-                                ] += self.itog_report_org3_lastyear[serv][0]
-                                self.finreport_dict_lastyear[org][
-                                    1
-                                ] += self.itog_report_org3_lastyear[serv][1]
-                            if (
-                                self.itog_report_org4_lastyear.get(serv)
-                                and self.itog_report_org4_lastyear[serv][1] != 0.0
-                            ):
-                                self.finreport_dict_lastyear[org][
-                                    0
-                                ] += self.itog_report_org4_lastyear[serv][0]
-                                self.finreport_dict_lastyear[org][
-                                    1
-                                ] += self.itog_report_org4_lastyear[serv][1]
-                            if (
-                                self.itog_report_org5_lastyear.get(serv)
-                                and self.itog_report_org5_lastyear[serv][1] != 0.0
-                            ):
-                                self.finreport_dict_lastyear[org][
-                                    0
-                                ] += self.itog_report_org5_lastyear[serv][0]
-                                self.finreport_dict_lastyear[org][
-                                    1
-                                ] += self.itog_report_org5_lastyear[serv][1]
-                            if (
-                                self.itog_report_org6_lastyear.get(serv)
-                                and self.itog_report_org6_lastyear[serv][1] != 0.0
-                            ):
-                                self.finreport_dict_lastyear[org][
-                                    0
-                                ] += self.itog_report_org6_lastyear[serv][0]
-                                self.finreport_dict_lastyear[org][
-                                    1
-                                ] += self.itog_report_org6_lastyear[serv][1]
-                            if (
-                                self.itog_report_org7_lastyear.get(serv)
-                                and self.itog_report_org7_lastyear[serv][1] != 0.0
-                            ):
-                                self.finreport_dict_lastyear[org][
-                                    0
-                                ] += self.itog_report_org7_lastyear[serv][0]
-                                self.finreport_dict_lastyear[org][
-                                    1
-                                ] += self.itog_report_org7_lastyear[serv][1]
+                            for itog_report in self.itog_reports_lastyear:
+                                if (
+                                    itog_report.get(serv)
+                                    and itog_report[serv][1] != 0.0
+                                ):
+                                    fin_report_last_year[org][0] += itog_report[serv][0]
+                                    fin_report_last_year[org][1] += itog_report[serv][1]
+
                     except KeyError:
                         pass
+
                     except TypeError:
                         pass
+
         if not is_aquazona:
-            self.finreport_dict_lastyear["Кол-во проходов"] = [0, 0.00]
-        self.finreport_dict_lastyear.setdefault("Online Продажи", [0, 0.0])
-        self.finreport_dict_lastyear["Online Продажи"][
-            0
-        ] += self.report_bitrix_lastyear[0]
-        self.finreport_dict_lastyear["Online Продажи"][
-            1
-        ] += self.report_bitrix_lastyear[1]
-        self.finreport_dict_lastyear["Смайл"][
-            0
-        ] = self.smile_report_lastyear.total_count
-        self.finreport_dict_lastyear["Смайл"][1] = self.smile_report_lastyear.total_sum
+            fin_report_last_year["Кол-во проходов"] = [0, 0.00]
+
+        fin_report_last_year.setdefault("Online Продажи", [0, 0.0])
+        fin_report_last_year["Online Продажи"][0] += self.report_bitrix_lastyear[0]
+        fin_report_last_year["Online Продажи"][1] += self.report_bitrix_lastyear[1]
+        fin_report_last_year["Смайл"][0] = self.smile_report_lastyear.total_count
+        fin_report_last_year["Смайл"][1] = self.smile_report_lastyear.total_sum
 
         total_cashdesk_report = self.cashdesk_report_org1_lastyear["Итого"][0]
-        self.finreport_dict_lastyear["MaxBonus"] = (
+        fin_report_last_year["MaxBonus"] = (
             0,
             total_cashdesk_report[6] - total_cashdesk_report[7],
         )
 
-    def fin_report_beach(self):
-        """
-        Форминует финансовый отчет по пляжу в установленном формате
-        :return - dict
-        """
+        return fin_report_last_year
+
+    def create_fin_report_beach(self) -> dict:
+        """Форминует финансовый отчет по пляжу в установленном формате"""
+
         logger.info("Формирование финансового отчета по пляжу")
-        self.finreport_dict_beach = {
+        fin_report_beach = {
             "Депозит": (0, 0),
             "Товары": (0, 0),
             "Услуги": (0, 0),
             "Карты": (0, 0),
             "Итого по отчету": (0, 0),
         }
-        for service in self.itog_report_org2:
+        for service in self.itog_report_beach:
             if service == "Дата":
-                self.finreport_dict_beach[service] = (
-                    self.itog_report_org2[service][0],
-                    self.itog_report_org2[service][1],
+                fin_report_beach[service] = (
+                    self.itog_report_beach[service][0],
+                    self.itog_report_beach[service][1],
                 )
             elif service == "Выход с пляжа":
-                self.finreport_dict_beach[service] = (
-                    self.itog_report_org2[service][0],
-                    self.itog_report_org2[service][1],
+                fin_report_beach[service] = (
+                    self.itog_report_beach[service][0],
+                    self.itog_report_beach[service][1],
                 )
-            elif not self.itog_report_org2[service][3] in self.finreport_dict_beach:
-                self.finreport_dict_beach[self.itog_report_org2[service][3]] = (
-                    self.itog_report_org2[service][0],
-                    self.itog_report_org2[service][1],
+            elif not self.itog_report_beach[service][3] in fin_report_beach:
+                fin_report_beach[self.itog_report_beach[service][3]] = (
+                    self.itog_report_beach[service][0],
+                    self.itog_report_beach[service][1],
                 )
             else:
                 try:
-                    self.finreport_dict_beach[self.itog_report_org2[service][3]] = (
-                        self.finreport_dict_beach[self.itog_report_org2[service][3]][0]
-                        + self.itog_report_org2[service][0],
-                        self.finreport_dict_beach[self.itog_report_org2[service][3]][1]
-                        + self.itog_report_org2[service][1],
+                    fin_report_beach[self.itog_report_beach[service][3]] = (
+                        fin_report_beach[self.itog_report_beach[service][3]][0]
+                        + self.itog_report_beach[service][0],
+                        fin_report_beach[self.itog_report_beach[service][3]][1]
+                        + self.itog_report_beach[service][1],
                     )
                 except TypeError:
                     pass
-        if "Выход с пляжа" not in self.finreport_dict_beach:
-            self.finreport_dict_beach["Выход с пляжа"] = 0, 0
+
+        if "Выход с пляжа" not in fin_report_beach:
+            fin_report_beach["Выход с пляжа"] = 0, 0
+
+        return fin_report_beach
 
     def create_payment_agent_report(
-        self, total_report: dict[str, tuple]
+        self, total_report: dict[str, tuple], aqua_company: Company
     ) -> dict[str, list]:
         """Форминует отчет платежного агента в установленном формате."""
 
         result = {}
-        result["Организация"] = [self.org1[0], self.org1[1]]
+        result["Организация"] = [aqua_company.id, aqua_company.name]
         for org, services in self.agent_dict.items():
             if org == "Не учитывать":
                 continue
@@ -651,14 +565,16 @@ class BarsicReport2Service:
 
         return result
 
-    async def export_to_google_sheet(self, date_from, http_auth, googleservice):
+    async def export_to_google_sheet(
+        self, date_from, http_auth, googleservice, fin_report: dict
+    ):
         """
         Формирование и заполнение google-таблицы
         """
         logger.info("Сохранение Финансового отчета в Google-таблицах...")
-        self.sheet_width = 52
+        self.sheet_width = 73
         self.sheet2_width = 3
-        self.sheet3_width = 20
+        self.sheet3_width = 26
         self.sheet4_width = 3
         self.sheet5_width = 3
         self.sheet6_width = 16
@@ -668,7 +584,7 @@ class BarsicReport2Service:
         self.sheet5_height = 300
         self.sheet6_height = 40
 
-        self.data_report = datetime.strftime(self.finreport_dict["Дата"][0], "%m")
+        self.data_report = datetime.strftime(fin_report["Дата"][0], "%m")
         month = [
             "",
             "Январь",
@@ -687,14 +603,11 @@ class BarsicReport2Service:
         self.data_report = month[int(self.data_report)]
 
         doc_name = (
-            f"{datetime.strftime(self.finreport_dict['Дата'][0], '%Y-%m')} "
+            f"{datetime.strftime(fin_report['Дата'][0], '%Y-%m')} "
             f"({self.data_report}) - Финансовый отчет по Аквапарку"
         )
 
-        if (
-            self.finreport_dict["Дата"][0] + timedelta(1)
-            != self.finreport_dict["Дата"][1]
-        ):
+        if fin_report["Дата"][0] + timedelta(1) != fin_report["Дата"][1]:
             logger.info("Экспорт отчета в Google Sheet за несколько дней невозможен!")
         else:
             google_report_id = (
@@ -707,7 +620,7 @@ class BarsicReport2Service:
                     googleservice=googleservice,
                     doc_name=doc_name,
                     data_report=self.data_report,
-                    finreport_dict=self.finreport_dict,
+                    finreport_dict=fin_report,
                     http_auth=http_auth,
                     date_from=date_from,
                     sheet_width=self.sheet_width,
@@ -761,9 +674,14 @@ class BarsicReport2Service:
             for line_table in self.spreadsheet["sheets"][0]["data"][0]["rowData"]:
                 try:
                     if line_table["values"][0]["formattedValue"] == datetime.strftime(
-                        self.finreport_dict["Дата"][0], "%d.%m.%Y"
+                        fin_report["Дата"][0], "%d.%m.%Y"
                     ):
-                        self.rewrite_google_sheet(googleservice)
+                        self.rewrite_google_sheet(
+                            googleservice,
+                            fin_report=self.fin_report,
+                            fin_report_last_year=self.fin_report_last_year,
+                            fin_report_beach=self.fin_report_beach,
+                        )
                         self.reprint = 0
                         break
                     elif line_table["values"][0]["formattedValue"] == "ИТОГО":
@@ -773,19 +691,41 @@ class BarsicReport2Service:
                 except KeyError:
                     self.start_line += 1
             if self.reprint:
-                self.write_google_sheet(googleservice)
+                self.write_google_sheet(
+                    googleservice,
+                    fin_report=self.fin_report,
+                    fin_report_last_year=self.fin_report_last_year,
+                    fin_report_beach=self.fin_report_beach,
+                )
             # width_table = len(self.spreadsheet['sheets'][0]['data'][0]['rowData'][0]['values'])
         return True
 
-    def rewrite_google_sheet(self, googleservice):
+    def rewrite_google_sheet(
+        self,
+        googleservice,
+        fin_report: dict,
+        fin_report_last_year: dict,
+        fin_report_beach: dict,
+    ):
         """
         Заполнение google-таблицы в случае, если данные уже существуют
         """
         logger.warning("Перезапись уже существующей строки...")
         self.reprint = 1
-        self.write_google_sheet(googleservice)
+        self.write_google_sheet(
+            googleservice,
+            fin_report=fin_report,
+            fin_report_last_year=fin_report_last_year,
+            fin_report_beach=fin_report_beach,
+        )
 
-    def write_google_sheet(self, googleservice):
+    def write_google_sheet(
+        self,
+        googleservice,
+        fin_report: dict,
+        fin_report_last_year: dict,
+        fin_report_beach: dict,
+    ):
         """Заполнение google-таблицы"""
         # SHEET 1
         logger.info("Заполнение листа 1...")
@@ -811,92 +751,117 @@ class BarsicReport2Service:
 
         control_total_sum = sum(
             [
-                self.finreport_dict["Билеты аквапарка"][1],
-                self.finreport_dict["Общепит"][1],
-                self.finreport_dict["Билеты аквапарка КОРП"][1],
-                self.finreport_dict["Прочее"][1],
-                self.finreport_dict["Сопутствующие товары"][1],
-                self.finreport_dict["Депозит"][1],
-                self.finreport_dict["Штраф"][1],
-                self.finreport_dict["Online Продажи"][1],
-                self.finreport_dict["Фотоуслуги"][1],
-                self.finreport_dict["УЛËТSHOP"][1],
+                fin_report["Билеты аквапарка"][1],
+                fin_report["Общепит"][1],
+                fin_report["Билеты аквапарка КОРП"][1],
+                fin_report["Прочее"][1],
+                fin_report["Сопутствующие товары"][1],
+                fin_report["Депозит"][1],
+                fin_report["Штраф"][1],
+                fin_report["Online Продажи"][1],
+                fin_report["Фотоуслуги"][1],
+                fin_report["УЛËТSHOP"][1],
+                fin_report["Аренда полотенец"][1],
+                fin_report["Фишпиллинг"][1],
+                fin_report["Нулевые"][1],
             ]
         )
 
-        if self.finreport_dict["ИТОГО"][1] != control_total_sum:
+        if fin_report["ИТОГО"][1] != control_total_sum:
             logger.error("Несоответствие данных: Сумма услуг не равна итоговой сумме")
             logger.info(
                 f"Несоответствие данных: Сумма услуг по группам + депозит ({control_total_sum}) "
-                f"не равна итоговой сумме ({self.finreport_dict['ИТОГО'][1]}). \n"
+                f"не равна итоговой сумме ({fin_report['ИТОГО'][1]}). \n"
                 f"Рекомендуется проверить правильно ли разделены услуги по группам.",
             )
 
         ss.prepare_setValues(
-            f"A{self.nex_line}:AZ{self.nex_line}",
+            f"A{self.nex_line}:BU{self.nex_line}",
             [
                 [
-                    datetime.strftime(self.finreport_dict["Дата"][0], "%d.%m.%Y"),
-                    weekday_rus[self.finreport_dict["Дата"][0].weekday()],
+                    datetime.strftime(fin_report["Дата"][0], "%d.%m.%Y"),
+                    weekday_rus[fin_report["Дата"][0].weekday()],
                     f"='План'!C{self.nex_line}",
-                    f"{self.finreport_dict['Кол-во проходов'][0]}",
-                    f"{self.finreport_dict_lastyear['Кол-во проходов'][0]}",
+                    f"{fin_report['Кол-во проходов'][0]}",
+                    f"{fin_report_last_year['Кол-во проходов'][0]}",
                     f"='План'!E{self.nex_line}",
-                    f"={str(self.finreport_dict['ИТОГО'][1]).replace('.', ',')}"
-                    f"-I{self.nex_line}+AY{self.nex_line}+AZ{self.nex_line}+'Смайл'!C{self.nex_line}",
+                    f"={str(fin_report['ИТОГО'][1]).replace('.', ',')}"
+                    f"-I{self.nex_line}+BT{self.nex_line}+BU{self.nex_line}+'Смайл'!C{self.nex_line}",
                     f"=IFERROR(G{self.nex_line}/D{self.nex_line};0)",
-                    f"={str(self.finreport_dict['MaxBonus'][1]).replace('.', ',')}",
-                    f"={str(self.finreport_dict_lastyear['ИТОГО'][1]).replace('.', ',')}"
-                    f"-{str(self.finreport_dict_lastyear['MaxBonus'][1]).replace('.', ',')}"
-                    f"+{str(self.finreport_dict_lastyear['Online Продажи'][1]).replace('.', ',')}",
-                    self.finreport_dict["Билеты аквапарка"][0],
-                    self.finreport_dict["Билеты аквапарка"][1],
+                    f"={str(fin_report['MaxBonus'][1]).replace('.', ',')}",
+                    f"={str(fin_report_last_year['ИТОГО'][1]).replace('.', ',')}"
+                    f"-{str(fin_report_last_year['MaxBonus'][1]).replace('.', ',')}"
+                    f"+{str(fin_report_last_year['Online Продажи'][1]).replace('.', ',')}",
+                    fin_report["Билеты аквапарка"][0],
+                    fin_report["Билеты аквапарка"][1],
                     f"=IFERROR(L{self.nex_line}/K{self.nex_line};0)",
-                    self.finreport_dict["Депозит"][1],
-                    self.finreport_dict["Штраф"][1],
+                    fin_report["Депозит"][1],
+                    fin_report["Штраф"][1],
                     # Общепит
                     f"='План'!I{self.nex_line}",
                     f"='План'!J{self.nex_line}",
                     f"=IFERROR(Q{self.nex_line}/P{self.nex_line};0)",
-                    self.finreport_dict["Общепит"][0] + self.finreport_dict["Смайл"][0],
-                    self.finreport_dict["Общепит"][1] + self.finreport_dict["Смайл"][1],
+                    fin_report["Общепит"][0] + fin_report["Смайл"][0],
+                    fin_report["Общепит"][1] + fin_report["Смайл"][1],
                     f"=IFERROR(T{self.nex_line}/S{self.nex_line};0)",
-                    self.finreport_dict_lastyear["Общепит"][0]
-                    + self.finreport_dict_lastyear["Смайл"][0],
-                    self.finreport_dict_lastyear["Общепит"][1]
-                    + self.finreport_dict_lastyear["Смайл"][1],
+                    fin_report_last_year["Общепит"][0]
+                    + fin_report_last_year["Смайл"][0],
+                    fin_report_last_year["Общепит"][1]
+                    + fin_report_last_year["Смайл"][1],
                     f"=IFERROR(W{self.nex_line}/V{self.nex_line};0)",
                     # Фотоуслуги
                     f"='План'!L{self.nex_line}",
                     f"='План'!M{self.nex_line}",
                     f"=IFERROR(Z{self.nex_line}/Y{self.nex_line};0)",
-                    self.finreport_dict["Фотоуслуги"][0],
-                    self.finreport_dict["Фотоуслуги"][1],
+                    fin_report["Фотоуслуги"][0],
+                    fin_report["Фотоуслуги"][1],
                     f"=IFERROR(AC{self.nex_line}/AB{self.nex_line};0)",
-                    self.finreport_dict_lastyear["Фотоуслуги"][0],
-                    self.finreport_dict_lastyear["Фотоуслуги"][1],
+                    fin_report_last_year["Фотоуслуги"][0],
+                    fin_report_last_year["Фотоуслуги"][1],
                     f"=IFERROR(AF{self.nex_line}/AE{self.nex_line};0)",
                     # УЛËТSHOP
                     f"='План'!O{self.nex_line}",
                     f"='План'!P{self.nex_line}",
                     f"=IFERROR(AI{self.nex_line}/AH{self.nex_line};0)",
-                    self.finreport_dict["УЛËТSHOP"][0],
-                    self.finreport_dict["УЛËТSHOP"][1],
+                    fin_report["УЛËТSHOP"][0],
+                    fin_report["УЛËТSHOP"][1],
                     f"=IFERROR(AL{self.nex_line}/AK{self.nex_line};0)",
-                    self.finreport_dict_lastyear["УЛËТSHOP"][0],
-                    self.finreport_dict_lastyear["УЛËТSHOP"][1],
+                    fin_report_last_year["УЛËТSHOP"][0],
+                    fin_report_last_year["УЛËТSHOP"][1],
                     f"=IFERROR(AO{self.nex_line}/AN{self.nex_line};0)",
-                    # Билеты аквапарка КОРП
-                    self.finreport_dict["Билеты аквапарка КОРП"][0],
-                    self.finreport_dict["Билеты аквапарка КОРП"][1],
+                    # Аренда полотенец
+                    f"='План'!R{self.nex_line}",
+                    f"='План'!S{self.nex_line}",
                     f"=IFERROR(AR{self.nex_line}/AQ{self.nex_line};0)",
-                    self.finreport_dict["Прочее"][0]
-                    + self.finreport_dict["Сопутствующие товары"][0],
-                    self.finreport_dict["Прочее"][1]
-                    + self.finreport_dict["Сопутствующие товары"][1],
-                    self.finreport_dict["Online Продажи"][0],
-                    self.finreport_dict["Online Продажи"][1],
-                    f"=IFERROR(AW{self.nex_line}/AV{self.nex_line};0)",
+                    fin_report["Аренда полотенец"][0],
+                    fin_report["Аренда полотенец"][1],
+                    f"=IFERROR(AU{self.nex_line}/AT{self.nex_line};0)",
+                    fin_report_last_year["Аренда полотенец"][0],
+                    fin_report_last_year["Аренда полотенец"][1],
+                    f"=IFERROR(AX{self.nex_line}/AW{self.nex_line};0)",
+                    # Фишпиллинг
+                    f"='План'!U{self.nex_line}",
+                    f"='План'!V{self.nex_line}",
+                    f"=IFERROR(BA{self.nex_line}/AZ{self.nex_line};0)",
+                    fin_report["Фишпиллинг"][0],
+                    fin_report["Фишпиллинг"][1],
+                    f"=IFERROR(BD{self.nex_line}/BC{self.nex_line};0)",
+                    fin_report_last_year["Фишпиллинг"][0],
+                    fin_report_last_year["Фишпиллинг"][1],
+                    f"=IFERROR(BG{self.nex_line}/BF{self.nex_line};0)",
+                    # Билеты аквапарка КОРП
+                    fin_report["Билеты аквапарка КОРП"][0],
+                    fin_report["Билеты аквапарка КОРП"][1],
+                    f"=IFERROR(BJ{self.nex_line}/BI{self.nex_line};0)",
+                    fin_report["Прочее"][0] + fin_report["Сопутствующие товары"][0],
+                    fin_report["Прочее"][1] + fin_report["Сопутствующие товары"][1],
+                    fin_report["Online Продажи"][0],
+                    fin_report["Online Продажи"][1],
+                    f"=IFERROR(BO{self.nex_line}/BN{self.nex_line};0)",
+                    # Нулевые
+                    fin_report["Нулевые"][0],
+                    fin_report["Нулевые"][1],
+                    f"=IFERROR(BR{self.nex_line}/BQ{self.nex_line};0)",
                     0,
                     0,
                 ]
@@ -906,7 +871,7 @@ class BarsicReport2Service:
 
         # Задание форматы вывода строки
         ss.prepare_setCellsFormats(
-            f"A{self.nex_line}:AZ{self.nex_line}",
+            f"A{self.nex_line}:BU{self.nex_line}",
             [
                 [
                     {
@@ -948,6 +913,7 @@ class BarsicReport2Service:
                     {"numberFormat": {}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # УЛËТSHOP
                     {"numberFormat": {}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
@@ -957,12 +923,40 @@ class BarsicReport2Service:
                     {"numberFormat": {}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Аренда полотенец
                     {"numberFormat": {}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
                     {"numberFormat": {}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Фишпиллинг
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Прочее
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # ONLINE ПРОДАЖИ
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Нулевые
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Сумма безнал
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Online Прочее
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
                 ]
             ],
@@ -970,7 +964,7 @@ class BarsicReport2Service:
         # Цвет фона ячеек
         if self.nex_line % 2 != 0:
             ss.prepare_setCellsFormat(
-                f"A{self.nex_line}:AZ{self.nex_line}",
+                f"A{self.nex_line}:BU{self.nex_line}",
                 {"backgroundColor": functions.htmlColorToJSON("#fef8e3")},
                 fields="userEnteredFormat.backgroundColor",
             )
@@ -1079,7 +1073,7 @@ class BarsicReport2Service:
                 pass
 
         ss.prepare_setValues(
-            f"A{height_table}:AZ{height_table}",
+            f"A{height_table}:BU{height_table}",
             [
                 [
                     "ИТОГО",
@@ -1127,11 +1121,32 @@ class BarsicReport2Service:
                     f"=SUM(AQ3:AQ{height_table - 1})",
                     f"=SUM(AR3:AR{height_table - 1})",
                     f"=IFERROR(ROUND(AR{height_table}/AQ{height_table};2);0)",
+                    f"=SUM(AQ3:AQ{height_table - 1})",
+                    f"=SUM(AR3:AR{height_table - 1})",
+                    f"=IFERROR(ROUND(AU{height_table}/AT{height_table};2);0)",
+                    f"=SUM(AQ3:AQ{height_table - 1})",
+                    f"=SUM(AR3:AR{height_table - 1})",
+                    f"=IFERROR(ROUND(AX{height_table}/AW{height_table};2);0)",
+                    f"=SUM(AQ3:AQ{height_table - 1})",
+                    f"=SUM(AR3:AR{height_table - 1})",
+                    f"=IFERROR(ROUND(BA{height_table}/AZ{height_table};2);0)",
+                    f"=SUM(AQ3:AQ{height_table - 1})",
+                    f"=SUM(AR3:AR{height_table - 1})",
+                    f"=IFERROR(ROUND(BD{height_table}/BC{height_table};2);0)",
+                    f"=SUM(AQ3:AQ{height_table - 1})",
+                    f"=SUM(AR3:AR{height_table - 1})",
+                    f"=IFERROR(ROUND(BG{height_table}/BF{height_table};2);0)",
+                    f"=SUM(AQ3:AQ{height_table - 1})",
+                    f"=SUM(AR3:AR{height_table - 1})",
+                    f"=IFERROR(ROUND(BJ{height_table}/BI{height_table};2);0)",
                     f"=SUM(AT3:AT{height_table - 1})",
                     f"=SUM(AU3:AU{height_table - 1})",
                     f"=SUM(AV3:AV{height_table - 1})",
                     f"=SUM(AW3:AW{height_table - 1})",
-                    f"=IFERROR(ROUND(AW{height_table}/AV{height_table};2);0)",
+                    f"=IFERROR(ROUND(BO{height_table}/BN{height_table};2);0)",
+                    f"=SUM(AV3:AV{height_table - 1})",
+                    f"=SUM(AW3:AW{height_table - 1})",
+                    f"=IFERROR(ROUND(BR{height_table}/BQ{height_table};2);0)",
                     f"=SUM(AY3:AY{height_table - 1})",
                     f"=SUM(AZ3:AZ{height_table - 1})",
                 ]
@@ -1165,7 +1180,7 @@ class BarsicReport2Service:
 
         # Задание формата вывода строки
         ss.prepare_setCellsFormats(
-            f"A{height_table}:AZ{height_table}",
+            f"A{height_table}:BU{height_table}",
             [
                 [
                     {"textFormat": {"bold": True}},
@@ -1330,6 +1345,83 @@ class BarsicReport2Service:
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
                     {
                         "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
                         "horizontalAlignment": "RIGHT",
@@ -1403,7 +1495,7 @@ class BarsicReport2Service:
 
         # Цвет фона ячеек
         ss.prepare_setCellsFormat(
-            f"A{height_table}:AZ{height_table}",
+            f"A{height_table}:BU{height_table}",
             {"backgroundColor": functions.htmlColorToJSON("#fce8b2")},
             fields="userEnteredFormat.backgroundColor",
         )
@@ -1655,7 +1747,7 @@ class BarsicReport2Service:
             f"A{self.nex_line}:C{self.nex_line}",
             [
                 [
-                    datetime.strftime(self.finreport_dict["Дата"][0], "%d.%m.%Y"),
+                    datetime.strftime(fin_report["Дата"][0], "%d.%m.%Y"),
                     self.smile_report.total_count,
                     self.smile_report.total_sum,
                 ]
@@ -1918,7 +2010,7 @@ class BarsicReport2Service:
                 f"A{self.nex_line}:C{self.nex_line}",
                 [
                     [
-                        f"За {self.data_report} {datetime.strftime(self.finreport_dict['Дата'][0], '%Y')}",
+                        f"За {self.data_report} {datetime.strftime(fin_report['Дата'][0], '%Y')}",
                         "",
                         "",
                     ]
@@ -2541,7 +2633,7 @@ class BarsicReport2Service:
                 f"A{self.nex_line}:C{self.nex_line}",
                 [
                     [
-                        f"За {self.data_report} {datetime.strftime(self.finreport_dict['Дата'][0], '%Y')}",
+                        f"За {self.data_report} {datetime.strftime(fin_report['Дата'][0], '%Y')}",
                         "",
                         "",
                     ]
@@ -3162,23 +3254,21 @@ class BarsicReport2Service:
             f"A{self.nex_line}:P{self.nex_line}",
             [
                 [
-                    datetime.strftime(self.finreport_dict_beach["Дата"][0], "%d.%m.%Y"),
-                    weekday_rus[self.finreport_dict_beach["Дата"][0].weekday()],
+                    datetime.strftime(fin_report_beach["Дата"][0], "%d.%m.%Y"),
+                    weekday_rus[fin_report_beach["Дата"][0].weekday()],
                     f"='План'!L{self.nex_line}",
-                    self.finreport_dict_beach["Выход с пляжа"][0],
+                    fin_report_beach["Выход с пляжа"][0],
                     f"='План'!M{self.nex_line}",
-                    str(self.finreport_dict_beach["Итого по отчету"][1]).replace(
-                        ".", ","
-                    ),
-                    self.finreport_dict_beach["Депозит"][1],
-                    self.finreport_dict_beach["Карты"][0],
-                    self.finreport_dict_beach["Карты"][1],
+                    str(fin_report_beach["Итого по отчету"][1]).replace(".", ","),
+                    fin_report_beach["Депозит"][1],
+                    fin_report_beach["Карты"][0],
+                    fin_report_beach["Карты"][1],
                     f"=IFERROR(I{self.nex_line}/H{self.nex_line};0)",
-                    self.finreport_dict_beach["Услуги"][0],
-                    self.finreport_dict_beach["Услуги"][1],
+                    fin_report_beach["Услуги"][0],
+                    fin_report_beach["Услуги"][1],
                     f"=IFERROR(L{self.nex_line}/K{self.nex_line};0)",
-                    self.finreport_dict_beach["Товары"][0],
-                    self.finreport_dict_beach["Товары"][1],
+                    fin_report_beach["Товары"][0],
+                    fin_report_beach["Товары"][1],
                     f"=IFERROR(O{self.nex_line}/N{self.nex_line};0)",
                 ]
             ],
@@ -3728,27 +3818,23 @@ class BarsicReport2Service:
             )
         ss.runPrepared()
 
-    def sms_report(self, date_from) -> str:
+    def sms_report(self, date_from, fin_report: dict) -> str:
         """Составляет текстовую версию финансового отчета."""
 
         logger.info("Составление SMS-отчета...")
         resporse = "Отчет по аквапарку за "
 
-        if self.finreport_dict["Дата"][0] == self.finreport_dict["Дата"][1] - timedelta(
-            1
-        ):
-            resporse += (
-                f'{datetime.strftime(self.finreport_dict["Дата"][0], "%d.%m.%Y")}:\n'
-            )
+        if fin_report["Дата"][0] == fin_report["Дата"][1] - timedelta(1):
+            resporse += f'{datetime.strftime(fin_report["Дата"][0], "%d.%m.%Y")}:\n'
 
         else:
             resporse += (
-                f'{datetime.strftime(self.finreport_dict["Дата"][0], "%d.%m.%Y")} '
-                f'- {datetime.strftime(self.finreport_dict["Дата"][1] - timedelta(1), "%d.%m.%Y")}:\n'
+                f'{datetime.strftime(fin_report["Дата"][0], "%d.%m.%Y")} '
+                f'- {datetime.strftime(fin_report["Дата"][1] - timedelta(1), "%d.%m.%Y")}:\n'
             )
 
         def get_sum(field_name: str) -> float:
-            return self.finreport_dict.get(field_name, [0, 0])[1]
+            return fin_report.get(field_name, [0, 0])[1]
 
         bars_sum = get_sum("ИТОГО")
         smile = get_sum("Смайл")
@@ -3756,8 +3842,8 @@ class BarsicReport2Service:
         other = get_sum("Прочее") + get_sum("Сопутствующие товары")
         total_sum = bars_sum - bonuses + smile
 
-        if self.finreport_dict["ИТОГО"][1]:
-            resporse += f'Люди - {self.finreport_dict["Кол-во проходов"][0]};\n'
+        if fin_report["ИТОГО"][1]:
+            resporse += f'Люди - {fin_report["Кол-во проходов"][0]};\n'
             resporse += f"По аквапарку - {get_sum('Билеты аквапарка') + get_sum('Билеты аквапарка КОРП'):.2f} ₽;\n"
             resporse += f"По общепиту - {(get_sum('Общепит') + smile):.2f} ₽;\n"
 
@@ -3772,12 +3858,12 @@ class BarsicReport2Service:
 
         resporse += f"Общая ИТОГО - {total_sum:.2f} ₽;\n\n"
 
-        if self.itog_report_org2["Итого по отчету"][1]:
+        if self.itog_report_beach["Итого по отчету"][1]:
             try:
-                resporse += f'Люди (пляж) - {self.itog_report_org2["Летняя зона | БЕЗЛИМИТ | 1 проход"][0]};\n'
+                resporse += f'Люди (пляж) - {self.itog_report_beach["Летняя зона | БЕЗЛИМИТ | 1 проход"][0]};\n'
             except KeyError:
                 pass
-            resporse += f'Итого по пляжу - {self.itog_report_org2["Итого по отчету"][1]:.2f} ₽;\n'
+            resporse += f'Итого по пляжу - {self.itog_report_beach["Итого по отчету"][1]:.2f} ₽;\n'
 
         resporse += "Без ЧП."
 
@@ -3787,16 +3873,17 @@ class BarsicReport2Service:
             f.write(resporse)
         return resporse
 
-    async def save_reports(self, date_from):
+    async def save_reports(self, date_from, aqua_company: Company):
         """
         Функция управления
         """
-        self.fin_report()
+        self.fin_report = self.create_fin_report()
         payment_agent_report = self.create_payment_agent_report(
             functions.concatenate_total_reports(
-                self.itog_report_org1,
+                self.itog_reports[0],
                 {"Смайл": (self.smile_report.total_count, self.smile_report.total_sum)},
-            )
+            ),
+            aqua_company=aqua_company,
         )
         # agentreport_xls
         self.path_list.append(
@@ -3805,8 +3892,8 @@ class BarsicReport2Service:
             )
         )
         # finreport_google
-        self.fin_report_lastyear()
-        self.fin_report_beach()
+        self.fin_report_last_year = self.create_fin_report_last_year()
+        self.fin_report_beach = self.create_fin_report_beach()
 
         self.finreport_dict_month = None
         if self.itog_report_month:
@@ -3844,52 +3931,29 @@ class BarsicReport2Service:
                 detail=error_message,
             )
 
-        await self.export_to_google_sheet(date_from, httpAuth, googleservice)
+        await self.export_to_google_sheet(
+            date_from, httpAuth, googleservice, fin_report=self.fin_report
+        )
+
         # finreport_telegram:
-        self.sms_report_list.append(self.sms_report(date_from))
+        self.sms_report_list.append(
+            self.sms_report(date_from, fin_report=self.fin_report)
+        )
+
         # check_itogreport_xls:
-        if self.itog_report_org1["Итого по отчету"][1]:
+        for itog_report in self.itog_reports:
+            if itog_report["Итого по отчету"][1]:
+                self.path_list.append(
+                    self._yandex_repo.save_organisation_total(itog_report, date_from)
+                )
+
+        if self.itog_report_beach["Итого по отчету"][1]:
             self.path_list.append(
                 self._yandex_repo.save_organisation_total(
-                    self.itog_report_org1, date_from
+                    self.itog_report_beach, date_from
                 )
             )
-        if self.itog_report_org2["Итого по отчету"][1]:
-            self.path_list.append(
-                self._yandex_repo.save_organisation_total(
-                    self.itog_report_org2, date_from
-                )
-            )
-        if self.itog_report_org3["Итого по отчету"][1]:
-            self.path_list.append(
-                self._yandex_repo.save_organisation_total(
-                    self.itog_report_org3, date_from
-                )
-            )
-        if self.itog_report_org4["Итого по отчету"][1]:
-            self.path_list.append(
-                self._yandex_repo.save_organisation_total(
-                    self.itog_report_org4, date_from
-                )
-            )
-        if self.itog_report_org5["Итого по отчету"][1]:
-            self.path_list.append(
-                self._yandex_repo.save_organisation_total(
-                    self.itog_report_org5, date_from
-                )
-            )
-        if self.itog_report_org6["Итого по отчету"][1]:
-            self.path_list.append(
-                self._yandex_repo.save_organisation_total(
-                    self.itog_report_org6, date_from
-                )
-            )
-        if self.itog_report_org7["Итого по отчету"][1]:
-            self.path_list.append(
-                self._yandex_repo.save_organisation_total(
-                    self.itog_report_org7, date_from
-                )
-            )
+
         # check_cashreport_xls:
         if self.cashdesk_report_org1["Итого"][0][1]:
             self.path_list.append(
@@ -3917,19 +3981,15 @@ class BarsicReport2Service:
                 )
             )
 
-    async def load_report(self, date_from, date_to):
+    async def load_report(
+        self,
+        date_from,
+        date_to,
+        companies: list[Company],
+    ):
         """Выполнить отчеты"""
 
-        self.itog_report_org1 = None
-        self.itog_report_org2 = None
-        self.itog_report_org3 = None
-        self.itog_report_org4 = None
-        self.itog_report_org5 = None
-        self.itog_report_org6 = None
-        self.itog_report_org7 = None
-
-        self.click_select_org()
-
+        self.itog_report_beach = None
         self.report_bitrix = (0, 0)
         self.report_bitrix_lastyear = (0, 0)
         self.smile_report = self._rk_service.get_smile_report(
@@ -3941,93 +4001,34 @@ class BarsicReport2Service:
             date_to=date_to - relativedelta(years=1),
         )
 
-        if self.org1:
+        if companies[0]:
             self.bars_srv.set_database(settings.mssql_database1)
             with self.bars_srv as connect:
-                self.itog_report_org1 = functions.get_total_report(
-                    connect=connect,
-                    org=self.org1[0],
-                    org_name=self.org1[1],
-                    date_from=date_from,
-                    date_to=date_to,
-                )
-                self.itog_report_org1_lastyear = functions.get_total_report(
-                    connect=connect,
-                    org=self.org1[0],
-                    org_name=self.org1[1],
-                    date_from=date_from - relativedelta(years=1),
-                    date_to=date_to - relativedelta(years=1),
-                )
-                self.itog_report_org3 = functions.get_total_report(
-                    connect=connect,
-                    org=self.org3[0],
-                    org_name=self.org3[1],
-                    date_from=date_from,
-                    date_to=date_to,
-                )
-                self.itog_report_org3_lastyear = functions.get_total_report(
-                    connect=connect,
-                    org=self.org3[0],
-                    org_name=self.org3[1],
-                    date_from=date_from - relativedelta(years=1),
-                    date_to=date_to - relativedelta(years=1),
-                )
-                self.itog_report_org4 = functions.get_total_report(
-                    connect=connect,
-                    org=self.org4[0],
-                    org_name=self.org4[1],
-                    date_from=date_from,
-                    date_to=date_to,
-                )
-                self.itog_report_org4_lastyear = functions.get_total_report(
-                    connect=connect,
-                    org=self.org4[0],
-                    org_name=self.org4[1],
-                    date_from=date_from - relativedelta(years=1),
-                    date_to=date_to - relativedelta(years=1),
-                )
-                self.itog_report_org5 = functions.get_total_report(
-                    connect=connect,
-                    org=self.org5[0],
-                    org_name=self.org5[1],
-                    date_from=date_from,
-                    date_to=date_to,
-                )
-                self.itog_report_org6 = functions.get_total_report(
-                    connect=connect,
-                    org=self.org6[0],
-                    org_name=self.org6[1],
-                    date_from=date_from,
-                    date_to=date_to,
-                )
-                self.itog_report_org7 = functions.get_total_report(
-                    connect=connect,
-                    org=self.org7[0],
-                    org_name=self.org7[1],
-                    date_from=date_from,
-                    date_to=date_to,
-                )
-                self.itog_report_org5_lastyear = functions.get_total_report(
-                    connect=connect,
-                    org=self.org5[0],
-                    org_name=self.org5[1],
-                    date_from=date_from - relativedelta(years=1),
-                    date_to=date_to - relativedelta(years=1),
-                )
-                self.itog_report_org6_lastyear = functions.get_total_report(
-                    connect=connect,
-                    org=self.org6[0],
-                    org_name=self.org6[1],
-                    date_from=date_from - relativedelta(years=1),
-                    date_to=date_to - relativedelta(years=1),
-                )
-                self.itog_report_org7_lastyear = functions.get_total_report(
-                    connect=connect,
-                    org=self.org7[0],
-                    org_name=self.org7[1],
-                    date_from=date_from - relativedelta(years=1),
-                    date_to=date_to - relativedelta(years=1),
-                )
+
+                self.itog_reports = []
+                self.itog_reports_lastyear = []
+                for company in companies:
+                    if company.db_name == DBName.BEACH:
+                        continue
+
+                    self.itog_reports.append(
+                        functions.get_total_report(
+                            connect=connect,
+                            org=company.id,
+                            org_name=company.name,
+                            date_from=date_from,
+                            date_to=date_to,
+                        )
+                    )
+                    self.itog_reports_lastyear.append(
+                        functions.get_total_report(
+                            connect=connect,
+                            org=company.id,
+                            org_name=company.name,
+                            date_from=date_from - relativedelta(years=1),
+                            date_to=date_to - relativedelta(years=1),
+                        )
+                    )
 
             self.itog_report_month = None
             if int((date_to - timedelta(1)).strftime("%y%m")) < int(
@@ -4065,26 +4066,32 @@ class BarsicReport2Service:
                 database=settings.mssql_database1,
                 date_from=date_from,
                 date_to=date_to,
+                companies=companies,
             )
             self.cashdesk_report_org1_lastyear = self.cashdesk_report(
                 database=settings.mssql_database1,
                 date_from=date_from - relativedelta(years=1),
                 date_to=date_to - relativedelta(years=1),
+                companies=companies,
             )
             self.client_count_totals_org1 = self.client_count_totals_period(
                 database=settings.mssql_database1,
-                org=self.org1[0],
-                org_name=self.org1[1],
+                org=companies[0].id,
+                org_name=companies[0].name,
                 date_from=date_from,
                 date_to=date_to,
             )
-        if self.org2:
+
+        beach_company = next(
+            company for company in companies if company.db_name == DBName.BEACH
+        )
+        if beach_company:
             self.bars_srv.set_database(settings.mssql_database2)
             with self.bars_srv as connect:
-                self.itog_report_org2 = functions.get_total_report(
+                self.itog_report_beach = functions.get_total_report(
                     connect=connect,
-                    org=self.org2[0],
-                    org_name=self.org2[1],
+                    org=beach_company.id,
+                    org_name=beach_company.name,
                     date_from=date_from,
                     date_to=date_to,
                     is_legacy_database=True,
@@ -4094,11 +4101,12 @@ class BarsicReport2Service:
                 database=settings.mssql_database2,
                 date_from=date_from,
                 date_to=date_to,
+                companies=companies,
             )
             self.client_count_totals_org2 = self.client_count_totals_period(
                 database=settings.mssql_database2,
-                org=self.org2[0],
-                org_name=self.org2[1],
+                org=beach_company.id,
+                org_name=beach_company.name,
                 date_from=date_from,
                 date_to=date_to,
             )
@@ -4106,6 +4114,8 @@ class BarsicReport2Service:
     async def run_report(self, date_from, date_to, use_yadisk: bool = False):
         self.path_list = []
         self.sms_report_list = []
+
+        companies = self.get_companies()
 
         period = []
         while True:
@@ -4130,7 +4140,7 @@ class BarsicReport2Service:
         for date in period:
             date_from = date
             date_to = date + timedelta(1)
-            await self.load_report(date_from, date_to)
+            await self.load_report(date_from, date_to, companies)
 
             self.orgs_dict = (
                 await self._report_config_service.get_report_elements_with_groups(
@@ -4147,7 +4157,7 @@ class BarsicReport2Service:
                     "PlatAgentReport"
                 )
             )
-            await self.save_reports(date_from)
+            await self.save_reports(date_from, aqua_company=companies[0])
 
         # Отправка в яндекс диск
         if use_yadisk:
