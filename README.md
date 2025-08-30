@@ -4,7 +4,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109.2-green.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE.md)
 [![Docker](https://img.shields.io/badge/docker-enabled-blue.svg)](https://www.docker.com/)
-[![CodeQL](https://github.com/ssendhello/Barsic3-api/actions/workflows/codeql.yml/badge.svg)](https://github.com/sendhello/Barsic3-api/actions/workflows/codeql.yml)
+[![CodeQL](https://github.com/sendhello/Barsic3-api/actions/workflows/codeql.yml/badge.svg)](https://github.com/sendhello/Barsic3-api/actions/workflows/codeql.yml)
 
 A comprehensive reporting service for extracting, transforming, and storing reports from the Datakrat Bars2 system. Built with FastAPI and designed for efficient data processing and report generation.
 
