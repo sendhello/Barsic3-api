@@ -4,6 +4,7 @@
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109.2-green.svg)](https://fastapi.tiangolo.com/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE.md)
 [![Docker](https://img.shields.io/badge/docker-enabled-blue.svg)](https://www.docker.com/)
+[![CodeQL](https://github.com/ssendhello/Barsic3-api/actions/workflows/codeql.yml/badge.svg)](https://github.com/sendhello/Barsic3-api/actions/workflows/codeql.yml)
 
 A comprehensive reporting service for extracting, transforming, and storing reports from the Datakrat Bars2 system. Built with FastAPI and designed for efficient data processing and report generation.
 
@@ -232,17 +233,17 @@ docker compose -f docker-compose-dev-without-app.yml up
 
 ## Environment Variables
 
-| Variable                | Default        | Description                              |
-|-------------------------|----------------|------------------------------------------|
-| `DEBUG`                 | `False`        | Enable debug mode                        |
-| `PROJECT_NAME`          | `Barsic`       | Service name (displayed in docs)         |
-| `POSTGRES_HOST`         | `localhost`    | PostgreSQL hostname                      |
-| `POSTGRES_PORT`         | `5432`         | PostgreSQL port                          |
-| `POSTGRES_DB`           | `barsic`       | Database name                            |
-| `POSTGRES_USER`         | `app`          | PostgreSQL username                      |
-| `POSTGRES_PASSWORD`     | `123qwe`       | PostgreSQL password                      |
-| `REDIS_HOST`            | `redis`        | Redis hostname                           |
-| `REDIS_PORT`            | `6379`         | Redis port                               |
+| Variable                | Default     | Description                              |
+|-------------------------|-------------|------------------------------------------|
+| `DEBUG`                 | `False`     | Enable debug mode                        |
+| `PROJECT_NAME`          | `Barsic`    | Service name (displayed in docs)         |
+| `POSTGRES_HOST`         | `localhost` | PostgreSQL hostname                      |
+| `POSTGRES_PORT`         | `5432`      | PostgreSQL port                          |
+| `POSTGRES_DB`           | `barsic`    | Database name                            |
+| `POSTGRES_USER`         | `app`       | PostgreSQL username                      |
+| `POSTGRES_PASSWORD`     |             | PostgreSQL password                      |
+| `REDIS_HOST`            | `redis`     | Redis hostname                           |
+| `REDIS_PORT`            | `6379`      | Redis port                               |
 
 ### External Service Integration
 
