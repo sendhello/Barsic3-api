@@ -177,6 +177,12 @@ Once the service is running, you can access:
 - **Swagger UI**: [http://localhost/barsic/api/v1/docs](http://localhost/barsic/api/v1/docs)
 - **OpenAPI JSON**: [http://localhost/barsic/api/v1/openapi.json](http://localhost/barsic/api/v1/openapi.json)
 
+### Swagger Interface Preview
+
+![Swagger API Documentation](swagger.png)
+
+*Interactive API documentation interface showing all available endpoints, request/response schemas, and the ability to test API calls directly from the browser.*
+
 ### Main Endpoints
 
 | Method | Endpoint                     | Description                    |
