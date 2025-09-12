@@ -238,7 +238,7 @@ class Spreadsheet:
 
 
 def create_new_google_doc(
-    googleservice,
+    google_service,
     doc_name: str,
     data_report,
     finreport_dict,
@@ -260,7 +260,7 @@ def create_new_google_doc(
 
     logging.info("Создание Google-документа...")
     spreadsheet = (
-        googleservice.spreadsheets()
+        google_service.spreadsheets()
         .create(
             body={
                 "properties": {"title": doc_name, "locale": "ru_RU"},
@@ -404,7 +404,7 @@ def create_new_google_doc(
     ss = Spreadsheet(
         spreadsheet["spreadsheetId"],
         sheetId,
-        googleservice,
+        google_service,
         spreadsheet["sheets"][sheetId]["properties"]["title"],
     )
     # Дата, День недели
@@ -830,7 +830,7 @@ def create_new_google_doc(
     ss = Spreadsheet(
         spreadsheet["spreadsheetId"],
         sheetId,
-        googleservice,
+        google_service,
         spreadsheet["sheets"][sheetId]["properties"]["title"],
     )
     ss.prepare_setColumnsWidth(0, 2, 105)
@@ -940,7 +940,7 @@ def create_new_google_doc(
     ss = Spreadsheet(
         spreadsheet["spreadsheetId"],
         sheetId,
-        googleservice,
+        google_service,
         spreadsheet["sheets"][sheetId]["properties"]["title"],
     )
     # Дата, День недели
@@ -1699,7 +1699,7 @@ def create_new_google_doc(
     ss = Spreadsheet(
         spreadsheet["spreadsheetId"],
         sheetId,
-        googleservice,
+        google_service,
         spreadsheet["sheets"][sheetId]["properties"]["title"],
     )
     ss.prepare_setColumnWidth(0, 300)
@@ -1846,7 +1846,7 @@ def create_new_google_doc(
     ss = Spreadsheet(
         spreadsheet["spreadsheetId"],
         sheetId,
-        googleservice,
+        google_service,
         spreadsheet["sheets"][sheetId]["properties"]["title"],
     )
     ss.prepare_setColumnWidth(0, 300)
@@ -1995,7 +1995,7 @@ def create_new_google_doc(
     ss = Spreadsheet(
         spreadsheet["spreadsheetId"],
         sheetId,
-        googleservice,
+        google_service,
         spreadsheet["sheets"][sheetId]["properties"]["title"],
     )
     ss.prepare_setColumnsWidth(0, 1, 105)
