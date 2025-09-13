@@ -17,7 +17,12 @@ from constants import GOOGLE_DOC_VERSION
 from core.settings import settings
 from db.mssql import MsSqlDatabase
 from legacy import functions
-from legacy.to_google_sheets import Spreadsheet, create_new_google_doc
+from legacy.to_google_sheets import (
+    CELL_COLORS_DARK,
+    CELL_COLORS_LIGHT,
+    Spreadsheet,
+    create_new_google_doc,
+)
 from repositories.yandex import YandexRepository, get_yandex_repo
 from schemas.bars import ClientsCount
 from schemas.google_report_ids import GoogleReportIdCreate
@@ -622,6 +627,7 @@ class BarsicReport2Service:
                         self.start_line += 1
                 except KeyError:
                     self.start_line += 1
+
             if self.reprint:
                 self.write_google_sheet(
                     google_service,
@@ -814,92 +820,109 @@ class BarsicReport2Service:
                     {"numberFormat": {}},
                     {"numberFormat": {}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # УЛËТSHOP
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # Аренда полотенец
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # Фишпиллинг
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # Прочее
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # ONLINE ПРОДАЖИ
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # Нулевые
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # Сумма безнал
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # Online Прочее
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                 ]
             ],
         )
         # Цвет фона ячеек
         if self.nex_line % 2 != 0:
-            ss.prepare_setCellsFormat(
-                f"A{self.nex_line}:BU{self.nex_line}",
-                {"backgroundColor": functions.htmlColorToJSON("#fef8e3")},
-                fields="userEnteredFormat.backgroundColor",
-            )
+            for j in range(self.sheet_width):
+                ss.requests.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": ss.sheetId,
+                                "startRowIndex": self.nex_line - 1,
+                                "endRowIndex": self.nex_line,
+                                "startColumnIndex": j,
+                                "endColumnIndex": j + 1,
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": functions.htmlColorToJSON(
+                                        CELL_COLORS_LIGHT[j]
+                                    ),
+                                }
+                            },
+                            "fields": "userEnteredFormat.backgroundColor",
+                        }
+                    }
+                )
 
         # Бордер
         for j in range(self.sheet_width):
@@ -1000,7 +1023,7 @@ class BarsicReport2Service:
                     height_table = i + self.reprint
                     break
                 else:
-                    height_table = 4
+                    height_table = 5
             except KeyError:
                 pass
 
@@ -1089,7 +1112,7 @@ class BarsicReport2Service:
             f"A{height_table + 1}:D{height_table + 1}",
             [
                 [
-                    "Выполнение плана (трафик)",
+                    "План (трафик)",
                     "",
                     f"=IFERROR('План'!C{self.sheet2_line};0)",
                     f"=IFERROR(ROUND(D{height_table}/C{height_table + 1};2);0)",
@@ -1101,7 +1124,7 @@ class BarsicReport2Service:
             f"A{height_table + 2}:D{height_table + 2}",
             [
                 [
-                    "Выполнение плана (доход)",
+                    "План (доход)",
                     "",
                     f"=IFERROR('План'!E{self.sheet2_line};0)",
                     f"=IFERROR(ROUND(G{height_table}/C{height_table + 2};2);0)",
@@ -1121,262 +1144,262 @@ class BarsicReport2Service:
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
@@ -1426,19 +1449,36 @@ class BarsicReport2Service:
         )
 
         # Цвет фона ячеек
-        ss.prepare_setCellsFormat(
-            f"A{height_table}:BU{height_table}",
-            {"backgroundColor": functions.htmlColorToJSON("#fce8b2")},
-            fields="userEnteredFormat.backgroundColor",
-        )
+        for j in range(self.sheet_width):
+            ss.requests.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": ss.sheetId,
+                            "startRowIndex": height_table - 1,
+                            "endRowIndex": height_table,
+                            "startColumnIndex": j,
+                            "endColumnIndex": j + 1,
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": functions.htmlColorToJSON(
+                                    CELL_COLORS_DARK[j]
+                                ),
+                            }
+                        },
+                        "fields": "userEnteredFormat.backgroundColor",
+                    }
+                }
+            )
         ss.prepare_setCellsFormat(
             f"A{height_table + 1}:D{height_table + 1}",
-            {"backgroundColor": functions.htmlColorToJSON("#fce8b2")},
+            {"backgroundColor": functions.htmlColorToJSON("#f7cb4d")},
             fields="userEnteredFormat.backgroundColor",
         )
         ss.prepare_setCellsFormat(
             f"A{height_table + 2}:D{height_table + 2}",
-            {"backgroundColor": functions.htmlColorToJSON("#fce8b2")},
+            {"backgroundColor": functions.htmlColorToJSON("#f7cb4d")},
             fields="userEnteredFormat.backgroundColor",
         )
 
@@ -1697,7 +1737,7 @@ class BarsicReport2Service:
                         "horizontalAlignment": "LEFT",
                     },
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                 ]
             ],
         )
@@ -1821,7 +1861,7 @@ class BarsicReport2Service:
                     {"textFormat": {"bold": True}},
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
@@ -3361,7 +3401,7 @@ class BarsicReport2Service:
             f"A{height_table + 1}:D{height_table + 1}",
             [
                 [
-                    "Выполнение плана (трафик)",
+                    "План (трафик)",
                     "",
                     f"=IFERROR('План'!L{self.sheet2_line};0)",
                     f"=IFERROR(ROUND(D{height_table}/C{height_table + 1};2);0)",
@@ -3373,7 +3413,7 @@ class BarsicReport2Service:
             f"A{height_table + 2}:D{height_table + 2}",
             [
                 [
-                    "Выполнение плана (доход)",
+                    "План (доход)",
                     "",
                     f"=IFERROR('План'!M{self.sheet2_line};0)",
                     f"=IFERROR(ROUND(F{height_table}/C{height_table + 2};2);0)",
