@@ -53,6 +53,15 @@ class TotalReportElement(Model):
 class TotalReport(Model):
     elements: list[TotalReportElement] = Field(default_factory=list)
 
+    def get_element_by_name(self, name: str) -> TotalReportElement | None:
+        """Получение элемента отчета по имени."""
+
+        for element in self.elements:
+            if element.name == name:
+                return element
+
+        return None
+
     @property
     def total_sum(self) -> TotalReportElement:
         """Расчет 'Итого по отчету'."""
@@ -71,11 +80,11 @@ class TotalReport(Model):
             amount += element.amount
 
         return TotalReportElement(
-            super_name="Итого",
-            view_string="Итого",
-            name="Итого по отчету",
-            good_amount=good_amount,
-            amount=amount,
+            SuperName="Итого",
+            ViewString="Итого",
+            Name="Итого по отчету",
+            GoodAmount=good_amount,
+            Amount=amount,
         )
 
 
