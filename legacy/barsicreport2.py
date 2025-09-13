@@ -6,7 +6,6 @@ from enum import StrEnum
 
 import apiclient
 import httplib2
-import pandas as pd
 from dateutil.relativedelta import relativedelta
 from fastapi.exceptions import HTTPException
 from googleapiclient.discovery import Resource as GoogleService
@@ -20,7 +19,7 @@ from db.mssql import MsSqlDatabase
 from legacy import functions
 from legacy.to_google_sheets import Spreadsheet, create_new_google_doc
 from repositories.yandex import YandexRepository, get_yandex_repo
-from schemas.bars import ClientsCount, TotalReport
+from schemas.bars import ClientsCount
 from schemas.google_report_ids import GoogleReportIdCreate
 from schemas.rk import SmileReport
 from services.bars import BarsService, get_bars_service
@@ -418,81 +417,6 @@ class BarsicReport2Service:
         return report
 
     @staticmethod
-    def _build_fin_report_pd(
-        report_groups: dict,
-        total_reports: list[TotalReport],
-        smile_report: SmileReport,
-        cashdesk_report_org1: dict,
-    ) -> pd.DataFrame:
-        """Формирование финансового отчета."""
-
-        # Инициализируем пустой DataFrame с нужными колонками
-        df = pd.DataFrame(columns=["Категория", "Количество", "Сумма"])
-
-        # Обрабатываем группы отчетов
-        for group, services in {**report_groups, "ИТОГО": ["total"]}.items():
-            if group == "Не учитывать":
-                continue
-
-            group_count = 0
-            group_amount = 0.0
-
-            for service_name in services:
-                for total_report in total_reports:
-                    if (
-                        service := total_report.get_element_by_name(service_name)
-                    ) and service.amount:
-                        group_count += service.good_amount
-                        group_amount += service.amount
-
-                    if service_name == "total":
-                        total_element = total_report.total_sum
-                        group_count = total_element.good_amount or 0
-                        group_amount = total_element.amount or 0.0
-
-            # Добавляем строку в DataFrame
-            new_row = pd.DataFrame(
-                {
-                    "Категория": [group],
-                    "Количество": [group_count],
-                    "Сумма": [group_amount],
-                }
-            )
-            df = pd.concat([df, new_row], ignore_index=True)
-
-        # Добавляем Смайл
-        smile_row = pd.DataFrame(
-            {
-                "Категория": ["Смайл"],
-                "Количество": [smile_report.total_count],
-                "Сумма": [smile_report.total_sum],
-            }
-        )
-        df = pd.concat([df, smile_row], ignore_index=True)
-
-        # Добавляем MaxBonus
-        total_cashdesk_report = cashdesk_report_org1["Итого"][0]
-        maxbonus_row = pd.DataFrame(
-            {
-                "Категория": ["MaxBonus"],
-                "Количество": [0],
-                "Сумма": [float(total_cashdesk_report[6] - total_cashdesk_report[7])],
-            }
-        )
-        df = pd.concat([df, maxbonus_row], ignore_index=True)
-
-        if "Аквазона" not in df["Категория"].values:
-            aqua_zona = pd.DataFrame(
-                {"Категория": ["Аквазона"], "Количество": [0], "Сумма": [0]}
-            )
-            df = pd.concat([df, aqua_zona], ignore_index=True)
-
-        # Устанавливаем категорию как индекс для удобства работы
-        df.set_index("Категория", inplace=True)
-
-        return df
-
-    @staticmethod
     def create_fin_report_beach(beach_total_report: dict) -> dict:
         """Формирует финансовый отчет по пляжу."""
 
@@ -572,12 +496,13 @@ class BarsicReport2Service:
         date_from: datetime,
         http_auth: httplib2.Http,
         google_service: GoogleService,
-        fin_report_pd: pd.DataFrame,
-        fin_report_pd_last_year: pd.DataFrame,
+        fin_report: dict,
+        fin_report_last_year: dict,
         fin_report_beach: dict,
     ):
-        """Формирование и заполнение google-таблицы"""
-
+        """
+        Формирование и заполнение google-таблицы
+        """
         logger.info("Сохранение Финансового отчета в Google-таблицах...")
         self.sheet_width = 73
         self.sheet2_width = 3
@@ -591,7 +516,8 @@ class BarsicReport2Service:
         self.sheet5_height = 300
         self.sheet6_height = 40
 
-        month_name = [
+        self.data_report = datetime.strftime(fin_report["Дата"][0], "%m")
+        month = [
             "",
             "Январь",
             "Февраль",
@@ -605,108 +531,112 @@ class BarsicReport2Service:
             "Октябрь",
             "Ноябрь",
             "Декабрь",
-        ][int(date_from.strftime("%m"))]
+        ]
+        self.data_report = month[int(self.data_report)]
 
-        doc_name = f"{date_from.strftime('%Y-%m')} - Финансовый отчет по Аквапарку"
-
-        google_report_id = (
-            await self._report_config_service.get_financial_doc_id_by_date(date_from)
-        )
-        if google_report_id is None:
-            google_doc = create_new_google_doc(
-                google_service=google_service,
-                doc_name=doc_name,
-                month_name=month_name,
-                http_auth=http_auth,
-                date_from=date_from,
-                sheet_width=self.sheet_width,
-                sheet2_width=self.sheet2_width,
-                sheet3_width=self.sheet3_width,
-                sheet4_width=self.sheet4_width,
-                sheet5_width=self.sheet5_width,
-                sheet6_width=self.sheet6_width,
-                sheet_height=self.sheet_height,
-                sheet2_height=self.sheet2_height,
-                sheet4_height=self.sheet4_height,
-                sheet5_height=self.sheet5_height,
-                sheet6_height=self.sheet6_height,
-            )
-            google_report_id = GoogleReportIdCreate(
-                month=google_doc[0],
-                doc_id=google_doc[1],
-                report_type="financial",
-                version=GOOGLE_DOC_VERSION,
-            )
-            await self._report_config_service.add_google_report_id(google_report_id)
-            logger.info(f"Создана новая таблица с Id: {google_report_id.doc_id}")
-
-        if google_report_id.version != GOOGLE_DOC_VERSION:
-            error_message = (
-                f"Версия Финансового отчета ({google_report_id.version}) не соответствует текущей "
-                f"({GOOGLE_DOC_VERSION}).\n"
-                f"Необходимо сначала удалить ссылку на старую версию, "
-                f"затем заново сформировать отчет с начала месяца."
-            )
-            logger.error(error_message)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=error_message,
-            )
-
-        google_doc = (google_report_id.month, google_report_id.doc_id)
-        self.spreadsheet = (
-            google_service.spreadsheets()
-            .get(spreadsheetId=google_doc[1], ranges=[], includeGridData=True)
-            .execute()
+        doc_name = (
+            f"{datetime.strftime(fin_report['Дата'][0], '%Y-%m')} "
+            f"({self.data_report}) - Финансовый отчет по Аквапарку"
         )
 
-        # -------------------------------- ЗАПОЛНЕНИЕ ДАННЫМИ ------------------------------------------------
+        if fin_report["Дата"][0] + timedelta(1) != fin_report["Дата"][1]:
+            logger.info("Экспорт отчета в Google Sheet за несколько дней невозможен!")
+        else:
+            google_report_id = (
+                await self._report_config_service.get_financial_doc_id_by_date(
+                    date_from
+                )
+            )
+            if google_report_id is None:
+                google_doc = create_new_google_doc(
+                    google_service=google_service,
+                    doc_name=doc_name,
+                    data_report=self.data_report,
+                    finreport_dict=fin_report,
+                    http_auth=http_auth,
+                    date_from=date_from,
+                    sheet_width=self.sheet_width,
+                    sheet2_width=self.sheet2_width,
+                    sheet3_width=self.sheet3_width,
+                    sheet4_width=self.sheet4_width,
+                    sheet5_width=self.sheet5_width,
+                    sheet6_width=self.sheet6_width,
+                    sheet_height=self.sheet_height,
+                    sheet2_height=self.sheet2_height,
+                    sheet4_height=self.sheet4_height,
+                    sheet5_height=self.sheet5_height,
+                    sheet6_height=self.sheet6_height,
+                )
+                google_report_id = GoogleReportIdCreate(
+                    month=google_doc[0],
+                    doc_id=google_doc[1],
+                    report_type="financial",
+                    version=GOOGLE_DOC_VERSION,
+                )
+                await self._report_config_service.add_google_report_id(google_report_id)
+                logger.info(f"Создана новая таблица с Id: {google_report_id.doc_id}")
 
-        # Проверка нет ли текущей даты в таблице
-        self.start_line = 1
-        self.reprint = 2
+            if google_report_id.version != GOOGLE_DOC_VERSION:
+                error_message = (
+                    f"Версия Финансового отчета ({google_report_id.version}) не соответствует текущей "
+                    f"({GOOGLE_DOC_VERSION}).\n"
+                    f"Необходимо сначала удалить ссылку на старую версию, "
+                    f"затем заново сформировать отчет с начала месяца."
+                )
+                logger.error(error_message)
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=error_message,
+                )
 
-        for line_table in self.spreadsheet["sheets"][0]["data"][0]["rowData"]:
-            try:
-                if line_table["values"][0]["formattedValue"] == date_from.strftime(
-                    "%d.%m.%Y"
-                ):
-                    self.rewrite_google_sheet(
-                        google_service,
-                        date_from=date_from,
-                        fin_report_pd=fin_report_pd,
-                        fin_report_pd_last_year=fin_report_pd_last_year,
-                        fin_report_beach=fin_report_beach,
-                    )
-                    self.reprint = 0
-                    break
+            google_doc = (google_report_id.month, google_report_id.doc_id)
+            self.spreadsheet = (
+                google_service.spreadsheets()
+                .get(spreadsheetId=google_doc[1], ranges=[], includeGridData=True)
+                .execute()
+            )
 
-                elif line_table["values"][0]["formattedValue"] == "ИТОГО":
-                    break
+            # -------------------------------- ЗАПОЛНЕНИЕ ДАННЫМИ ------------------------------------------------
 
-                else:
+            # Проверка нет ли текущей даты в таблице
+            logger.info("Проверка нет ли текущей даты в таблице...")
+            self.start_line = 1
+            self.reprint = 2
+
+            for line_table in self.spreadsheet["sheets"][0]["data"][0]["rowData"]:
+                try:
+                    if line_table["values"][0]["formattedValue"] == datetime.strftime(
+                        fin_report["Дата"][0], "%d.%m.%Y"
+                    ):
+                        self.rewrite_google_sheet(
+                            google_service,
+                            fin_report=fin_report,
+                            fin_report_last_year=fin_report_last_year,
+                            fin_report_beach=fin_report_beach,
+                        )
+                        self.reprint = 0
+                        break
+                    elif line_table["values"][0]["formattedValue"] == "ИТОГО":
+                        break
+                    else:
+                        self.start_line += 1
+                except KeyError:
                     self.start_line += 1
-
-            except KeyError:
-                self.start_line += 1
-
-        if self.reprint:
-            self.write_google_sheet(
-                google_service,
-                date_from=date_from,
-                fin_report_pd=fin_report_pd,
-                fin_report_pd_last_year=fin_report_pd_last_year,
-                fin_report_beach=fin_report_beach,
-            )
-
+            if self.reprint:
+                self.write_google_sheet(
+                    google_service,
+                    fin_report=fin_report,
+                    fin_report_last_year=fin_report_last_year,
+                    fin_report_beach=fin_report_beach,
+                )
+            # width_table = len(self.spreadsheet['sheets'][0]['data'][0]['rowData'][0]['values'])
         return True
 
     def rewrite_google_sheet(
         self,
         google_service,
-        date_from: datetime,
-        fin_report_pd: pd.DataFrame,
-        fin_report_pd_last_year: pd.DataFrame,
+        fin_report: dict,
+        fin_report_last_year: dict,
         fin_report_beach: dict,
     ):
         """
@@ -716,43 +646,16 @@ class BarsicReport2Service:
         self.reprint = 1
         self.write_google_sheet(
             google_service,
-            date_from=date_from,
-            fin_report_pd=fin_report_pd,
-            fin_report_pd_last_year=fin_report_pd_last_year,
+            fin_report=fin_report,
+            fin_report_last_year=fin_report_last_year,
             fin_report_beach=fin_report_beach,
         )
-
-    @staticmethod
-    def _get_safe_value(df: pd.DataFrame, category: str, column: str, default=0):
-        """Безопасное получение значения из DataFrame с преобразованием в Python тип."""
-
-        try:
-            if category in df.index:
-                value = df.loc[category, column]
-
-                if hasattr(value, "item"):
-                    return value.item()
-                elif hasattr(value, "tolist"):
-                    return value.tolist()
-                elif isinstance(value, int):
-                    return int(value)
-                elif isinstance(value, float):
-                    return float(value)
-                elif isinstance(value, Decimal):
-                    return float(value)
-                else:
-                    return str(value)
-            return default
-
-        except (KeyError, ValueError, TypeError):
-            return default
 
     def write_google_sheet(
         self,
         google_service,
-        date_from: datetime,
-        fin_report_pd: pd.DataFrame,
-        fin_report_pd_last_year: pd.DataFrame,
+        fin_report: dict,
+        fin_report_last_year: dict,
         fin_report_beach: dict,
     ):
         """Заполнение google-таблицы"""
@@ -780,196 +683,116 @@ class BarsicReport2Service:
 
         control_total_sum = sum(
             [
-                fin_report_pd.loc["Билеты аквапарка", "Сумма"],
-                fin_report_pd.loc["Общепит", "Сумма"],
-                fin_report_pd.loc["Билеты аквапарка КОРП", "Сумма"],
-                fin_report_pd.loc["Прочее", "Сумма"],
-                fin_report_pd.loc["Сопутствующие товары", "Сумма"],
-                fin_report_pd.loc["Депозит", "Сумма"],
-                fin_report_pd.loc["Штраф", "Сумма"],
-                fin_report_pd.loc["Online Продажи", "Сумма"],
-                fin_report_pd.loc["Фотоуслуги", "Сумма"],
-                fin_report_pd.loc["УЛËТSHOP", "Сумма"],
-                fin_report_pd.loc["Аренда полотенец", "Сумма"],
-                fin_report_pd.loc["Фишпиллинг", "Сумма"],
-                fin_report_pd.loc["Нулевые", "Сумма"],
+                fin_report["Билеты аквапарка"][1],
+                fin_report["Общепит"][1],
+                fin_report["Билеты аквапарка КОРП"][1],
+                fin_report["Прочее"][1],
+                fin_report["Сопутствующие товары"][1],
+                fin_report["Депозит"][1],
+                fin_report["Штраф"][1],
+                fin_report["Online Продажи"][1],
+                fin_report["Фотоуслуги"][1],
+                fin_report["УЛËТSHOP"][1],
+                fin_report["Аренда полотенец"][1],
+                fin_report["Фишпиллинг"][1],
+                fin_report["Нулевые"][1],
             ]
         )
 
-        if fin_report_pd.loc["ИТОГО", "Сумма"] != control_total_sum:
+        if fin_report["ИТОГО"][1] != control_total_sum:
             logger.error("Несоответствие данных: Сумма услуг не равна итоговой сумме")
             logger.info(
                 f"Несоответствие данных: Сумма услуг по группам + депозит ({control_total_sum}) "
-                f"не равна итоговой сумме ({fin_report_pd.loc['ИТОГО', "Сумма"]}). \n"
+                f"не равна итоговой сумме ({fin_report['ИТОГО'][1]}). \n"
                 f"Рекомендуется проверить правильно ли разделены услуги по группам.",
             )
-
-        logger.warning(f"{fin_report_pd}")
 
         ss.prepare_setValues(
             f"A{self.nex_line}:BU{self.nex_line}",
             [
                 [
-                    date_from.strftime("%d.%m.%Y"),
-                    weekday_rus[date_from.weekday()],
+                    datetime.strftime(fin_report["Дата"][0], "%d.%m.%Y"),
+                    weekday_rus[fin_report["Дата"][0].weekday()],
                     f"='План'!C{self.nex_line}",
-                    self._get_safe_value(fin_report_pd, "Аквазона", "Количество"),
-                    self._get_safe_value(
-                        fin_report_pd_last_year, "Аквазона", "Количество"
-                    ),
+                    f"{fin_report['Кол-во проходов'][0]}",
+                    f"{fin_report_last_year['Кол-во проходов'][0]}",
                     f"='План'!E{self.nex_line}",
-                    f"={str(self._get_safe_value(fin_report_pd, 'ИТОГО', "Сумма")).replace(".", ",")}"
+                    f"={str(fin_report['ИТОГО'][1]).replace('.', ',')}"
                     f"-I{self.nex_line}+BT{self.nex_line}+BU{self.nex_line}+'Смайл'!C{self.nex_line}",
                     f"=IFERROR(G{self.nex_line}/D{self.nex_line};0)",
-                    str(
-                        self._get_safe_value(fin_report_pd, "MaxBonus", "Сумма")
-                    ).replace(".", ","),
-                    f"={str(self._get_safe_value(fin_report_pd_last_year, 'ИТОГО', "Сумма")).replace(".", ",")}"
-                    f"-{str(self._get_safe_value(fin_report_pd_last_year, 'MaxBonus', "Сумма")).replace(".", ",")}"
-                    f"+{str(self._get_safe_value(fin_report_pd_last_year, 'Online Продажи', "Сумма")).replace(".", ",")}",
-                    self._get_safe_value(
-                        fin_report_pd, "Билеты аквапарка", "Количество"
-                    ),
-                    str(
-                        self._get_safe_value(fin_report_pd, "Билеты аквапарка", "Сумма")
-                    ).replace(".", ","),
+                    f"={str(fin_report['MaxBonus'][1]).replace('.', ',')}",
+                    f"={str(fin_report_last_year['ИТОГО'][1]).replace('.', ',')}"
+                    f"-{str(fin_report_last_year['MaxBonus'][1]).replace('.', ',')}"
+                    f"+{str(fin_report_last_year['Online Продажи'][1]).replace('.', ',')}",
+                    fin_report["Билеты аквапарка"][0],
+                    fin_report["Билеты аквапарка"][1],
                     f"=IFERROR(L{self.nex_line}/K{self.nex_line};0)",
-                    str(
-                        self._get_safe_value(fin_report_pd, "Депозит", "Сумма")
-                    ).replace(".", ","),
-                    str(self._get_safe_value(fin_report_pd, "Штраф", "Сумма")).replace(
-                        ".", ","
-                    ),
+                    fin_report["Депозит"][1],
+                    fin_report["Штраф"][1],
                     # Общепит
                     f"='План'!I{self.nex_line}",
                     f"='План'!J{self.nex_line}",
                     f"=IFERROR(Q{self.nex_line}/P{self.nex_line};0)",
-                    self._get_safe_value(fin_report_pd, "Общепит", "Количество")
-                    + self._get_safe_value(fin_report_pd, "Смайл", "Количество"),
-                    str(
-                        self._get_safe_value(fin_report_pd, "Общепит", "Сумма")
-                        + self._get_safe_value(fin_report_pd, "Смайл", "Сумма")
-                    ).replace(".", ","),
+                    fin_report["Общепит"][0] + fin_report["Смайл"][0],
+                    fin_report["Общепит"][1] + fin_report["Смайл"][1],
                     f"=IFERROR(T{self.nex_line}/S{self.nex_line};0)",
-                    self._get_safe_value(
-                        fin_report_pd_last_year, "Общепит", "Количество"
-                    )
-                    + self._get_safe_value(
-                        fin_report_pd_last_year, "Смайл", "Количество"
-                    ),
-                    str(
-                        self._get_safe_value(
-                            fin_report_pd_last_year, "Общепит", "Сумма"
-                        )
-                        + self._get_safe_value(
-                            fin_report_pd_last_year, "Смайл", "Сумма"
-                        )
-                    ).replace(".", ","),
+                    fin_report_last_year["Общепит"][0]
+                    + fin_report_last_year["Смайл"][0],
+                    fin_report_last_year["Общепит"][1]
+                    + fin_report_last_year["Смайл"][1],
                     f"=IFERROR(W{self.nex_line}/V{self.nex_line};0)",
                     # Фотоуслуги
                     f"='План'!L{self.nex_line}",
                     f"='План'!M{self.nex_line}",
                     f"=IFERROR(Z{self.nex_line}/Y{self.nex_line};0)",
-                    self._get_safe_value(fin_report_pd, "Фотоуслуги", "Количество"),
-                    str(
-                        self._get_safe_value(fin_report_pd, "Фотоуслуги", "Сумма")
-                    ).replace(".", ","),
+                    fin_report["Фотоуслуги"][0],
+                    fin_report["Фотоуслуги"][1],
                     f"=IFERROR(AC{self.nex_line}/AB{self.nex_line};0)",
-                    self._get_safe_value(
-                        fin_report_pd_last_year, "Фотоуслуги", "Количество"
-                    ),
-                    str(
-                        self._get_safe_value(
-                            fin_report_pd_last_year, "Фотоуслуги", "Сумма"
-                        )
-                    ).replace(".", ","),
+                    fin_report_last_year["Фотоуслуги"][0],
+                    fin_report_last_year["Фотоуслуги"][1],
                     f"=IFERROR(AF{self.nex_line}/AE{self.nex_line};0)",
                     # УЛËТSHOP
                     f"='План'!O{self.nex_line}",
                     f"='План'!P{self.nex_line}",
                     f"=IFERROR(AI{self.nex_line}/AH{self.nex_line};0)",
-                    self._get_safe_value(fin_report_pd, "УЛËТSHOP", "Количество"),
-                    str(
-                        self._get_safe_value(fin_report_pd, "УЛËТSHOP", "Сумма")
-                    ).replace(".", ","),
+                    fin_report["УЛËТSHOP"][0],
+                    fin_report["УЛËТSHOP"][1],
                     f"=IFERROR(AL{self.nex_line}/AK{self.nex_line};0)",
-                    self._get_safe_value(
-                        fin_report_pd_last_year, "УЛËТSHOP", "Количество"
-                    ),
-                    str(
-                        self._get_safe_value(
-                            fin_report_pd_last_year, "УЛËТSHOP", "Сумма"
-                        )
-                    ).replace(".", ","),
+                    fin_report_last_year["УЛËТSHOP"][0],
+                    fin_report_last_year["УЛËТSHOP"][1],
                     f"=IFERROR(AO{self.nex_line}/AN{self.nex_line};0)",
                     # Аренда полотенец
                     f"='План'!R{self.nex_line}",
                     f"='План'!S{self.nex_line}",
                     f"=IFERROR(AR{self.nex_line}/AQ{self.nex_line};0)",
-                    self._get_safe_value(
-                        fin_report_pd, "Аренда полотенец", "Количество"
-                    ),
-                    str(
-                        self._get_safe_value(fin_report_pd, "Аренда полотенец", "Сумма")
-                    ).replace(".", ","),
+                    fin_report["Аренда полотенец"][0],
+                    fin_report["Аренда полотенец"][1],
                     f"=IFERROR(AU{self.nex_line}/AT{self.nex_line};0)",
-                    self._get_safe_value(
-                        fin_report_pd_last_year, "Аренда полотенец", "Количество"
-                    ),
-                    str(
-                        self._get_safe_value(
-                            fin_report_pd_last_year, "Аренда полотенец", "Сумма"
-                        )
-                    ).replace(".", ","),
+                    fin_report_last_year["Аренда полотенец"][0],
+                    fin_report_last_year["Аренда полотенец"][1],
                     f"=IFERROR(AX{self.nex_line}/AW{self.nex_line};0)",
                     # Фишпиллинг
                     f"='План'!U{self.nex_line}",
                     f"='План'!V{self.nex_line}",
                     f"=IFERROR(BA{self.nex_line}/AZ{self.nex_line};0)",
-                    self._get_safe_value(fin_report_pd, "Фишпиллинг", "Количество"),
-                    str(
-                        self._get_safe_value(fin_report_pd, "Фишпиллинг", "Сумма")
-                    ).replace(".", ","),
+                    fin_report["Фишпиллинг"][0],
+                    fin_report["Фишпиллинг"][1],
                     f"=IFERROR(BD{self.nex_line}/BC{self.nex_line};0)",
-                    self._get_safe_value(
-                        fin_report_pd_last_year, "Фишпиллинг", "Количество"
-                    ),
-                    str(
-                        self._get_safe_value(
-                            fin_report_pd_last_year, "Фишпиллинг", "Сумма"
-                        )
-                    ).replace(".", ","),
+                    fin_report_last_year["Фишпиллинг"][0],
+                    fin_report_last_year["Фишпиллинг"][1],
                     f"=IFERROR(BG{self.nex_line}/BF{self.nex_line};0)",
                     # Билеты аквапарка КОРП
-                    self._get_safe_value(
-                        fin_report_pd, "Билеты аквапарка КОРП", "Количество"
-                    ),
-                    str(
-                        self._get_safe_value(
-                            fin_report_pd, "Билеты аквапарка КОРП", "Сумма"
-                        )
-                    ).replace(".", ","),
+                    fin_report["Билеты аквапарка КОРП"][0],
+                    fin_report["Билеты аквапарка КОРП"][1],
                     f"=IFERROR(BJ{self.nex_line}/BI{self.nex_line};0)",
-                    self._get_safe_value(fin_report_pd, "Прочее", "Количество")
-                    + self._get_safe_value(
-                        fin_report_pd, "Сопутствующие товары", "Количество"
-                    ),
-                    str(
-                        self._get_safe_value(fin_report_pd, "Прочее", "Сумма")
-                        + self._get_safe_value(
-                            fin_report_pd, "Сопутствующие товары", "Сумма"
-                        )
-                    ).replace(".", ","),
-                    self._get_safe_value(fin_report_pd, "Online Продажи", "Количество"),
-                    str(
-                        self._get_safe_value(fin_report_pd, "Online Продажи", "Сумма")
-                    ).replace(".", ","),
+                    fin_report["Прочее"][0] + fin_report["Сопутствующие товары"][0],
+                    fin_report["Прочее"][1] + fin_report["Сопутствующие товары"][1],
+                    fin_report["Online Продажи"][0],
+                    fin_report["Online Продажи"][1],
                     f"=IFERROR(BO{self.nex_line}/BN{self.nex_line};0)",
                     # Нулевые
-                    self._get_safe_value(fin_report_pd, "Нулевые", "Количество"),
-                    str(
-                        self._get_safe_value(fin_report_pd, "Нулевые", "Сумма")
-                    ).replace(".", ","),
+                    fin_report["Нулевые"][0],
+                    fin_report["Нулевые"][1],
                     f"=IFERROR(BR{self.nex_line}/BQ{self.nex_line};0)",
                     0,
                     0,
@@ -1856,7 +1679,7 @@ class BarsicReport2Service:
             f"A{self.nex_line}:C{self.nex_line}",
             [
                 [
-                    date_from.strftime("%d.%m.%Y"),
+                    datetime.strftime(fin_report["Дата"][0], "%d.%m.%Y"),
                     self.smile_report.total_count,
                     self.smile_report.total_sum,
                 ]
@@ -2119,7 +1942,7 @@ class BarsicReport2Service:
                 f"A{self.nex_line}:C{self.nex_line}",
                 [
                     [
-                        f"За {self.data_report} {date_from.strftime('%Y')}",
+                        f"За {self.data_report} {datetime.strftime(fin_report['Дата'][0], '%Y')}",
                         "",
                         "",
                     ]
@@ -2742,7 +2565,7 @@ class BarsicReport2Service:
                 f"A{self.nex_line}:C{self.nex_line}",
                 [
                     [
-                        f"За {self.data_report} {date_from.strftime('%Y')}",
+                        f"За {self.data_report} {datetime.strftime(fin_report['Дата'][0], '%Y')}",
                         "",
                         "",
                     ]
@@ -3993,12 +3816,6 @@ class BarsicReport2Service:
             smile_report=self.smile_report,
             cashdesk_report_org1=self.cashdesk_report_org1,
         )
-        fin_report_pd = self._build_fin_report_pd(
-            report_groups=self.orgs_dict,
-            total_reports=self.total_reports,
-            smile_report=self.smile_report,
-            cashdesk_report_org1=self.cashdesk_report_org1,
-        )
         payment_agent_report = self.create_payment_agent_report(
             functions.concatenate_total_reports(
                 self.itog_reports[0],
@@ -4017,12 +3834,6 @@ class BarsicReport2Service:
             report_groups=self.orgs_dict,
             itog_reports=self.itog_reports_lastyear,
             report_bitrix=self.report_bitrix_lastyear,
-            smile_report=self.smile_report_lastyear,
-            cashdesk_report_org1=self.cashdesk_report_org1_lastyear,
-        )
-        fin_report_pd_last_year = self._build_fin_report_pd(
-            report_groups=self.orgs_dict,
-            total_reports=self.total_reports_lastyear,
             smile_report=self.smile_report_lastyear,
             cashdesk_report_org1=self.cashdesk_report_org1_lastyear,
         )
@@ -4068,8 +3879,8 @@ class BarsicReport2Service:
             date_from=date_from,
             http_auth=http_auth,
             google_service=google_service,
-            fin_report_pd=fin_report_pd,
-            fin_report_pd_last_year=fin_report_pd_last_year,
+            fin_report=fin_report,
+            fin_report_last_year=fin_report_last_year,
             fin_report_beach=fin_report_beach,
         )
 
@@ -4143,8 +3954,6 @@ class BarsicReport2Service:
 
                 self.itog_reports = []
                 self.itog_reports_lastyear = []
-                self.total_reports = []
-                self.total_reports_lastyear = []
                 for company in companies:
                     if company.db_name == DBName.BEACH:
                         continue
@@ -4165,28 +3974,6 @@ class BarsicReport2Service:
                             org_name=company.name,
                             date_from=date_from - relativedelta(years=1),
                             date_to=date_to - relativedelta(years=1),
-                        )
-                    )
-
-                    self._bars_service.choose_db(settings.mssql_database1)
-                    self.total_reports.append(
-                        self._bars_service.get_total_report(
-                            organization_id=company.id,
-                            date_from=date_from,
-                            date_to=date_to,
-                            hide_zeroes=False,
-                            hide_internal=True,
-                            hide_discount=False,
-                        )
-                    )
-                    self.total_reports_lastyear.append(
-                        self._bars_service.get_total_report(
-                            organization_id=company.id,
-                            date_from=date_from - relativedelta(years=1),
-                            date_to=date_to - relativedelta(years=1),
-                            hide_zeroes=False,
-                            hide_internal=True,
-                            hide_discount=False,
                         )
                     )
 
@@ -4287,7 +4074,7 @@ class BarsicReport2Service:
 
         # Поиск новых услуг
         for report_name in ("GoogleReport", "PlatAgentReport"):
-            self._settings_service.choose_db(settings.mssql_database1)
+            self._settings_service.choose_db("Aquapark_Ulyanovsk")
             new_tariffs = await self._settings_service.get_new_tariff(report_name)
             if new_tariffs:
                 error_message = f"Найдены нераспределенные тарифы в отчете {report_name}: {new_tariffs}"

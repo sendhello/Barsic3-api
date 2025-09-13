@@ -240,7 +240,8 @@ class Spreadsheet:
 def create_new_google_doc(
     google_service,
     doc_name: str,
-    month_name,
+    data_report,
+    finreport_dict,
     http_auth,
     date_from,
     sheet_width,
@@ -585,14 +586,14 @@ def create_new_google_doc(
                 "День недели",
                 "Кол-во проходов \nПЛАН",
                 "Кол-во проходов \nФАКТ",
-                f"Кол-во проходов \n{month_name} "
-                f"{datetime.strftime(date_from - relativedelta(years=1), '%Y')}",
+                f"Кол-во проходов \n{data_report} "
+                f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
                 "Общая сумма \nПЛАН",
                 "Общая сумма \nФАКТ",
                 "Средний чек \nФАКТ",
                 "Бонусы",
-                f"Общая сумма \n{month_name} "
-                f"{datetime.strftime(date_from - relativedelta(years=1), '%Y')}",
+                f"Общая сумма \n{data_report} "
+                f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
                 "Билеты",
                 "",
                 "",
@@ -604,8 +605,8 @@ def create_new_google_doc(
                 "Общепит ФАКТ",
                 "",
                 "",
-                f"Общепит {month_name} "
-                f"{datetime.strftime(date_from - relativedelta(years=1), '%Y')}",
+                f"Общепит {data_report} "
+                f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
                 "",
                 "",
                 "Фотоуслуги ПЛАН",
@@ -614,8 +615,8 @@ def create_new_google_doc(
                 "Фотоуслуги ФАКТ",
                 "",
                 "",
-                f"Фотоуслуги {month_name} "
-                f"{datetime.strftime(date_from - relativedelta(years=1), '%Y')}",
+                f"Фотоуслуги {data_report} "
+                f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
                 "",
                 "",
                 "УЛËТSHOP ПЛАН",
@@ -624,8 +625,8 @@ def create_new_google_doc(
                 "УЛËТSHOP ФАКТ",
                 "",
                 "",
-                f"УЛËТSHOP {month_name} "
-                f"{datetime.strftime(date_from - relativedelta(years=1), '%Y')}",
+                f"УЛËТSHOP {data_report} "
+                f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
                 "",
                 "",
                 "Аренда полотенец ПЛАН",
@@ -634,8 +635,8 @@ def create_new_google_doc(
                 "Аренда полотенец ФАКТ",
                 "",
                 "",
-                f"Аренда полотенец {month_name} "
-                f"{datetime.strftime(date_from - relativedelta(years=1), '%Y')}",
+                f"Аренда полотенец {data_report} "
+                f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
                 "",
                 "",
                 "Фишпиллинг ПЛАН",
@@ -644,8 +645,8 @@ def create_new_google_doc(
                 "Фишпиллинг ФАКТ",
                 "",
                 "",
-                f"Фишпиллинг {month_name} "
-                f"{datetime.strftime(date_from - relativedelta(years=1), '%Y')}",
+                f"Фишпиллинг {data_report} "
+                f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
                 "",
                 "",
                 "Билеты КОРП",
@@ -1169,7 +1170,9 @@ def create_new_google_doc(
         "Воскресенье",
     ]
 
-    start_date = datetime.strptime(f"01{date_from.strftime('%m%Y')}", "%d%m%Y")
+    start_date = datetime.strptime(
+        f"01{finreport_dict['Дата'][0].strftime('%m%Y')}", "%d%m%Y"
+    )
     enddate = start_date + relativedelta(months=1)
     dateline = start_date
     sheet2_line = 3
