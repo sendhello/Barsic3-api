@@ -11,6 +11,57 @@ from legacy import functions
 logger = logging.getLogger(__name__)
 
 
+CELL_COLORS_LIGHT = [
+    # 1–10: Первые 10
+    *["#f6eed6"] * 10,
+    # 15–17: Билеты (триада)
+    *["#dae4f5"] * 3,
+    # 18–20: Депозит
+    "#f6eed6",
+    # 21–23: Штраф
+    "#f8dbdf",
+    # 24–26: Общепит
+    *["#d1f7ed"] * 9,
+    # 33–35: Фотоуслуги
+    *["#f1e0f3"] * 9,
+    # 42–44: УЛЁТSHOP
+    *["#ffead8"] * 9,
+    # 51–53: Аренда полотенец
+    *["#e8fbf2"] * 9,
+    # 60–62: Фишпиллинг
+    *["#d9ebf7"] * 9,
+    # 69–71: Билеты КОРП и прочее
+    *["#e9e0f5"] * 11,
+    # 72–73: Сумма безнал (пара «Кол-во/Сумма»)
+    *["#f6eed6"] * 2,
+]
+
+CELL_COLORS_DARK = [
+    # 1–10: Первые 10
+    *["#f7cb4d"] * 10,
+    # 15–17: Билеты (триада)
+    *["#739be6"] * 3,
+    # 18–20: Депозит
+    "#f7cb4d",
+    # 21–23: Штраф
+    "#c87984",
+    # 24–26: Общепит
+    *["#66dabb"] * 9,
+    # 33–35: Фотоуслуги
+    *["#c88ccd"] * 9,
+    # 42–44: УЛЁТSHOP
+    *["#f49e59"] * 9,
+    # 51–53: Аренда полотенец
+    *["#96c8b0"] * 9,
+    # 60–62: Фишпиллинг
+    *["#54aeec"] * 9,
+    # 69–71: Билеты КОРП и прочее
+    *["#a581d2"] * 11,
+    # 72–73: Сумма безнал (пара «Кол-во/Сумма»)
+    *["#f7cb4d"] * 2,
+]
+
+
 class SpreadsheetError(Exception):
     pass
 
@@ -238,7 +289,7 @@ class Spreadsheet:
 
 
 def create_new_google_doc(
-    googleservice,
+    google_service,
     doc_name: str,
     data_report,
     finreport_dict,
@@ -260,7 +311,7 @@ def create_new_google_doc(
 
     logging.info("Создание Google-документа...")
     spreadsheet = (
-        googleservice.spreadsheets()
+        google_service.spreadsheets()
         .create(
             body={
                 "properties": {"title": doc_name, "locale": "ru_RU"},
@@ -404,195 +455,211 @@ def create_new_google_doc(
     ss = Spreadsheet(
         spreadsheet["spreadsheetId"],
         sheetId,
-        googleservice,
+        google_service,
         spreadsheet["sheets"][sheetId]["properties"]["title"],
     )
+    # Дата
+    ss.prepare_setColumnsWidth(0, 0, 90)
     # Дата, День недели
-    ss.prepare_setColumnsWidth(0, 1, 105)
+    ss.prepare_setColumnsWidth(1, 1, 100)
     # Кол-во проходов ПЛАН - Общая сумма {month} {year}
-    ss.prepare_setColumnsWidth(2, 9, 120)
+    ss.prepare_setColumnsWidth(2, 9, 90)
     # Билеты
-    ss.prepare_setColumnWidth(10, 65)
-    ss.prepare_setColumnWidth(11, 120)
-    ss.prepare_setColumnWidth(12, 100)
-    # Депозит, Штраф
-    ss.prepare_setColumnsWidth(13, 14, 100)
+    ss.prepare_setColumnWidth(10, 60)
+    ss.prepare_setColumnWidth(11, 90)
+    ss.prepare_setColumnWidth(12, 80)
+    # Депозит
+    ss.prepare_setColumnsWidth(13, 14, 90)
+    # Штраф
+    ss.prepare_setColumnsWidth(13, 14, 90)
     # Общепит ПЛАН
-    ss.prepare_setColumnWidth(15, 65)
-    ss.prepare_setColumnWidth(16, 120)
-    ss.prepare_setColumnWidth(17, 100)
+    ss.prepare_setColumnWidth(15, 60)
+    ss.prepare_setColumnWidth(16, 90)
+    ss.prepare_setColumnWidth(17, 80)
     # Общепит ФАКТ
-    ss.prepare_setColumnWidth(18, 65)
-    ss.prepare_setColumnWidth(19, 120)
-    ss.prepare_setColumnWidth(20, 100)
+    ss.prepare_setColumnWidth(18, 60)
+    ss.prepare_setColumnWidth(19, 90)
+    ss.prepare_setColumnWidth(20, 80)
     # Общепит LASTYEAR
-    ss.prepare_setColumnWidth(21, 65)
-    ss.prepare_setColumnWidth(22, 120)
-    ss.prepare_setColumnWidth(23, 100)
+    ss.prepare_setColumnWidth(21, 60)
+    ss.prepare_setColumnWidth(22, 90)
+    ss.prepare_setColumnWidth(23, 80)
     # Фотоуслуги ПЛАН
-    ss.prepare_setColumnWidth(24, 65)
-    ss.prepare_setColumnWidth(25, 120)
-    ss.prepare_setColumnWidth(26, 100)
+    ss.prepare_setColumnWidth(24, 60)
+    ss.prepare_setColumnWidth(25, 90)
+    ss.prepare_setColumnWidth(26, 80)
     # Фотоуслуги ФАКТ
-    ss.prepare_setColumnWidth(27, 65)
-    ss.prepare_setColumnWidth(28, 120)
-    ss.prepare_setColumnWidth(29, 100)
+    ss.prepare_setColumnWidth(27, 60)
+    ss.prepare_setColumnWidth(28, 90)
+    ss.prepare_setColumnWidth(29, 80)
     # Фотоуслуги LASTYEAR
-    ss.prepare_setColumnWidth(30, 65)
-    ss.prepare_setColumnWidth(31, 120)
-    ss.prepare_setColumnWidth(32, 100)
+    ss.prepare_setColumnWidth(30, 60)
+    ss.prepare_setColumnWidth(31, 90)
+    ss.prepare_setColumnWidth(32, 80)
     # УЛËТSHOP ПЛАН
-    ss.prepare_setColumnWidth(33, 65)
-    ss.prepare_setColumnWidth(34, 120)
-    ss.prepare_setColumnWidth(35, 100)
+    ss.prepare_setColumnWidth(33, 60)
+    ss.prepare_setColumnWidth(34, 90)
+    ss.prepare_setColumnWidth(35, 80)
     # УЛËТSHOP ФАКТ
-    ss.prepare_setColumnWidth(36, 65)
-    ss.prepare_setColumnWidth(37, 120)
-    ss.prepare_setColumnWidth(38, 100)
+    ss.prepare_setColumnWidth(36, 60)
+    ss.prepare_setColumnWidth(37, 90)
+    ss.prepare_setColumnWidth(38, 80)
     # УЛËТSHOP LASTYEAR
-    ss.prepare_setColumnWidth(39, 65)
-    ss.prepare_setColumnWidth(40, 120)
-    ss.prepare_setColumnWidth(41, 100)
+    ss.prepare_setColumnWidth(39, 60)
+    ss.prepare_setColumnWidth(40, 90)
+    ss.prepare_setColumnWidth(41, 80)
     # Аренда полотенец ПЛАН
-    ss.prepare_setColumnWidth(42, 65)
-    ss.prepare_setColumnWidth(43, 120)
-    ss.prepare_setColumnWidth(44, 100)
+    ss.prepare_setColumnWidth(42, 60)
+    ss.prepare_setColumnWidth(43, 90)
+    ss.prepare_setColumnWidth(44, 80)
     # Аренда полотенец ФАКТ
-    ss.prepare_setColumnWidth(45, 65)
-    ss.prepare_setColumnWidth(46, 120)
-    ss.prepare_setColumnWidth(47, 100)
+    ss.prepare_setColumnWidth(45, 60)
+    ss.prepare_setColumnWidth(46, 90)
+    ss.prepare_setColumnWidth(47, 80)
     # Аренда полотенец LASTYEAR
-    ss.prepare_setColumnWidth(48, 65)
-    ss.prepare_setColumnWidth(49, 120)
-    ss.prepare_setColumnWidth(50, 100)
+    ss.prepare_setColumnWidth(48, 60)
+    ss.prepare_setColumnWidth(49, 90)
+    ss.prepare_setColumnWidth(50, 80)
     # Фишпиллинг ПЛАН
-    ss.prepare_setColumnWidth(51, 65)
-    ss.prepare_setColumnWidth(52, 120)
-    ss.prepare_setColumnWidth(53, 100)
+    ss.prepare_setColumnWidth(51, 60)
+    ss.prepare_setColumnWidth(52, 90)
+    ss.prepare_setColumnWidth(53, 80)
     # Фишпиллинг ФАКТ
-    ss.prepare_setColumnWidth(54, 65)
-    ss.prepare_setColumnWidth(55, 120)
-    ss.prepare_setColumnWidth(56, 100)
+    ss.prepare_setColumnWidth(54, 60)
+    ss.prepare_setColumnWidth(55, 90)
+    ss.prepare_setColumnWidth(56, 80)
     # Фишпиллинг LASTYEAR
-    ss.prepare_setColumnWidth(57, 65)
-    ss.prepare_setColumnWidth(58, 120)
-    ss.prepare_setColumnWidth(59, 100)
+    ss.prepare_setColumnWidth(57, 60)
+    ss.prepare_setColumnWidth(58, 90)
+    ss.prepare_setColumnWidth(59, 80)
     # Билеты КОРП
-    ss.prepare_setColumnWidth(60, 65)
-    ss.prepare_setColumnWidth(61, 120)
-    ss.prepare_setColumnWidth(62, 100)
+    ss.prepare_setColumnWidth(60, 60)
+    ss.prepare_setColumnWidth(61, 90)
+    ss.prepare_setColumnWidth(62, 80)
     # Прочее
-    ss.prepare_setColumnWidth(63, 65)
-    ss.prepare_setColumnWidth(64, 120)
+    ss.prepare_setColumnWidth(63, 60)
+    ss.prepare_setColumnWidth(64, 90)
     # Online Продажи
-    ss.prepare_setColumnWidth(64, 65)
-    ss.prepare_setColumnWidth(66, 120)
-    ss.prepare_setColumnWidth(67, 100)
+    ss.prepare_setColumnWidth(65, 60)
+    ss.prepare_setColumnWidth(66, 90)
+    ss.prepare_setColumnWidth(67, 80)
     # Нулевые
-    ss.prepare_setColumnWidth(68, 65)
-    ss.prepare_setColumnWidth(69, 120)
-    ss.prepare_setColumnWidth(70, 100)
+    ss.prepare_setColumnWidth(68, 60)
+    ss.prepare_setColumnWidth(69, 90)
+    ss.prepare_setColumnWidth(70, 80)
     # Сумма безнал
-    ss.prepare_setColumnWidth(71, 120)
+    ss.prepare_setColumnWidth(71, 90)
     # Онлайн прочее
-    ss.prepare_setColumnWidth(72, 120)
+    ss.prepare_setColumnWidth(72, 90)
 
     # Объединение ячеек
 
     # Дата
-    ss.prepare_mergeCells("A1:A2")
+    ss.prepare_mergeCells("A1:A3")
     # День недели
-    ss.prepare_mergeCells("B1:B2")
+    ss.prepare_mergeCells("B1:B3")
     # Кол-во проходов ПЛАН
-    ss.prepare_mergeCells("C1:C2")
+    ss.prepare_mergeCells("C1:C3")
     # Кол-во проходов ФАКТ
-    ss.prepare_mergeCells("D1:D2")
+    ss.prepare_mergeCells("D1:D3")
     # Кол-во проходов LASTYEAR
-    ss.prepare_mergeCells("E1:E2")
+    ss.prepare_mergeCells("E1:E3")
     # Общая сумма ПЛАН
-    ss.prepare_mergeCells("F1:F2")
+    ss.prepare_mergeCells("F1:F3")
     # Общая сумма ФАКТ
-    ss.prepare_mergeCells("G1:G2")
+    ss.prepare_mergeCells("G1:G3")
     # Средний чек ФАКТ
-    ss.prepare_mergeCells("H1:H2")
+    ss.prepare_mergeCells("H1:H3")
     # Бонусы
-    ss.prepare_mergeCells("I1:I2")
+    ss.prepare_mergeCells("I1:I3")
     # Общая сумма LASTYEAR
-    ss.prepare_mergeCells("J1:J2")
+    ss.prepare_mergeCells("J1:J3")
     # Билеты
-    ss.prepare_mergeCells("K1:M1")
+    ss.prepare_mergeCells("K1:M2")
     # Депозит
-    ss.prepare_mergeCells("N1:N2")
+    ss.prepare_mergeCells("N1:N3")
     # Штраф
-    ss.prepare_mergeCells("O1:O2")
+    ss.prepare_mergeCells("O1:O3")
     # Общепит ПЛАН
-    ss.prepare_mergeCells("P1:R1")
+    ss.prepare_mergeCells("P1:R2")
     # Общепит ФАКТ
-    ss.prepare_mergeCells("S1:U1")
+    ss.prepare_mergeCells("S1:U2")
     # Общепит LASTYEAR
-    ss.prepare_mergeCells("V1:X1")
+    ss.prepare_mergeCells("V1:X2")
     # Фотоуслуги ПЛАН
-    ss.prepare_mergeCells("Y1:AA1")
+    ss.prepare_mergeCells("Y1:AA2")
     # Фотоуслуги ФАКТ
-    ss.prepare_mergeCells("AB1:AD1")
+    ss.prepare_mergeCells("AB1:AD2")
     # Фотоуслуги LASTYEAR
-    ss.prepare_mergeCells("AE1:AG1")
+    ss.prepare_mergeCells("AE1:AG2")
     # УЛËТSHOP ПЛАН
-    ss.prepare_mergeCells("AH1:AJ1")
+    ss.prepare_mergeCells("AH1:AJ2")
     # УЛËТSHOP ФАКТ
-    ss.prepare_mergeCells("AK1:AM1")
+    ss.prepare_mergeCells("AK1:AM2")
     # УЛËТSHOP LASTYEAR
-    ss.prepare_mergeCells("AN1:AP1")
+    ss.prepare_mergeCells("AN1:AP2")
     # Аренда полотенец ПЛАН
-    ss.prepare_mergeCells("AQ1:AS1")
+    ss.prepare_mergeCells("AQ1:AS2")
     # Аренда полотенец ФАКТ
-    ss.prepare_mergeCells("AT1:AV1")
+    ss.prepare_mergeCells("AT1:AV2")
     # Аренда полотенец LASTYEAR
-    ss.prepare_mergeCells("AW1:AY1")
+    ss.prepare_mergeCells("AW1:AY2")
     # Фишпиллинг ПЛАН
-    ss.prepare_mergeCells("AZ1:BB1")
+    ss.prepare_mergeCells("AZ1:BB2")
     # Фишпиллинг ФАКТ
-    ss.prepare_mergeCells("BC1:BE1")
+    ss.prepare_mergeCells("BC1:BE2")
     # Фишпиллинг LASTYEAR
-    ss.prepare_mergeCells("BF1:BH1")
+    ss.prepare_mergeCells("BF1:BH2")
     # Билеты КОРП
-    ss.prepare_mergeCells("BI1:BK1")
+    ss.prepare_mergeCells("BI1:BK2")
     # Прочее
-    ss.prepare_mergeCells("BL1:BM1")
+    ss.prepare_mergeCells("BL1:BM2")
     # Online Продажи
-    ss.prepare_mergeCells("BN1:BP1")
+    ss.prepare_mergeCells("BN1:BP2")
     # Нулевые
-    ss.prepare_mergeCells("BQ1:BS1")
+    ss.prepare_mergeCells("BQ1:BS2")
     # Сумма безнал
-    ss.prepare_mergeCells("BT1:BT2")
+    ss.prepare_mergeCells("BT1:BT3")
     # Онлайн прочее
-    ss.prepare_mergeCells("BU1:BU2")
+    ss.prepare_mergeCells("BU1:BU3")
 
     # Задание параметров группе ячеек
     # Жирный, по центру
     ss.prepare_setCellsFormat(
-        "A1:BU2",
+        "A1:BU3",
         {"horizontalAlignment": "CENTER", "textFormat": {"bold": True}},
     )
     # ss.prepare_setCellsFormat('E4:E8', {'numberFormat': {'pattern': '[h]:mm:ss', 'type': 'TIME'}},
     #                           fields='userEnteredFormat.numberFormat')
 
+    ss.requests.append(
+        {
+            "updateSheetProperties": {
+                "properties": {
+                    "sheetId": sheetId,
+                    "gridProperties": {"frozenColumnCount": 2},
+                },
+                "fields": "gridProperties.frozenColumnCount",
+            }
+        }
+    )
+
     # Заполнение таблицы
     ss.prepare_setValues(
-        "A1:BU2",
+        "A1:BU3",
         [
             [
                 "Дата",
-                "День недели",
-                "Кол-во проходов \nПЛАН",
-                "Кол-во проходов \nФАКТ",
-                f"Кол-во проходов \n{data_report} "
+                "День\nнедели",
+                "Проходы\nПЛАН",
+                "Проходы\nФАКТ",
+                f"Проходы\n{data_report}\n"
                 f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
-                "Общая сумма \nПЛАН",
-                "Общая сумма \nФАКТ",
-                "Средний чек \nФАКТ",
+                "Общая\nсумма\nПЛАН",
+                "Общая\nсумма\nФАКТ",
+                "Средний\nчек\nФАКТ",
                 "Бонусы",
-                f"Общая сумма \n{data_report} "
+                f"Общ.сумма\n{data_report}\n"
                 f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
                 "Билеты",
                 "",
@@ -660,8 +727,83 @@ def create_new_google_doc(
                 "Нулевые",
                 "",
                 "",
-                "Сумма безнал",
-                "Онлайн прочее",
+                "Сумма\nбезнал",
+                "Онлайн\nпрочее",
+            ],
+            [
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
+                "",
             ],
             [
                 "",
@@ -676,65 +818,65 @@ def create_new_google_doc(
                 "",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "",
                 "",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "Кол-во",
                 "Сумма",
-                "Средний чек",
+                "Ср.чек",
                 "",
                 "",
             ],
@@ -744,14 +886,38 @@ def create_new_google_doc(
     # ss.prepare_setValues("D5:E6", [["This is D5", "This is D6"], ["This is E5", "=5+5"]], "COLUMNS")
 
     # Цвет фона ячеек
+    for i in range(3):
+        for j in range(sheet_width):
+            ss.requests.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": ss.sheetId,
+                            "startRowIndex": i,
+                            "endRowIndex": i + 1,
+                            "startColumnIndex": j,
+                            "endColumnIndex": j + 1,
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": functions.htmlColorToJSON(
+                                    CELL_COLORS_DARK[j]
+                                ),
+                            }
+                        },
+                        "fields": "userEnteredFormat.backgroundColor",
+                    }
+                }
+            )
+
     ss.prepare_setCellsFormat(
-        "A1:BU2",
-        {"backgroundColor": functions.htmlColorToJSON("#f7cb4d")},
-        fields="userEnteredFormat.backgroundColor",
+        "A1:BU3",
+        {"verticalAlignment": "MIDDLE"},
+        fields="userEnteredFormat.verticalAlignment",
     )
 
     # Бордер
-    for i in range(2):
+    for i in range(3):
         for j in range(sheet_width):
             ss.requests.append(
                 {
@@ -830,7 +996,7 @@ def create_new_google_doc(
     ss = Spreadsheet(
         spreadsheet["spreadsheetId"],
         sheetId,
-        googleservice,
+        google_service,
         spreadsheet["sheets"][sheetId]["properties"]["title"],
     )
     ss.prepare_setColumnsWidth(0, 2, 105)
@@ -940,7 +1106,7 @@ def create_new_google_doc(
     ss = Spreadsheet(
         spreadsheet["spreadsheetId"],
         sheetId,
-        googleservice,
+        google_service,
         spreadsheet["sheets"][sheetId]["properties"]["title"],
     )
     # Дата, День недели
@@ -1699,7 +1865,7 @@ def create_new_google_doc(
     ss = Spreadsheet(
         spreadsheet["spreadsheetId"],
         sheetId,
-        googleservice,
+        google_service,
         spreadsheet["sheets"][sheetId]["properties"]["title"],
     )
     ss.prepare_setColumnWidth(0, 300)
@@ -1846,7 +2012,7 @@ def create_new_google_doc(
     ss = Spreadsheet(
         spreadsheet["spreadsheetId"],
         sheetId,
-        googleservice,
+        google_service,
         spreadsheet["sheets"][sheetId]["properties"]["title"],
     )
     ss.prepare_setColumnWidth(0, 300)
@@ -1995,7 +2161,7 @@ def create_new_google_doc(
     ss = Spreadsheet(
         spreadsheet["spreadsheetId"],
         sheetId,
-        googleservice,
+        google_service,
         spreadsheet["sheets"][sheetId]["properties"]["title"],
     )
     ss.prepare_setColumnsWidth(0, 1, 105)

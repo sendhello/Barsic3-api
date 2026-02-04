@@ -8,6 +8,7 @@ import apiclient
 import httplib2
 from dateutil.relativedelta import relativedelta
 from fastapi.exceptions import HTTPException
+from googleapiclient.discovery import Resource as GoogleService
 from oauth2client.service_account import ServiceAccountCredentials
 from pydantic import BaseModel
 from starlette import status
@@ -16,10 +17,16 @@ from constants import GOOGLE_DOC_VERSION
 from core.settings import settings
 from db.mssql import MsSqlDatabase
 from legacy import functions
-from legacy.to_google_sheets import Spreadsheet, create_new_google_doc
+from legacy.to_google_sheets import (
+    CELL_COLORS_DARK,
+    CELL_COLORS_LIGHT,
+    Spreadsheet,
+    create_new_google_doc,
+)
 from repositories.yandex import YandexRepository, get_yandex_repo
 from schemas.bars import ClientsCount
 from schemas.google_report_ids import GoogleReportIdCreate
+from schemas.rk import SmileReport
 from services.bars import BarsService, get_bars_service
 from services.report_config import ReportConfigService, get_report_config_service
 from services.rk import RKService, get_rk_service
@@ -358,179 +365,103 @@ class BarsicReport2Service:
             report["Организация"] = [[beach_company.name]]
         return report
 
-    def create_fin_report(self) -> dict:
-        """Форминует финансовый отчет в установленном формате"""
+    @staticmethod
+    def _build_fin_report(
+        report_groups: dict,
+        itog_reports: list,
+        report_bitrix: tuple,
+        smile_report: SmileReport,
+        cashdesk_report_org1: dict,
+    ) -> dict:
+        """Формирование финансового отчета."""
 
-        logger.info("Формирование финансового отчета")
-        fin_report = {}
-        is_aquazona = None
+        report = {}
+        aqua_zona = report.setdefault("Кол-во проходов", [0, 0.00])
 
-        for org, services in self.orgs_dict.items():
-            if org != "Не учитывать":
-                fin_report[org] = [0, 0.00]
-                for serv in services:
-                    itog_report_aqua = self.itog_reports[0]
-                    try:
-                        if org == "Дата":
-                            fin_report[org][0] = itog_report_aqua[serv][0]
-                            fin_report[org][1] = itog_report_aqua[serv][1]
+        for group, services in report_groups.items():
+            if group == "Не учитывать":
+                continue
 
-                        elif serv == "Депозит":
-                            fin_report[org][1] += itog_report_aqua[serv][1]
+            report_group = report.setdefault(group, [0, 0.00])
+            for serv in services:
+                if serv == "Организация":
+                    continue
 
-                        elif serv == "Аквазона":
-                            fin_report["Кол-во проходов"] = [
-                                itog_report_aqua[serv][0],
-                                0,
-                            ]
-                            fin_report[org][1] += itog_report_aqua[serv][1]
-                            is_aquazona = True
+                itog_report_aqua = itog_reports[0]
+                try:
+                    if group == "Дата":
+                        report_group[0] = itog_report_aqua[serv][0]
+                        report_group[1] = itog_report_aqua[serv][1]
+                    elif serv == "Депозит":
+                        report_group[1] += itog_report_aqua[serv][1]
+                    elif serv == "Аквазона":
+                        aqua_zona[0] = itog_report_aqua[serv][0]
+                        report_group[1] += itog_report_aqua[serv][1]
 
-                        elif serv == "Организация":
-                            pass
+                    else:
+                        for itog_report in itog_reports:
+                            if itog_report.get(serv) and itog_report[serv][1] != 0.0:
+                                report_group[0] += itog_report[serv][0]
+                                report_group[1] += itog_report[serv][1]
 
-                        else:
-                            for itog_report in self.itog_reports:
-                                if (
-                                    itog_report.get(serv)
-                                    and itog_report[serv][1] != 0.0
-                                ):
-                                    fin_report[org][0] += itog_report[serv][0]
-                                    fin_report[org][1] += itog_report[serv][1]
+                except (KeyError, TypeError):
+                    pass
 
-                    except KeyError:
-                        pass
-                    except TypeError:
-                        pass
+        online_sales = report.setdefault("Online Продажи", [0, 0.0])
+        online_sales[0] += report_bitrix[0]
+        online_sales[1] += report_bitrix[1]
 
-        if not is_aquazona:
-            fin_report["Кол-во проходов"] = [0, 0.00]
+        report["Смайл"] = [smile_report.total_count, smile_report.total_sum]
 
-        fin_report.setdefault("Online Продажи", [0, 0.0])
-        fin_report["Online Продажи"][0] += self.report_bitrix[0]
-        fin_report["Online Продажи"][1] += self.report_bitrix[1]
-
-        fin_report["Смайл"][0] = self.smile_report.total_count
-        fin_report["Смайл"][1] = self.smile_report.total_sum
-
-        total_cashdesk_report = self.cashdesk_report_org1["Итого"][0]
-        fin_report["MaxBonus"] = (
+        total_cashdesk_report = cashdesk_report_org1["Итого"][0]
+        report["MaxBonus"] = (
             0,
             float(total_cashdesk_report[6] - total_cashdesk_report[7]),
         )
-        return fin_report
 
-    def create_fin_report_last_year(self) -> dict:
-        """Форминует финансовый отчет за прошлый год в установленном формате."""
+        return report
 
-        logger.info("Формирование финансового отчета за прошлый год")
-        fin_report_last_year = {}
-        is_aquazona = None
-
-        for org, services in self.orgs_dict.items():
-            if org != "Не учитывать":
-                fin_report_last_year[org] = [0, 0.00]
-                for serv in services:
-                    itog_report_aqua_lastyear = self.itog_reports_lastyear[0]
-                    try:
-                        if org == "Дата":
-                            fin_report_last_year[org][0] = itog_report_aqua_lastyear[
-                                serv
-                            ][0]
-                            fin_report_last_year[org][1] = itog_report_aqua_lastyear[
-                                serv
-                            ][1]
-                        elif serv == "Депозит":
-                            fin_report_last_year[org][1] += itog_report_aqua_lastyear[
-                                serv
-                            ][1]
-                        elif serv == "Аквазона":
-                            fin_report_last_year["Кол-во проходов"] = [
-                                itog_report_aqua_lastyear[serv][0],
-                                0,
-                            ]
-                            fin_report_last_year[org][1] += itog_report_aqua_lastyear[
-                                serv
-                            ][1]
-                            is_aquazona = True
-
-                        elif serv == "Организация":
-                            pass
-
-                        else:
-                            for itog_report in self.itog_reports_lastyear:
-                                if (
-                                    itog_report.get(serv)
-                                    and itog_report[serv][1] != 0.0
-                                ):
-                                    fin_report_last_year[org][0] += itog_report[serv][0]
-                                    fin_report_last_year[org][1] += itog_report[serv][1]
-
-                    except KeyError:
-                        pass
-
-                    except TypeError:
-                        pass
-
-        if not is_aquazona:
-            fin_report_last_year["Кол-во проходов"] = [0, 0.00]
-
-        fin_report_last_year.setdefault("Online Продажи", [0, 0.0])
-        fin_report_last_year["Online Продажи"][0] += self.report_bitrix_lastyear[0]
-        fin_report_last_year["Online Продажи"][1] += self.report_bitrix_lastyear[1]
-        fin_report_last_year["Смайл"][0] = self.smile_report_lastyear.total_count
-        fin_report_last_year["Смайл"][1] = self.smile_report_lastyear.total_sum
-
-        total_cashdesk_report = self.cashdesk_report_org1_lastyear["Итого"][0]
-        fin_report_last_year["MaxBonus"] = (
-            0,
-            total_cashdesk_report[6] - total_cashdesk_report[7],
-        )
-
-        return fin_report_last_year
-
-    def create_fin_report_beach(self) -> dict:
-        """Форминует финансовый отчет по пляжу в установленном формате"""
+    @staticmethod
+    def create_fin_report_beach(beach_total_report: dict) -> dict:
+        """Формирует финансовый отчет по пляжу."""
 
         logger.info("Формирование финансового отчета по пляжу")
-        fin_report_beach = {
+        report = {
             "Депозит": (0, 0),
             "Товары": (0, 0),
             "Услуги": (0, 0),
             "Карты": (0, 0),
             "Итого по отчету": (0, 0),
+            "Выход с пляжа": (0, 0),
         }
-        for service in self.itog_report_beach:
+        for service in beach_total_report:
             if service == "Дата":
-                fin_report_beach[service] = (
-                    self.itog_report_beach[service][0],
-                    self.itog_report_beach[service][1],
+                report[service] = (
+                    beach_total_report[service][0],
+                    beach_total_report[service][1],
                 )
             elif service == "Выход с пляжа":
-                fin_report_beach[service] = (
-                    self.itog_report_beach[service][0],
-                    self.itog_report_beach[service][1],
+                report[service] = (
+                    beach_total_report[service][0],
+                    beach_total_report[service][1],
                 )
-            elif not self.itog_report_beach[service][3] in fin_report_beach:
-                fin_report_beach[self.itog_report_beach[service][3]] = (
-                    self.itog_report_beach[service][0],
-                    self.itog_report_beach[service][1],
+            elif not beach_total_report[service][3] in report:
+                report[beach_total_report[service][3]] = (
+                    beach_total_report[service][0],
+                    beach_total_report[service][1],
                 )
             else:
                 try:
-                    fin_report_beach[self.itog_report_beach[service][3]] = (
-                        fin_report_beach[self.itog_report_beach[service][3]][0]
-                        + self.itog_report_beach[service][0],
-                        fin_report_beach[self.itog_report_beach[service][3]][1]
-                        + self.itog_report_beach[service][1],
+                    report[beach_total_report[service][3]] = (
+                        report[beach_total_report[service][3]][0]
+                        + beach_total_report[service][0],
+                        report[beach_total_report[service][3]][1]
+                        + beach_total_report[service][1],
                     )
                 except TypeError:
                     pass
 
-        if "Выход с пляжа" not in fin_report_beach:
-            fin_report_beach["Выход с пляжа"] = 0, 0
-
-        return fin_report_beach
+        return report
 
     def create_payment_agent_report(
         self, total_report: dict[str, tuple], aqua_company: Company
@@ -566,7 +497,13 @@ class BarsicReport2Service:
         return result
 
     async def export_to_google_sheet(
-        self, date_from, http_auth, googleservice, fin_report: dict
+        self,
+        date_from: datetime,
+        http_auth: httplib2.Http,
+        google_service: GoogleService,
+        fin_report: dict,
+        fin_report_last_year: dict,
+        fin_report_beach: dict,
     ):
         """
         Формирование и заполнение google-таблицы
@@ -617,7 +554,7 @@ class BarsicReport2Service:
             )
             if google_report_id is None:
                 google_doc = create_new_google_doc(
-                    googleservice=googleservice,
+                    google_service=google_service,
                     doc_name=doc_name,
                     data_report=self.data_report,
                     finreport_dict=fin_report,
@@ -659,7 +596,7 @@ class BarsicReport2Service:
 
             google_doc = (google_report_id.month, google_report_id.doc_id)
             self.spreadsheet = (
-                googleservice.spreadsheets()
+                google_service.spreadsheets()
                 .get(spreadsheetId=google_doc[1], ranges=[], includeGridData=True)
                 .execute()
             )
@@ -677,10 +614,10 @@ class BarsicReport2Service:
                         fin_report["Дата"][0], "%d.%m.%Y"
                     ):
                         self.rewrite_google_sheet(
-                            googleservice,
-                            fin_report=self.fin_report,
-                            fin_report_last_year=self.fin_report_last_year,
-                            fin_report_beach=self.fin_report_beach,
+                            google_service,
+                            fin_report=fin_report,
+                            fin_report_last_year=fin_report_last_year,
+                            fin_report_beach=fin_report_beach,
                         )
                         self.reprint = 0
                         break
@@ -690,19 +627,20 @@ class BarsicReport2Service:
                         self.start_line += 1
                 except KeyError:
                     self.start_line += 1
+
             if self.reprint:
                 self.write_google_sheet(
-                    googleservice,
-                    fin_report=self.fin_report,
-                    fin_report_last_year=self.fin_report_last_year,
-                    fin_report_beach=self.fin_report_beach,
+                    google_service,
+                    fin_report=fin_report,
+                    fin_report_last_year=fin_report_last_year,
+                    fin_report_beach=fin_report_beach,
                 )
             # width_table = len(self.spreadsheet['sheets'][0]['data'][0]['rowData'][0]['values'])
         return True
 
     def rewrite_google_sheet(
         self,
-        googleservice,
+        google_service,
         fin_report: dict,
         fin_report_last_year: dict,
         fin_report_beach: dict,
@@ -713,7 +651,7 @@ class BarsicReport2Service:
         logger.warning("Перезапись уже существующей строки...")
         self.reprint = 1
         self.write_google_sheet(
-            googleservice,
+            google_service,
             fin_report=fin_report,
             fin_report_last_year=fin_report_last_year,
             fin_report_beach=fin_report_beach,
@@ -721,7 +659,7 @@ class BarsicReport2Service:
 
     def write_google_sheet(
         self,
-        googleservice,
+        google_service,
         fin_report: dict,
         fin_report_last_year: dict,
         fin_report_beach: dict,
@@ -733,7 +671,7 @@ class BarsicReport2Service:
         ss = Spreadsheet(
             self.spreadsheet["spreadsheetId"],
             sheetId,
-            googleservice,
+            google_service,
             self.spreadsheet["sheets"][sheetId]["properties"]["title"],
         )
 
@@ -882,92 +820,109 @@ class BarsicReport2Service:
                     {"numberFormat": {}},
                     {"numberFormat": {}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # УЛËТSHOP
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # Аренда полотенец
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # Фишпиллинг
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # Прочее
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # ONLINE ПРОДАЖИ
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # Нулевые
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # Сумма безнал
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                     # Online Прочее
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                 ]
             ],
         )
         # Цвет фона ячеек
         if self.nex_line % 2 != 0:
-            ss.prepare_setCellsFormat(
-                f"A{self.nex_line}:BU{self.nex_line}",
-                {"backgroundColor": functions.htmlColorToJSON("#fef8e3")},
-                fields="userEnteredFormat.backgroundColor",
-            )
+            for j in range(self.sheet_width):
+                ss.requests.append(
+                    {
+                        "repeatCell": {
+                            "range": {
+                                "sheetId": ss.sheetId,
+                                "startRowIndex": self.nex_line - 1,
+                                "endRowIndex": self.nex_line,
+                                "startColumnIndex": j,
+                                "endColumnIndex": j + 1,
+                            },
+                            "cell": {
+                                "userEnteredFormat": {
+                                    "backgroundColor": functions.htmlColorToJSON(
+                                        CELL_COLORS_LIGHT[j]
+                                    ),
+                                }
+                            },
+                            "fields": "userEnteredFormat.backgroundColor",
+                        }
+                    }
+                )
 
         # Бордер
         for j in range(self.sheet_width):
@@ -1068,7 +1023,7 @@ class BarsicReport2Service:
                     height_table = i + self.reprint
                     break
                 else:
-                    height_table = 4
+                    height_table = 5
             except KeyError:
                 pass
 
@@ -1157,7 +1112,7 @@ class BarsicReport2Service:
             f"A{height_table + 1}:D{height_table + 1}",
             [
                 [
-                    "Выполнение плана (трафик)",
+                    "План (трафик)",
                     "",
                     f"=IFERROR('План'!C{self.sheet2_line};0)",
                     f"=IFERROR(ROUND(D{height_table}/C{height_table + 1};2);0)",
@@ -1169,7 +1124,7 @@ class BarsicReport2Service:
             f"A{height_table + 2}:D{height_table + 2}",
             [
                 [
-                    "Выполнение плана (доход)",
+                    "План (доход)",
                     "",
                     f"=IFERROR('План'!E{self.sheet2_line};0)",
                     f"=IFERROR(ROUND(G{height_table}/C{height_table + 2};2);0)",
@@ -1189,262 +1144,262 @@ class BarsicReport2Service:
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
-                        "horizontalAlignment": "RIGHT",
-                        "textFormat": {"bold": True},
-                    },
-                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
-                    {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
@@ -1494,19 +1449,36 @@ class BarsicReport2Service:
         )
 
         # Цвет фона ячеек
-        ss.prepare_setCellsFormat(
-            f"A{height_table}:BU{height_table}",
-            {"backgroundColor": functions.htmlColorToJSON("#fce8b2")},
-            fields="userEnteredFormat.backgroundColor",
-        )
+        for j in range(self.sheet_width):
+            ss.requests.append(
+                {
+                    "repeatCell": {
+                        "range": {
+                            "sheetId": ss.sheetId,
+                            "startRowIndex": height_table - 1,
+                            "endRowIndex": height_table,
+                            "startColumnIndex": j,
+                            "endColumnIndex": j + 1,
+                        },
+                        "cell": {
+                            "userEnteredFormat": {
+                                "backgroundColor": functions.htmlColorToJSON(
+                                    CELL_COLORS_DARK[j]
+                                ),
+                            }
+                        },
+                        "fields": "userEnteredFormat.backgroundColor",
+                    }
+                }
+            )
         ss.prepare_setCellsFormat(
             f"A{height_table + 1}:D{height_table + 1}",
-            {"backgroundColor": functions.htmlColorToJSON("#fce8b2")},
+            {"backgroundColor": functions.htmlColorToJSON("#f7cb4d")},
             fields="userEnteredFormat.backgroundColor",
         )
         ss.prepare_setCellsFormat(
             f"A{height_table + 2}:D{height_table + 2}",
-            {"backgroundColor": functions.htmlColorToJSON("#fce8b2")},
+            {"backgroundColor": functions.htmlColorToJSON("#f7cb4d")},
             fields="userEnteredFormat.backgroundColor",
         )
 
@@ -1737,7 +1709,7 @@ class BarsicReport2Service:
         ss = Spreadsheet(
             self.spreadsheet["spreadsheetId"],
             sheetId,
-            googleservice,
+            google_service,
             self.spreadsheet["sheets"][sheetId]["properties"]["title"],
         )
 
@@ -1765,7 +1737,7 @@ class BarsicReport2Service:
                         "horizontalAlignment": "LEFT",
                     },
                     {"numberFormat": {}},
-                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"}},
                 ]
             ],
         )
@@ -1889,7 +1861,7 @@ class BarsicReport2Service:
                     {"textFormat": {"bold": True}},
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
-                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#,##0[$ ]"},
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
@@ -1987,7 +1959,7 @@ class BarsicReport2Service:
             ss = Spreadsheet(
                 self.spreadsheet["spreadsheetId"],
                 sheetId,
-                googleservice,
+                google_service,
                 self.spreadsheet["sheets"][sheetId]["properties"]["title"],
             )
 
@@ -2610,7 +2582,7 @@ class BarsicReport2Service:
             ss = Spreadsheet(
                 self.spreadsheet["spreadsheetId"],
                 sheetId,
-                googleservice,
+                google_service,
                 self.spreadsheet["sheets"][sheetId]["properties"]["title"],
             )
 
@@ -3235,7 +3207,7 @@ class BarsicReport2Service:
         ss = Spreadsheet(
             self.spreadsheet["spreadsheetId"],
             sheetId,
-            googleservice,
+            google_service,
             self.spreadsheet["sheets"][sheetId]["properties"]["title"],
         )
 
@@ -3429,7 +3401,7 @@ class BarsicReport2Service:
             f"A{height_table + 1}:D{height_table + 1}",
             [
                 [
-                    "Выполнение плана (трафик)",
+                    "План (трафик)",
                     "",
                     f"=IFERROR('План'!L{self.sheet2_line};0)",
                     f"=IFERROR(ROUND(D{height_table}/C{height_table + 1};2);0)",
@@ -3441,7 +3413,7 @@ class BarsicReport2Service:
             f"A{height_table + 2}:D{height_table + 2}",
             [
                 [
-                    "Выполнение плана (доход)",
+                    "План (доход)",
                     "",
                     f"=IFERROR('План'!M{self.sheet2_line};0)",
                     f"=IFERROR(ROUND(F{height_table}/C{height_table + 2};2);0)",
@@ -3874,10 +3846,16 @@ class BarsicReport2Service:
         return resporse
 
     async def save_reports(self, date_from, aqua_company: Company):
-        """
-        Функция управления
-        """
-        self.fin_report = self.create_fin_report()
+        """Функция управления"""
+
+        logger.info("Формирование финансового отчета")
+        fin_report = self._build_fin_report(
+            report_groups=self.orgs_dict,
+            itog_reports=self.itog_reports,
+            report_bitrix=self.report_bitrix,
+            smile_report=self.smile_report,
+            cashdesk_report_org1=self.cashdesk_report_org1,
+        )
         payment_agent_report = self.create_payment_agent_report(
             functions.concatenate_total_reports(
                 self.itog_reports[0],
@@ -3891,9 +3869,15 @@ class BarsicReport2Service:
                 payment_agent_report, date_from
             )
         )
-        # finreport_google
-        self.fin_report_last_year = self.create_fin_report_last_year()
-        self.fin_report_beach = self.create_fin_report_beach()
+        logger.info("Формирование финансового отчета за прошлый год")
+        fin_report_last_year = self._build_fin_report(
+            report_groups=self.orgs_dict,
+            itog_reports=self.itog_reports_lastyear,
+            report_bitrix=self.report_bitrix_lastyear,
+            smile_report=self.smile_report_lastyear,
+            cashdesk_report_org1=self.cashdesk_report_org1_lastyear,
+        )
+        fin_report_beach = self.create_fin_report_beach(self.itog_report_beach)
 
         self.finreport_dict_month = None
         if self.itog_report_month:
@@ -3916,11 +3900,11 @@ class BarsicReport2Service:
                 "https://www.googleapis.com/auth/drive",
             ],
         )
-        httpAuth = credentials.authorize(httplib2.Http())
+        http_auth = credentials.authorize(httplib2.Http())
         try:
             logger.info("Попытка авторизации с Google-документами ...")
-            googleservice = apiclient.discovery.build(
-                "sheets", "v4", http=httpAuth, cache_discovery=False
+            google_service: GoogleService = apiclient.discovery.build(
+                "sheets", "v4", http=http_auth, cache_discovery=False
             )
 
         except IndexError as e:
@@ -3932,13 +3916,16 @@ class BarsicReport2Service:
             )
 
         await self.export_to_google_sheet(
-            date_from, httpAuth, googleservice, fin_report=self.fin_report
+            date_from=date_from,
+            http_auth=http_auth,
+            google_service=google_service,
+            fin_report=fin_report,
+            fin_report_last_year=fin_report_last_year,
+            fin_report_beach=fin_report_beach,
         )
 
         # finreport_telegram:
-        self.sms_report_list.append(
-            self.sms_report(date_from, fin_report=self.fin_report)
-        )
+        self.sms_report_list.append(self.sms_report(date_from, fin_report=fin_report))
 
         # check_itogreport_xls:
         for itog_report in self.itog_reports:
