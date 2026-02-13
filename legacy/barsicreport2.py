@@ -135,14 +135,17 @@ class BarsicReport2Service:
             if id_ in AQUA_COMPANIES_IDS
         ]
 
-        beach_companies_db = self.list_organisation(database=settings.mssql_database2)
-        companies.append(
-            Company(
-                id=beach_companies_db[0][0],
-                name=beach_companies_db[0][2],
-                db_name=DBName.BEACH,
+        if settings.add_beach_report:
+            beach_companies_db = self.list_organisation(
+                database=settings.mssql_database2
             )
-        )
+            companies.append(
+                Company(
+                    id=beach_companies_db[0][0],
+                    name=beach_companies_db[0][2],
+                    db_name=DBName.BEACH,
+                )
+            )
 
         return companies
 
@@ -503,7 +506,7 @@ class BarsicReport2Service:
             "Карты": (0, 0),
             "Итого по отчету": (0, 0),
         }
-        for service in self.itog_report_beach:
+        for service in self.itog_report_beach or []:
             if service == "Дата":
                 fin_report_beach[service] = (
                     self.itog_report_beach[service][0],
@@ -3256,30 +3259,31 @@ class BarsicReport2Service:
             "Воскресенье",
         ]
         self.nex_line = self.start_line
-        ss.prepare_setValues(
-            f"A{self.nex_line}:P{self.nex_line}",
-            [
+        if settings.add_beach_report:
+            ss.prepare_setValues(
+                f"A{self.nex_line}:P{self.nex_line}",
                 [
-                    datetime.strftime(fin_report_beach["Дата"][0], "%d.%m.%Y"),
-                    weekday_rus[fin_report_beach["Дата"][0].weekday()],
-                    f"='План'!L{self.nex_line}",
-                    fin_report_beach["Выход с пляжа"][0],
-                    f"='План'!M{self.nex_line}",
-                    str(fin_report_beach["Итого по отчету"][1]).replace(".", ","),
-                    fin_report_beach["Депозит"][1],
-                    fin_report_beach["Карты"][0],
-                    fin_report_beach["Карты"][1],
-                    f"=IFERROR(I{self.nex_line}/H{self.nex_line};0)",
-                    fin_report_beach["Услуги"][0],
-                    fin_report_beach["Услуги"][1],
-                    f"=IFERROR(L{self.nex_line}/K{self.nex_line};0)",
-                    fin_report_beach["Товары"][0],
-                    fin_report_beach["Товары"][1],
-                    f"=IFERROR(O{self.nex_line}/N{self.nex_line};0)",
-                ]
-            ],
-            "ROWS",
-        )
+                    [
+                        datetime.strftime(fin_report_beach["Дата"][0], "%d.%m.%Y"),
+                        weekday_rus[fin_report_beach["Дата"][0].weekday()],
+                        f"='План'!L{self.nex_line}",
+                        fin_report_beach["Выход с пляжа"][0],
+                        f"='План'!M{self.nex_line}",
+                        str(fin_report_beach["Итого по отчету"][1]).replace(".", ","),
+                        fin_report_beach["Депозит"][1],
+                        fin_report_beach["Карты"][0],
+                        fin_report_beach["Карты"][1],
+                        f"=IFERROR(I{self.nex_line}/H{self.nex_line};0)",
+                        fin_report_beach["Услуги"][0],
+                        fin_report_beach["Услуги"][1],
+                        f"=IFERROR(L{self.nex_line}/K{self.nex_line};0)",
+                        fin_report_beach["Товары"][0],
+                        fin_report_beach["Товары"][1],
+                        f"=IFERROR(O{self.nex_line}/N{self.nex_line};0)",
+                    ]
+                ],
+                "ROWS",
+            )
 
         # Задание форматы вывода строки
         ss.prepare_setCellsFormats(
@@ -3864,7 +3868,7 @@ class BarsicReport2Service:
 
         resporse += f"Общая ИТОГО - {total_sum:.2f} ₽;\n\n"
 
-        if self.itog_report_beach["Итого по отчету"][1]:
+        if settings.add_beach_report and self.itog_report_beach["Итого по отчету"][1]:
             try:
                 resporse += f'Люди (пляж) - {self.itog_report_beach["Летняя зона | БЕЗЛИМИТ | 1 проход"][0]};\n'
             except KeyError:
@@ -3963,7 +3967,7 @@ class BarsicReport2Service:
                     self._yandex_repo.save_organisation_total(itog_report, date_from)
                 )
 
-        if self.itog_report_beach["Итого по отчету"][1]:
+        if settings.add_beach_report and self.itog_report_beach["Итого по отчету"][1]:
             to_yandex.append(
                 self._yandex_repo.save_organisation_total(
                     self.itog_report_beach, date_from
@@ -3977,7 +3981,7 @@ class BarsicReport2Service:
                     self.cashdesk_report_org1, date_from
                 )
             )
-        if self.cashdesk_report_org2["Итого"][0][1]:
+        if settings.add_beach_report and self.cashdesk_report_org2["Итого"][0][1]:
             to_yandex.append(
                 self._yandex_repo.save_cashdesk_report(
                     self.cashdesk_report_org2, date_from
@@ -3990,7 +3994,7 @@ class BarsicReport2Service:
                     self.client_count_totals_org1, date_from
                 )
             )
-        if self.client_count_totals_org2[-1][1]:
+        if settings.add_beach_report and self.client_count_totals_org2[-1][1]:
             to_yandex.append(
                 self._yandex_repo.save_client_count_totals(
                     self.client_count_totals_org2, date_from
@@ -4100,9 +4104,11 @@ class BarsicReport2Service:
                 date_to=date_to,
             )
 
-        beach_company = next(
-            company for company in companies if company.db_name == DBName.BEACH
-        )
+        beach_company = None
+        if settings.add_beach_report:
+            beach_company = next(
+                company for company in companies if company.db_name == DBName.BEACH
+            )
         if beach_company:
             self.bars_srv.set_database(settings.mssql_database2)
             with self.bars_srv as connect:

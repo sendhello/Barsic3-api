@@ -48,11 +48,15 @@ class AppSettings(BaseSettings):
     mssql_user: str = Field(validation_alias="MSSQL_USER")
     mssql_pwd: str = Field(validation_alias="MSSQL_PWD")
     mssql_database1: str = Field(validation_alias="MSSQL_DATABASE1")
+
+    add_beach_report: bool = Field(False, validation_alias="ADD_BEACH_REPORT")
     mssql_database2: str = Field(validation_alias="MSSQL_DATABASE2")
+
     mssql_server_rk: str = Field(validation_alias="MSSQL_SERVER_RK")
     mssql_user_rk: str = Field(validation_alias="MSSQL_USER_RK")
     mssql_pwd_rk: str = Field(validation_alias="MSSQL_PWD_RK")
     mssql_database_rk: str = Field(validation_alias="MSSQL_DATABASE_RK")
+
     local_folder: str = Field(validation_alias="LOCAL_FOLDER")
     report_path: str = Field(validation_alias="REPORT_PATH")
     yadisk_token: str = Field(validation_alias="YADISK_TOKEN")
