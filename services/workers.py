@@ -96,12 +96,12 @@ class WorkerService:
                     date_from=current_date,
                     date_to=current_date + timedelta(days=1),
                 )
-                itogreport_group_dict = (
+                total_report_config = (
                     await self._report_config_service.get_report_elements_with_groups(
                         "ItogReport"
                     )
                 )
-                self._legacy_service.orgs_dict = (
+                fin_report_config = (
                     await self._report_config_service.get_report_elements_with_groups(
                         "GoogleReport"
                     )
@@ -124,11 +124,10 @@ class WorkerService:
                     )
 
                 self._legacy_service.smile_report_month = smile_report_month
-                self._legacy_service.itogreport_group_dict = itogreport_group_dict
                 month_finance_report = functions.create_month_finance_report(
                     itog_report_month=self._legacy_service.itog_report_month,
-                    itogreport_group_dict=self._legacy_service.itogreport_group_dict,
-                    orgs_dict=self._legacy_service.orgs_dict,
+                    total_report_config=total_report_config,
+                    fin_report_config=fin_report_config,
                     smile_report_month=self._legacy_service.smile_report_month,
                 )
                 total_detail_report = ReportCacheCreate(

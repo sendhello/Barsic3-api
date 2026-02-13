@@ -246,7 +246,7 @@ src
 .env
 .env.example
 .gitignore
-docker-compose-dev-without-app.yml
+docker-compose-local.yml
 docker-compose-dev.yml
 docker-compose.yml
 Dockerfile

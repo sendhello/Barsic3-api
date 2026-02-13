@@ -3,6 +3,7 @@ import re
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
+from typing import Any
 
 import apiclient
 import httplib2
@@ -15,6 +16,7 @@ from starlette import status
 from constants import GOOGLE_DOC_VERSION
 from core.settings import settings
 from db.mssql import MsSqlDatabase
+from gateways.telegram import TelegramBot, get_telegram_bot
 from legacy import functions
 from legacy.to_google_sheets import Spreadsheet, create_new_google_doc
 from repositories.yandex import YandexRepository, get_yandex_repo
@@ -68,6 +70,7 @@ class BarsicReport2Service:
         self._bars_service: BarsService = get_bars_service()
         self._rk_service: RKService = get_rk_service()
         self._yandex_repo: YandexRepository = get_yandex_repo()
+        self._telegram_bot: TelegramBot = get_telegram_bot()
 
     def get_clients_count(self) -> list[ClientsCount]:
         """Получение количества человек в зоне."""
@@ -358,14 +361,14 @@ class BarsicReport2Service:
             report["Организация"] = [[beach_company.name]]
         return report
 
-    def create_fin_report(self) -> dict:
+    def create_fin_report(self, fin_report_config: dict[str, Any]) -> dict:
         """Форминует финансовый отчет в установленном формате"""
 
         logger.info("Формирование финансового отчета")
         fin_report = {}
         is_aquazona = None
 
-        for org, services in self.orgs_dict.items():
+        for org, services in fin_report_config.items():
             if org != "Не учитывать":
                 fin_report[org] = [0, 0.00]
                 for serv in services:
@@ -420,14 +423,14 @@ class BarsicReport2Service:
         )
         return fin_report
 
-    def create_fin_report_last_year(self) -> dict:
+    def create_fin_report_last_year(self, fin_report_config: dict[str, Any]) -> dict:
         """Форминует финансовый отчет за прошлый год в установленном формате."""
 
         logger.info("Формирование финансового отчета за прошлый год")
         fin_report_last_year = {}
         is_aquazona = None
 
-        for org, services in self.orgs_dict.items():
+        for org, services in fin_report_config.items():
             if org != "Не учитывать":
                 fin_report_last_year[org] = [0, 0.00]
                 for serv in services:
@@ -533,13 +536,16 @@ class BarsicReport2Service:
         return fin_report_beach
 
     def create_payment_agent_report(
-        self, total_report: dict[str, tuple], aqua_company: Company
+        self,
+        total_report: dict[str, tuple],
+        agent_report_config: dict[str, Any],
+        aqua_company: Company,
     ) -> dict[str, list]:
         """Форминует отчет платежного агента в установленном формате."""
 
         result = {}
         result["Организация"] = [aqua_company.id, aqua_company.name]
-        for org, services in self.agent_dict.items():
+        for org, services in agent_report_config.items():
             if org == "Не учитывать":
                 continue
 
@@ -3873,39 +3879,51 @@ class BarsicReport2Service:
             f.write(resporse)
         return resporse
 
-    async def save_reports(self, date_from, aqua_company: Company):
+    async def save_reports(
+        self,
+        date_from,
+        aqua_company: Company,
+        fin_report_config: dict[str, Any],
+        total_report_config: dict[str, Any],
+        agent_report_config: dict[str, Any],
+    ) -> tuple[list[str], list[str]]:
         """
         Функция управления
         """
-        self.fin_report = self.create_fin_report()
+
+        to_yandex = []
+        to_messanger = []
+
+        self.fin_report = self.create_fin_report(fin_report_config)
         payment_agent_report = self.create_payment_agent_report(
             functions.concatenate_total_reports(
                 self.itog_reports[0],
                 {"Смайл": (self.smile_report.total_count, self.smile_report.total_sum)},
             ),
+            agent_report_config=agent_report_config,
             aqua_company=aqua_company,
         )
         # agentreport_xls
-        self.path_list.append(
+        to_yandex.append(
             self._yandex_repo.export_payment_agent_report(
                 payment_agent_report, date_from
             )
         )
         # finreport_google
-        self.fin_report_last_year = self.create_fin_report_last_year()
+        self.fin_report_last_year = self.create_fin_report_last_year(fin_report_config)
         self.fin_report_beach = self.create_fin_report_beach()
 
         self.finreport_dict_month = None
         if self.itog_report_month:
             self.finreport_dict_month = functions.create_month_finance_report(
                 itog_report_month=self.itog_report_month,
-                itogreport_group_dict=self.itogreport_group_dict,
-                orgs_dict=self.orgs_dict,
+                total_report_config=total_report_config,
+                fin_report_config=fin_report_config,
                 smile_report_month=self.smile_report_month,
             )
             self.agentreport_dict_month = functions.create_month_agent_report(
                 month_total_report=self.itog_report_month,
-                agent_dict=self.agent_dict,
+                agent_report_config=agent_report_config,
                 smile_report_month=self.smile_report_month,
             )
 
@@ -3936,19 +3954,17 @@ class BarsicReport2Service:
         )
 
         # finreport_telegram:
-        self.sms_report_list.append(
-            self.sms_report(date_from, fin_report=self.fin_report)
-        )
+        to_messanger.append(self.sms_report(date_from, fin_report=self.fin_report))
 
         # check_itogreport_xls:
         for itog_report in self.itog_reports:
             if itog_report["Итого по отчету"][1]:
-                self.path_list.append(
+                to_yandex.append(
                     self._yandex_repo.save_organisation_total(itog_report, date_from)
                 )
 
         if self.itog_report_beach["Итого по отчету"][1]:
-            self.path_list.append(
+            to_yandex.append(
                 self._yandex_repo.save_organisation_total(
                     self.itog_report_beach, date_from
                 )
@@ -3956,30 +3972,32 @@ class BarsicReport2Service:
 
         # check_cashreport_xls:
         if self.cashdesk_report_org1["Итого"][0][1]:
-            self.path_list.append(
+            to_yandex.append(
                 self._yandex_repo.save_cashdesk_report(
                     self.cashdesk_report_org1, date_from
                 )
             )
         if self.cashdesk_report_org2["Итого"][0][1]:
-            self.path_list.append(
+            to_yandex.append(
                 self._yandex_repo.save_cashdesk_report(
                     self.cashdesk_report_org2, date_from
                 )
             )
         # check_client_count_total_xls:
         if self.client_count_totals_org1[-1][1]:
-            self.path_list.append(
+            to_yandex.append(
                 self._yandex_repo.save_client_count_totals(
                     self.client_count_totals_org1, date_from
                 )
             )
         if self.client_count_totals_org2[-1][1]:
-            self.path_list.append(
+            to_yandex.append(
                 self._yandex_repo.save_client_count_totals(
                     self.client_count_totals_org2, date_from
                 )
             )
+
+        return to_yandex, to_messanger
 
     async def load_report(
         self,
@@ -4111,11 +4129,13 @@ class BarsicReport2Service:
                 date_to=date_to,
             )
 
-    async def run_report(self, date_from, date_to, use_yadisk: bool = False):
-        self.path_list = []
-        self.sms_report_list = []
-
-        companies = self.get_companies()
+    async def run_report(
+        self,
+        date_from,
+        date_to,
+        use_yadisk: bool = False,
+        telegram_report: bool = False,
+    ):
 
         period = []
         while True:
@@ -4137,35 +4157,50 @@ class BarsicReport2Service:
                     detail=error_message,
                 )
 
+        to_yandex = []
+        to_messanger = []
+        companies = self.get_companies()
         for date in period:
             date_from = date
             date_to = date + timedelta(1)
             await self.load_report(date_from, date_to, companies)
 
-            self.orgs_dict = (
+            fin_report_config = (
                 await self._report_config_service.get_report_elements_with_groups(
                     "GoogleReport"
                 )
             )
-            self.itogreport_group_dict = (
+            total_report_config = (
                 await self._report_config_service.get_report_elements_with_groups(
                     "ItogReport"
                 )
             )
-            self.agent_dict = (
+            agent_report_config = (
                 await self._report_config_service.get_report_elements_with_groups(
                     "PlatAgentReport"
                 )
             )
-            await self.save_reports(date_from, aqua_company=companies[0])
+            to_yandex, to_messanger = await self.save_reports(
+                date_from=date_from,
+                aqua_company=companies[0],
+                fin_report_config=fin_report_config,
+                total_report_config=total_report_config,
+                agent_report_config=agent_report_config,
+            )
 
         # Отправка в яндекс диск
         if use_yadisk:
-            self.path_list = filter(lambda x: x is not None, self.path_list)
             self._yandex_repo.sync_to_yadisk(
-                self.path_list, settings.yadisk_token, date_from
+                paths=to_yandex,
+                token=settings.yadisk_token,
+                date_from=date_from,
             )
-            self.path_list = []
+
+        if telegram_report:
+            for message in to_messanger:
+                await self._telegram_bot.send_message(
+                    settings.telegram_chanel_id, message
+                )
 
 
 def get_legacy_service() -> BarsicReport2Service:

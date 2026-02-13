@@ -1,5 +1,6 @@
 from copy import deepcopy
 from decimal import Decimal
+from typing import Any
 
 from api.v1.report_settings import logger
 from schemas.rk import SmileReport
@@ -61,7 +62,7 @@ def concatenate_total_reports(*reports: dict[str, tuple]) -> dict[str, tuple]:
 
 def create_month_agent_report(
     month_total_report: dict[str, tuple],
-    agent_dict: dict,
+    agent_report_config: dict[str, Any],
     smile_report_month: SmileReport,
 ):
     """Создает отчет платежного агента за месяц."""
@@ -72,10 +73,10 @@ def create_month_agent_report(
     result["ИТОГО"] = {}
     result["ИТОГО"][""] = [["Сумма", 0, 0.0]]
 
-    for org in agent_dict:
+    for org, tariffs in agent_report_config.items():
         result[org] = {}
         result[org]["Итого по группе"] = [["Итого по группе", 0, 0.0]]
-        for tariff in agent_dict[org]:
+        for tariff in tariffs:
             try:
                 service_name = month_total_report[tariff][2]
                 count = month_total_report[tariff][0]
@@ -193,8 +194,8 @@ def create_month_agent_report(
 
 def create_month_finance_report(
     itog_report_month: dict[str, tuple],
-    itogreport_group_dict: dict,
-    orgs_dict: dict,
+    total_report_config: dict[str, Any],
+    fin_report_config: dict,
     smile_report_month: SmileReport,
 ):
     """Создает финансовый отчет за месяц."""
@@ -203,14 +204,14 @@ def create_month_finance_report(
     control_sum_group = month_finance_report.setdefault("Контрольная сумма", {})
     control_sum = control_sum_group.setdefault("Cумма", [["Сумма", 0, 0.0]])
 
-    for group_name, groups in itogreport_group_dict.items():
+    for group_name, groups in total_report_config.items():
         finreport_group = month_finance_report.setdefault(group_name, {})
         finreport_group_total = finreport_group.setdefault(
             "Итого по группе", [["Итого по группе", 0, 0.0]]
         )
         for oldgroup in groups:
             try:
-                for service_name in orgs_dict[oldgroup]:
+                for service_name in fin_report_config[oldgroup]:
                     try:
                         service_count, service_sum, org_name, group_name = (
                             itog_report_month[service_name]

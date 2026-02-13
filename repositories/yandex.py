@@ -1459,35 +1459,42 @@ class YandexRepository:
         return path
 
     def sync_to_yadisk(
-        self, path_list: list[str], token: str, date_from: datetime
+        self, paths: list[str], token: str, date_from: datetime
     ) -> list[SyncResourceLinkObject]:
         """Копирует локальные файлы в Яндекс Диск."""
 
         logger.info("Копирование отчетов в Яндекс.Диск...")
-        if not path_list:
+        if not paths:
             logger.warning("Нет ни одного отчета для отправки в Yandex.Disk")
-            return None
+            return []
 
         links = []
         yadisk = YaDisk(token=token)
         if yadisk.check_token():
-            path = "" + settings.report_path
-            remote_folder = self.create_path_yadisk(path, date_from, yadisk)
-            for local_path in path_list:
-                remote_path = remote_folder + local_path.split("/")[-1]
-                file_name = f"'{local_path.split('/')[-1]}'"
+            yadisk_path = "" + settings.report_path
+            remote_folder = self.create_path_yadisk(yadisk_path, date_from, yadisk)
+            for path in paths:
+                if path is None:
+                    continue
+
+                remote_path = remote_folder + path.split("/")[-1]
+                file_name = f"'{path.split('/')[-1]}'"
                 files_list_yandex = list(yadisk.listdir(remote_folder))
                 files_list = []
                 for key in files_list_yandex:
                     if key["file"]:
                         files_list.append(remote_folder + key["name"])
+
                 if remote_path in files_list:
                     logger.warning(
                         f"Файл {file_name} уже существует в '{remote_folder}' и будет заменен!"
                     )
                     yadisk.remove(remote_path, permanently=True)
-                links.append(yadisk.upload(local_path, remote_path))
+
+                links.append(yadisk.upload(path, remote_path))
+
             return links
+
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

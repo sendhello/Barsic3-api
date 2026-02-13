@@ -35,7 +35,6 @@ async def create_reports(
     + timedelta(days=1),
     use_yadisk: bool = False,
     telegram_report: bool = False,
-    telegram_bot: TelegramBot = Depends(get_telegram_bot),
     legacy_service: BarsicReport2Service = Depends(get_legacy_service),
 ) -> dict:
     """Создание всех отчетов."""
@@ -44,20 +43,12 @@ async def create_reports(
         date_from=date_from,
         date_to=date_to,
         use_yadisk=use_yadisk,
+        telegram_report=telegram_report,
     )
-
-    # Отправка Telegram отчета
-    message = None
-    if telegram_report:
-        for message in legacy_service.sms_report_list:
-            message = await telegram_bot.send_message(
-                settings.telegram_chanel_id, message
-            )
 
     return {
         "ok": True,
         "Google Report": legacy_service.spreadsheet["spreadsheetUrl"],
-        "Telegram Message": message.text if message else None,
     }
 
 
