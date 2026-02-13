@@ -24,7 +24,7 @@ from services.bars import BarsService, get_bars_service
 from services.report_config import ReportConfigService, get_report_config_service
 from services.rk import RKService, get_rk_service
 from services.settings import SettingsService, get_settings_service
-from sql.clients_count import CLIENTS_COUNT_SQL
+from sql.customer_count import CURRENT_CUSTOMER_COUNT_SQL
 
 
 logger = logging.getLogger("barsicreport2")
@@ -75,7 +75,7 @@ class BarsicReport2Service:
         self.bars_srv.set_database(settings.mssql_database1)
         with self.bars_srv as connect:
             cursor = connect.cursor()
-            cursor.execute(CLIENTS_COUNT_SQL)
+            cursor.execute(CURRENT_CUSTOMER_COUNT_SQL)
             rows = cursor.fetchall()
             if not rows:
                 return [ClientsCount(count=0, id=488, zone_name="", code="0003")]
