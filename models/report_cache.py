@@ -30,4 +30,3 @@ class ReportCacheModel(Base, IDMixin, CRUDMixin):
             )
             result = await session.execute(request)
             return result.scalars().first()
-

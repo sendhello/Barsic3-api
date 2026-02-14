@@ -16,4 +16,3 @@ class ReportCacheCreate(Model):
 
 class ReportCache(IdMixin, ReportCacheCreate):
     """Кеш отчета."""
-

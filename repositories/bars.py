@@ -6,6 +6,7 @@ from core.settings import settings
 from db.mssql import MsSqlDatabase
 from repositories.base import BaseRepository
 from sql.category import GET_TARIFFS_SQL
+from sql.customer_count import CURRENT_CUSTOMER_COUNT_SQL, PERIOD_CUSTOMER_COUNT_SQL
 from sql.get_companies import GET_COMPANIES_SQL
 from sql.sp_report_totals_v2 import (
     SP_REPORT_TOTALS_V2_OLD_VERSION_SQL,
@@ -20,11 +21,11 @@ from sql.transactions import (
 class BarsRepository(BaseRepository):
     def get_tariffs(self, organization_id: int) -> list[Row]:
         sql = GET_TARIFFS_SQL.format(organization_id=organization_id)
-        return self._run_sql(sql)
+        return self._fetchall(sql)
 
     def get_organisations(self) -> list[Row]:
         sql = GET_COMPANIES_SQL
-        return self._run_sql(sql)
+        return self._fetchall(sql)
 
     def get_total_report(
         self,
@@ -52,7 +53,7 @@ class BarsRepository(BaseRepository):
             hide_discount=hide_discount,
         )
         try:
-            return self._run_sql(sql)
+            return self._fetchall(sql)
 
         except ProgrammingError:
             # Обратная совместимость для старой версии БД SkiBars
@@ -63,7 +64,7 @@ class BarsRepository(BaseRepository):
                 hide_zeroes=hide_zeroes,
                 hide_internal=hide_internal,
             )
-            return self._run_sql(sql)
+            return self._fetchall(sql)
 
     def get_loan_transactions_by_service_name_pattern(
         self,
@@ -87,7 +88,7 @@ class BarsRepository(BaseRepository):
             service_name_pattern=service_name_pattern,
             companies_ids=_companies_ids,
         )
-        return self._run_sql(sql)
+        return self._fetchall(sql)
 
     def get_loan_transactions_by_service_names(
         self,
@@ -111,7 +112,27 @@ class BarsRepository(BaseRepository):
             service_names=", ".join(f"'{service_name}'" for service_name in service_names),
             companies_ids=_companies_ids,
         )
-        return self._run_sql(sql)
+        return self._fetchall(sql)
+
+    def get_period_customer_count(
+        self,
+        date_from: datetime,
+        date_to: datetime,
+    ) -> int:
+        _date_from = date_from.isoformat()
+        _date_to = date_to.isoformat()
+        sql = PERIOD_CUSTOMER_COUNT_SQL.format(
+            date_from=_date_from,
+            date_to=_date_to,
+        )
+        res = self._fetchone(sql)
+        return res[0]
+
+    def get_current_customer_count(
+        self,
+    ) -> int:
+        res = self._fetchone(CURRENT_CUSTOMER_COUNT_SQL)
+        return res[1]
 
 
 def get_bars_repo() -> BarsRepository:

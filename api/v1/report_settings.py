@@ -68,10 +68,7 @@ async def get_report_names(
             )
         )
 
-    return ReportNameFullDetail(
-        id=report_name_detail.id, title=report_name_detail.title, groups=groups
-    )
-
+    return ReportNameFullDetail(id=report_name_detail.id, title=report_name_detail.title, groups=groups)
 
 
 @router.get("/search_duplicates")

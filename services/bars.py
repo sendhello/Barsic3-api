@@ -96,6 +96,19 @@ class BarsService:
 
         return list(extended_services.values())
 
+    def get_customer_count(
+        self,
+        date_from: datetime = None,
+        date_to: datetime = None,
+    ):
+        if date_from:
+            if date_to:
+                return self._repo.get_period_customer_count(date_from, date_to)
+            date_to = datetime.now()
+            return self._repo.get_period_customer_count(date_from, date_to)
+
+        return self._repo.get_current_customer_count()
+
 
 def get_bars_service():
     return BarsService(repository=get_bars_repo())

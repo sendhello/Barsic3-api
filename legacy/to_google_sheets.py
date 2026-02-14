@@ -1583,4 +1583,3 @@ def create_new_google_doc(
         date_from.strftime("%Y-%m"),
         spreadsheet["spreadsheetId"],
     )
-

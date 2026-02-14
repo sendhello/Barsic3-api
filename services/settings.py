@@ -34,7 +34,6 @@ class SettingsService:
         return list(set(all_tariffs) - {tariff.title for tariff in distributed_tariffs})
 
 
-
 def get_settings_service():
     return SettingsService(
         bars_service=get_bars_service(),

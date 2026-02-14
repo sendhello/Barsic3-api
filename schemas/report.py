@@ -23,7 +23,6 @@ class ReportElement(IdMixin, ReportElementCreate):
     """Элемент отчета."""
 
 
-
 class ReportElementDetail(IdMixin, Model):
     """Элемент отчета."""
 
@@ -48,7 +47,6 @@ class ReportGroup(IdMixin, ReportGroupCreate):
     """Группа элементов в отчете"""
 
 
-
 class ReportGroupDetail(ReportGroup):
     """Группа элементов с элементами"""
 
@@ -71,7 +69,6 @@ class ReportNameUpdate(Model):
 
 class ReportName(IdMixin, ReportNameCreate):
     """Тип отчета."""
-
 
 
 class ReportNameDetail(ReportName):

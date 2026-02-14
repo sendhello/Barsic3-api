@@ -1,9 +1,8 @@
 # Количество проходов в Аквазону за период
 # Расчитывается количество проходов на вход в Аквазону через турникеты,
 # при этом не учитываются идентификаторы сотрудников
-PERIOD_CUSTOMER_COUNT_SQL = """
-    SELECT DISTINCT
-        mt.[MasterTransactionId]
+PERIOD_CUSTOMERS_SQL = """
+    SELECT mt.[MasterTransactionId]
         ,[TransTime]
         ,[SuperAccountFrom]
         ,[SuperAccountTo]
@@ -18,15 +17,32 @@ PERIOD_CUSTOMER_COUNT_SQL = """
         ,td.Amount
     FROM [AquaPark_Ulyanovsk].[dbo].[MasterTransaction] mt
         LEFT JOIN TransactionDetail td ON mt.MasterTransactionId = td.MasterTransactionId
-        LEFT JOIN AccountStock ast ON td.StockInfoIdFrom = ast.AccountStockId
-        LEFT JOIN AccountStock ast2 ON mt.SuperAccountTo = ast2.SuperAccountId
     WHERE mt.ServicePointId = 1  -- Турникет
-        AND ast.CategoryId = 488  -- Аквазона
-        AND ast2.CategoryId = 62 -- Идентификатор сотрудника
-        AND ast.StockType = 41  -- Count на зонах (42 - Sum)
-        AND td.StockInfoIdFrom = 523  -- Вход в зону (StockInfoIdTo = 523 - выход)
-        AND mt.TransTime > '{date_from}' AND mt.TransTime < '{date_from}'
+        AND td.StockInfoIdFrom = 523  -- Вход в зону
+        -- AND StockInfoIdTo = 523  -- Выход из в зоны
+        AND mt.TransTime > '{date_from}' AND mt.TransTime < '{date_to}'
+        AND mt.SuperAccountTo IN (
+            SELECT SuperAccountId
+            FROM [AquaPark_Ulyanovsk].[dbo].[SuperAccount] sa
+            WHERE sa.IsStuff <> 1
+        )
     ORDER BY mt.TransTime ASC
+"""
+
+
+PERIOD_CUSTOMER_COUNT_SQL = """
+    SELECT COUNT(DISTINCT mt.[MasterTransactionId])
+    FROM [AquaPark_Ulyanovsk].[dbo].[MasterTransaction] mt
+        LEFT JOIN TransactionDetail td ON mt.MasterTransactionId = td.MasterTransactionId
+    WHERE mt.ServicePointId = 1  -- Турникет
+        AND td.StockInfoIdFrom = 523  -- Вход в зону
+        -- AND StockInfoIdTo = 523  -- Выход из в зоны
+        AND mt.TransTime > '{date_from}' AND mt.TransTime < '{date_to}'
+        AND mt.SuperAccountTo IN (
+            SELECT SuperAccountId
+            FROM [AquaPark_Ulyanovsk].[dbo].[SuperAccount] sa
+            WHERE sa.IsStuff <> 1
+        )
 """
 
 

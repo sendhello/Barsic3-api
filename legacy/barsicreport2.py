@@ -170,7 +170,6 @@ class BarsicReport2Service:
             )
             return cursor.fetchall()
 
-
     def reportClientCountTotals(
         self,
         database,
@@ -188,7 +187,6 @@ class BarsicReport2Service:
                 f"exec sp_reportClientCountTotals @sa={org},@from='{date_from}',@to='{date_to}',@categoryId=0"
             )
             return cursor.fetchall()
-
 
     def client_count_totals_period(
         self,
@@ -244,7 +242,6 @@ class BarsicReport2Service:
             cursor.execute(f"exec sp_reportCashDeskMoney @from='{date_from}', @to='{date_to}'")
             return cursor.fetchall()
 
-
     def service_point_request(
         self,
         database,
@@ -263,7 +260,6 @@ class BarsicReport2Service:
                 """
             )
             return cursor.fetchall()
-
 
     def cashdesk_report(
         self,
@@ -349,12 +345,11 @@ class BarsicReport2Service:
             report["Организация"] = [[beach_company.name]]
         return report
 
-    def create_fin_report(self, fin_report_config: dict[str, Any]) -> dict:
+    def create_fin_report(self, fin_report_config: dict[str, Any], customer_count: int = 0) -> dict:
         """Форминует финансовый отчет в установленном формате"""
 
         logger.info("Формирование финансового отчета")
         fin_report = {}
-        is_aquazona = None
 
         for org, services in fin_report_config.items():
             if org != "Не учитывать":
@@ -368,14 +363,6 @@ class BarsicReport2Service:
 
                         elif serv == "Депозит":
                             fin_report[org][1] += itog_report_aqua[serv][1]
-
-                        elif serv == "Аквазона":
-                            fin_report["Кол-во проходов"] = [
-                                itog_report_aqua[serv][0],
-                                0,
-                            ]
-                            fin_report[org][1] += itog_report_aqua[serv][1]
-                            is_aquazona = True
 
                         elif serv == "Организация":
                             pass
@@ -391,8 +378,7 @@ class BarsicReport2Service:
                     except TypeError:
                         pass
 
-        if not is_aquazona:
-            fin_report["Кол-во проходов"] = [0, 0.00]
+        fin_report["Кол-во проходов"] = [customer_count, 0.00]
 
         fin_report.setdefault("Online Продажи", [0, 0.0])
         fin_report["Online Продажи"][0] += self.report_bitrix[0]
@@ -408,12 +394,11 @@ class BarsicReport2Service:
         )
         return fin_report
 
-    def create_fin_report_last_year(self, fin_report_config: dict[str, Any]) -> dict:
+    def create_fin_report_last_year(self, fin_report_config: dict[str, Any], customer_count: int = 0) -> dict:
         """Форминует финансовый отчет за прошлый год в установленном формате."""
 
         logger.info("Формирование финансового отчета за прошлый год")
         fin_report_last_year = {}
-        is_aquazona = None
 
         for org, services in fin_report_config.items():
             if org != "Не учитывать":
@@ -426,13 +411,6 @@ class BarsicReport2Service:
                             fin_report_last_year[org][1] = itog_report_aqua_lastyear[serv][1]
                         elif serv == "Депозит":
                             fin_report_last_year[org][1] += itog_report_aqua_lastyear[serv][1]
-                        elif serv == "Аквазона":
-                            fin_report_last_year["Кол-во проходов"] = [
-                                itog_report_aqua_lastyear[serv][0],
-                                0,
-                            ]
-                            fin_report_last_year[org][1] += itog_report_aqua_lastyear[serv][1]
-                            is_aquazona = True
 
                         elif serv == "Организация":
                             pass
@@ -449,8 +427,7 @@ class BarsicReport2Service:
                     except TypeError:
                         pass
 
-        if not is_aquazona:
-            fin_report_last_year["Кол-во проходов"] = [0, 0.00]
+        fin_report_last_year["Кол-во проходов"] = [customer_count, 0.00]
 
         fin_report_last_year.setdefault("Online Продажи", [0, 0.0])
         fin_report_last_year["Online Продажи"][0] += self.report_bitrix_lastyear[0]
@@ -2388,6 +2365,8 @@ class BarsicReport2Service:
         fin_report_config: dict[str, Any],
         total_report_config: dict[str, Any],
         agent_report_config: dict[str, Any],
+        customer_count: int = 0,
+        customer_count_last_year: int = 0,
     ) -> tuple[list[str], list[str]]:
         """
         Функция управления
@@ -2396,7 +2375,7 @@ class BarsicReport2Service:
         to_yandex = []
         to_messanger = []
 
-        self.fin_report = self.create_fin_report(fin_report_config)
+        self.fin_report = self.create_fin_report(fin_report_config, customer_count)
         payment_agent_report = self.create_payment_agent_report(
             functions.concatenate_total_reports(
                 self.itog_reports[0],
@@ -2408,7 +2387,7 @@ class BarsicReport2Service:
         # agentreport_xls
         to_yandex.append(self._yandex_repo.export_payment_agent_report(payment_agent_report, date_from))
         # finreport_google
-        self.fin_report_last_year = self.create_fin_report_last_year(fin_report_config)
+        self.fin_report_last_year = self.create_fin_report_last_year(fin_report_config, customer_count_last_year)
         self.fin_report_beach = self.create_fin_report_beach()
 
         self.finreport_dict_month = None
@@ -2630,6 +2609,12 @@ class BarsicReport2Service:
             date_to = date + timedelta(1)
             await self.load_report(date_from, date_to, companies)
 
+            self._bars_service.choose_db(settings.mssql_database1)
+            customer_count = self._bars_service.get_customer_count(date_from, date_to)
+            customer_count_last_year = self._bars_service.get_customer_count(
+                date_from - relativedelta(years=1), date_to - relativedelta(years=1)
+            )
+
             fin_report_config = await self._report_config_service.get_report_elements_with_groups("GoogleReport")
             total_report_config = await self._report_config_service.get_report_elements_with_groups("ItogReport")
             agent_report_config = await self._report_config_service.get_report_elements_with_groups("PlatAgentReport")
@@ -2639,6 +2624,8 @@ class BarsicReport2Service:
                 fin_report_config=fin_report_config,
                 total_report_config=total_report_config,
                 agent_report_config=agent_report_config,
+                customer_count=customer_count,
+                customer_count_last_year=customer_count_last_year,
             )
 
         # Отправка в яндекс диск

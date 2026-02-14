@@ -30,14 +30,12 @@ class ReportNameModel(Base, IDMixin, TitleMixin, CRUDMixin):
             result = await session.execute(request)
             return result.scalars().first()
 
-
     @classmethod
     async def get_by_title(cls, title: str) -> Self:
         async with async_session() as session:
             request = select(cls).options(joinedload(cls.groups)).where(cls.title == title)
             result = await session.execute(request)
             return result.scalars().first()
-
 
 
 class ReportGroupModel(Base, IDMixin, CRUDMixin):
@@ -62,7 +60,6 @@ class ReportGroupModel(Base, IDMixin, CRUDMixin):
             result = await session.execute(request)
             return result.scalars().first()
 
-
     @classmethod
     async def get_by_title(cls, title: str, report_name_id: UUID) -> Self:
         async with async_session() as session:
@@ -74,14 +71,12 @@ class ReportGroupModel(Base, IDMixin, CRUDMixin):
             result = await session.execute(request)
             return result.scalars().first()
 
-
     @classmethod
     async def get_by_report_name_id(cls, report_name_id: UUID) -> list[Self]:
         async with async_session() as session:
             request = select(cls).where(cls.report_name_id == report_name_id)
             result = await session.execute(request)
             return result.scalars().all()
-
 
 
 class ReportElementModel(Base, IDMixin, TitleMixin, CRUDMixin):
@@ -105,7 +100,6 @@ class ReportElementModel(Base, IDMixin, TitleMixin, CRUDMixin):
             return result.scalars().all()
 
 
-
 class GoogleReportIdModel(Base, IDMixin, CRUDMixin):
     """Список Google-документов."""
 
@@ -125,4 +119,3 @@ class GoogleReportIdModel(Base, IDMixin, CRUDMixin):
             request = select(cls).where(cls.month == month, cls.report_type == report_type)
             result = await session.execute(request)
             return result.scalars().first()
-
