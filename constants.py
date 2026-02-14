@@ -10,6 +10,8 @@ GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/userinfo.profile",
 ]
 
+FREE_TARIFFS = ("Дети до 5 лет",)
+
 
 class MssqlDriverType(str, Enum):
     MICROSOFT_ODBC_18 = "{ODBC Driver 18 for SQL Server}"  # Microsoft ODBC driver for SQL Server (Linux)

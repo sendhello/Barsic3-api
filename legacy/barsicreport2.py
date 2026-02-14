@@ -14,7 +14,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 from pydantic import BaseModel
 from starlette import status
 
-from constants import GOOGLE_DOC_VERSION
+from constants import FREE_TARIFFS, GOOGLE_DOC_VERSION
 from core.settings import settings
 from db.mssql import MsSqlDatabase
 from gateways.telegram import TelegramBot, get_telegram_bot
@@ -350,6 +350,7 @@ class BarsicReport2Service:
 
         logger.info("Формирование финансового отчета")
         fin_report = {}
+        little_children_count = 0
 
         for org, services in fin_report_config.items():
             if org != "Не учитывать":
@@ -369,6 +370,9 @@ class BarsicReport2Service:
 
                         else:
                             for itog_report in self.itog_reports:
+                                if serv in FREE_TARIFFS:
+                                    little_children_count += itog_report.get(serv, [0])[0]
+
                                 if itog_report.get(serv) and itog_report[serv][1] != 0.0:
                                     fin_report[org][0] += itog_report[serv][0]
                                     fin_report[org][1] += itog_report[serv][1]
@@ -378,7 +382,8 @@ class BarsicReport2Service:
                     except TypeError:
                         pass
 
-        fin_report["Кол-во проходов"] = [customer_count, 0.00]
+        total_customer_count = customer_count + little_children_count
+        fin_report["Кол-во проходов"] = [total_customer_count, 0.00]
 
         fin_report.setdefault("Online Продажи", [0, 0.0])
         fin_report["Online Продажи"][0] += self.report_bitrix[0]
@@ -399,6 +404,7 @@ class BarsicReport2Service:
 
         logger.info("Формирование финансового отчета за прошлый год")
         fin_report_last_year = {}
+        customers_with_free_tariffs = 0
 
         for org, services in fin_report_config.items():
             if org != "Не учитывать":
@@ -417,6 +423,9 @@ class BarsicReport2Service:
 
                         else:
                             for itog_report in self.itog_reports_lastyear:
+                                if serv in FREE_TARIFFS:
+                                    customers_with_free_tariffs += itog_report.get(serv, [0])[0]
+
                                 if itog_report.get(serv) and itog_report[serv][1] != 0.0:
                                     fin_report_last_year[org][0] += itog_report[serv][0]
                                     fin_report_last_year[org][1] += itog_report[serv][1]
@@ -427,7 +436,8 @@ class BarsicReport2Service:
                     except TypeError:
                         pass
 
-        fin_report_last_year["Кол-во проходов"] = [customer_count, 0.00]
+        total_customer_count = customer_count + customers_with_free_tariffs
+        fin_report_last_year["Кол-во проходов"] = [total_customer_count, 0.00]
 
         fin_report_last_year.setdefault("Online Продажи", [0, 0.0])
         fin_report_last_year["Online Продажи"][0] += self.report_bitrix_lastyear[0]
