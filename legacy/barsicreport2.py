@@ -980,77 +980,11 @@ class BarsicReport2Service:
 
         # Бордер
         for j in range(self.sheet_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=self.nex_line - 1,
+                end_row=self.nex_line,
+                start_col=j,
+                end_col=j + 1,
             )
         ss.runPrepared()
 
@@ -1521,223 +1455,25 @@ class BarsicReport2Service:
 
         # Бордер
         for j in range(self.sheet_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=height_table - 1,
+                end_row=height_table,
+                start_col=j,
+                end_col=j + 1,
             )
         for j in range(4):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=height_table,
+                end_row=height_table + 1,
+                start_col=j,
+                end_col=j + 1,
             )
         for j in range(4):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=height_table + 1,
+                end_row=height_table + 2,
+                start_col=j,
+                end_col=j + 1,
             )
         ss.runPrepared()
 
@@ -1788,77 +1524,11 @@ class BarsicReport2Service:
 
         # Бордер
         for j in range(self.sheet2_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=self.nex_line - 1,
+                end_row=self.nex_line,
+                start_col=j,
+                end_col=j + 1,
             )
 
         # ------------------------------------------- Заполнение ИТОГО --------------------------------------
@@ -1915,77 +1585,11 @@ class BarsicReport2Service:
 
         # Бордер
         for j in range(self.sheet2_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=height_table - 1,
+                end_row=height_table,
+                start_col=j,
+                end_col=j + 1,
             )
         ss.runPrepared()
 
@@ -2050,92 +1654,11 @@ class BarsicReport2Service:
                 fields="userEnteredFormat.backgroundColor",
             )
             for j in range(self.sheet4_width):
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "top": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {"red": 0, "green": 0, "blue": 0},
-                            },
-                        }
-                    }
-                )
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "right": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {
-                                    "red": 0,
-                                    "green": 0,
-                                    "blue": 0,
-                                    "alpha": 1.0,
-                                },
-                            },
-                        }
-                    }
-                )
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "left": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {
-                                    "red": 0,
-                                    "green": 0,
-                                    "blue": 0,
-                                    "alpha": 1.0,
-                                },
-                            },
-                        }
-                    }
-                )
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "bottom": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {
-                                    "red": 0,
-                                    "green": 0,
-                                    "blue": 0,
-                                    "alpha": 1.0,
-                                },
-                            },
-                        }
-                    }
+                ss.set_border_format(
+                    start_row=self.nex_line - 1,
+                    end_row=self.nex_line,
+                    start_col=j,
+                    end_col=j + 1,
                 )
             ss.runPrepared()
 
@@ -2183,93 +1706,13 @@ class BarsicReport2Service:
                     fields="userEnteredFormat.backgroundColor",
                 )
                 for j in range(self.sheet4_width):
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "top": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {"red": 0, "green": 0, "blue": 0},
-                                },
-                            }
-                        }
+                    ss.set_border_format(
+                        start_row=self.nex_line - 1,
+                        end_row=self.nex_line,
+                        start_col=j,
+                        end_col=j + 1,
                     )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "right": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "left": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "bottom": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
+
                 for folder, folder_values in group_values.items():
                     if folder == "Итого по группе":
                         continue
@@ -2318,93 +1761,13 @@ class BarsicReport2Service:
                         fields="userEnteredFormat.backgroundColor",
                     )
                     for j in range(self.sheet4_width):
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "top": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {"red": 0, "green": 0, "blue": 0},
-                                    },
-                                }
-                            }
+                        ss.set_border_format(
+                            start_row=self.nex_line - 1,
+                            end_row=self.nex_line,
+                            start_col=j,
+                            end_col=j + 1,
                         )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "right": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "left": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "bottom": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
+
                     for service_name, service_count, service_sum in folder_values:
                         if service_name == "Итого по папке":
                             continue
@@ -2436,92 +1799,11 @@ class BarsicReport2Service:
                             ],
                         )
                         for j in range(self.sheet4_width):
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "top": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {"red": 0, "green": 0, "blue": 0},
-                                        },
-                                    }
-                                }
-                            )
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "right": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {
-                                                "red": 0,
-                                                "green": 0,
-                                                "blue": 0,
-                                                "alpha": 1.0,
-                                            },
-                                        },
-                                    }
-                                }
-                            )
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "left": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {
-                                                "red": 0,
-                                                "green": 0,
-                                                "blue": 0,
-                                                "alpha": 1.0,
-                                            },
-                                        },
-                                    }
-                                }
-                            )
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "bottom": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {
-                                                "red": 0,
-                                                "green": 0,
-                                                "blue": 0,
-                                                "alpha": 1.0,
-                                            },
-                                        },
-                                    }
-                                }
+                            ss.set_border_format(
+                                start_row=self.nex_line - 1,
+                                end_row=self.nex_line,
+                                start_col=j,
+                                end_col=j + 1,
                             )
 
             while self.nex_line < self.sheet4_height:
@@ -2542,74 +1824,13 @@ class BarsicReport2Service:
                     fields="userEnteredFormat.backgroundColor",
                 )
                 for j in range(self.sheet4_width):
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "right": {
-                                    "style": "NONE",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "left": {
-                                    "style": "NONE",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "bottom": {
-                                    "style": "NONE",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
+                    ss.set_border_format(
+                        start_row=self.nex_line - 1,
+                        end_row=self.nex_line,
+                        start_col=j,
+                        end_col=j + 1,
+                        style="NONE",
+                        sides=("right", "left", "bottom"),
                     )
             ss.runPrepared()
 
@@ -2673,92 +1894,11 @@ class BarsicReport2Service:
                 fields="userEnteredFormat.backgroundColor",
             )
             for j in range(self.sheet5_width):
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "top": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {"red": 0, "green": 0, "blue": 0},
-                            },
-                        }
-                    }
-                )
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "right": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {
-                                    "red": 0,
-                                    "green": 0,
-                                    "blue": 0,
-                                    "alpha": 1.0,
-                                },
-                            },
-                        }
-                    }
-                )
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "left": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {
-                                    "red": 0,
-                                    "green": 0,
-                                    "blue": 0,
-                                    "alpha": 1.0,
-                                },
-                            },
-                        }
-                    }
-                )
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "bottom": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {
-                                    "red": 0,
-                                    "green": 0,
-                                    "blue": 0,
-                                    "alpha": 1.0,
-                                },
-                            },
-                        }
-                    }
+                ss.set_border_format(
+                    start_row=self.nex_line - 1,
+                    end_row=self.nex_line,
+                    start_col=j,
+                    end_col=j + 1,
                 )
             ss.runPrepared()
 
@@ -2808,93 +1948,13 @@ class BarsicReport2Service:
                     fields="userEnteredFormat.backgroundColor",
                 )
                 for j in range(self.sheet4_width):
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "top": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {"red": 0, "green": 0, "blue": 0},
-                                },
-                            }
-                        }
+                    ss.set_border_format(
+                        start_row=self.nex_line - 1,
+                        end_row=self.nex_line,
+                        start_col=j,
+                        end_col=j + 1,
                     )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "right": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "left": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "bottom": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
+
                 for folder in self.agentreport_dict_month[group]:
                     if folder == "Итого по группе":
                         continue
@@ -2943,93 +2003,13 @@ class BarsicReport2Service:
                         fields="userEnteredFormat.backgroundColor",
                     )
                     for j in range(self.sheet4_width):
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "top": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {"red": 0, "green": 0, "blue": 0},
-                                    },
-                                }
-                            }
+                        ss.set_border_format(
+                            start_row=self.nex_line - 1,
+                            end_row=self.nex_line,
+                            start_col=j,
+                            end_col=j + 1,
                         )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "right": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "left": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "bottom": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
+
                     for servise in self.agentreport_dict_month[group][folder]:
                         if servise[0] == "Итого по папке":
                             continue
@@ -3061,92 +2041,11 @@ class BarsicReport2Service:
                             ],
                         )
                         for j in range(self.sheet5_width):
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "top": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {"red": 0, "green": 0, "blue": 0},
-                                        },
-                                    }
-                                }
-                            )
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "right": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {
-                                                "red": 0,
-                                                "green": 0,
-                                                "blue": 0,
-                                                "alpha": 1.0,
-                                            },
-                                        },
-                                    }
-                                }
-                            )
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "left": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {
-                                                "red": 0,
-                                                "green": 0,
-                                                "blue": 0,
-                                                "alpha": 1.0,
-                                            },
-                                        },
-                                    }
-                                }
-                            )
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "bottom": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {
-                                                "red": 0,
-                                                "green": 0,
-                                                "blue": 0,
-                                                "alpha": 1.0,
-                                            },
-                                        },
-                                    }
-                                }
+                            ss.set_border_format(
+                                start_row=self.nex_line - 1,
+                                end_row=self.nex_line,
+                                start_col=j,
+                                end_col=j + 1,
                             )
 
             while self.nex_line < self.sheet5_height:
@@ -3167,74 +2066,13 @@ class BarsicReport2Service:
                     fields="userEnteredFormat.backgroundColor",
                 )
                 for j in range(self.sheet5_width):
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "right": {
-                                    "style": "NONE",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "left": {
-                                    "style": "NONE",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "bottom": {
-                                    "style": "NONE",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
+                    ss.set_border_format(
+                        start_row=self.nex_line - 1,
+                        end_row=self.nex_line,
+                        start_col=j,
+                        end_col=j + 1,
+                        style="NONE",
+                        sides=("right", "left", "bottom"),
                     )
             ss.runPrepared()
 
@@ -3322,77 +2160,11 @@ class BarsicReport2Service:
 
         # Бордер
         for j in range(self.sheet6_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=self.nex_line - 1,
+                end_row=self.nex_line,
+                start_col=j,
+                end_col=j + 1,
             )
 
         # ------------------------------------------- Заполнение ИТОГО --------------------------------------
@@ -3608,223 +2380,25 @@ class BarsicReport2Service:
 
         # Бордер
         for j in range(self.sheet6_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=height_table - 1,
+                end_row=height_table,
+                start_col=j,
+                end_col=j + 1,
             )
         for j in range(4):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=height_table,
+                end_row=height_table + 1,
+                start_col=j,
+                end_col=j + 1,
             )
         for j in range(4):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=height_table + 1,
+                end_row=height_table + 2,
+                start_col=j,
+                end_col=j + 1,
             )
         ss.runPrepared()
 
