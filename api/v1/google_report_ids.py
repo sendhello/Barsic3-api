@@ -16,22 +16,18 @@ from schemas.google_report_ids import (
     GoogleReportIdUpdate,
 )
 
-
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.get("/", response_model=list[GoogleReportId])
+@router.get("/")
 async def get_report_elements(
     paginate: Annotated[PaginateQueryParams, Depends(PaginateQueryParams)],
 ) -> list[GoogleReportId]:
-    report_elements = await GoogleReportIdModel.get_part(
-        page=paginate.page, page_size=paginate.page_size
-    )
-    return report_elements
+    return await GoogleReportIdModel.get_part(page=paginate.page, page_size=paginate.page_size)
 
 
-@router.post("/", response_model=GoogleReportId)
+@router.post("/")
 async def create_report_element(
     report_element_in: GoogleReportIdCreate,
 ) -> GoogleReportId:
@@ -48,7 +44,7 @@ async def create_report_element(
     return report_elements
 
 
-@router.get("/{id}", response_model=GoogleReportId)
+@router.get("/{id}")
 async def get_report_element(id: UUID) -> GoogleReportId:
     report_element = await GoogleReportIdModel.get_by_id(id_=id)
     if not report_element:
@@ -60,10 +56,8 @@ async def get_report_element(id: UUID) -> GoogleReportId:
     return report_element
 
 
-@router.put("/{id}", response_model=GoogleReportId)
-async def update_report_element(
-    id: UUID, report_element_in: GoogleReportIdUpdate
-) -> GoogleReportId:
+@router.put("/{id}")
+async def update_report_element(id: UUID, report_element_in: GoogleReportIdUpdate) -> GoogleReportId:
     report_element = await GoogleReportIdModel.get_by_id(id_=id)
     if not report_element:
         raise HTTPException(
@@ -72,11 +66,10 @@ async def update_report_element(
         )
 
     report_element_dto = jsonable_encoder(report_element_in)
-    report_element = await report_element.update(**report_element_dto)
-    return report_element
+    return await report_element.update(**report_element_dto)
 
 
-@router.delete("/{id}", response_model=GoogleReportId)
+@router.delete("/{id}")
 async def delete_report_element(id: UUID) -> GoogleReportId:
     report_element = await GoogleReportIdModel.get_by_id(id_=id)
     if not report_element:

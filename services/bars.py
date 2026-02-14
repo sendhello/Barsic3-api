@@ -11,7 +11,6 @@ from schemas.bars import (
     TotalReportElement,
 )
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -58,27 +57,21 @@ class BarsService:
         service_names: list[str],
         use_like: bool = True,
     ) -> list[ExtendedService]:
-        companies = [
-            Organisation.model_validate(org) for org in self._repo.get_organisations()
-        ]
+        companies = [Organisation.model_validate(org) for org in self._repo.get_organisations()]
         companies_ids = [company.super_account_id for company in companies]
 
         if use_like:
             _unique_transactions = {}
             for service_name in service_names:
-                _transactions = (
-                    self._repo.get_loan_transactions_by_service_name_pattern(
-                        date_from=date_from,
-                        date_to=date_to,
-                        service_name_pattern=service_name,
-                        companies_ids=companies_ids,
-                    )
+                _transactions = self._repo.get_loan_transactions_by_service_name_pattern(
+                    date_from=date_from,
+                    date_to=date_to,
+                    service_name_pattern=service_name,
+                    companies_ids=companies_ids,
                 )
                 for tr in _transactions:
                     client_transaction = ClientTransaction.model_validate(tr)
-                    _unique_transactions[client_transaction.master_transaction_id] = (
-                        client_transaction
-                    )
+                    _unique_transactions[client_transaction.master_transaction_id] = client_transaction
 
             client_transactions = _unique_transactions.values()
         else:
@@ -88,9 +81,7 @@ class BarsService:
                 service_names=service_names,
                 companies_ids=companies_ids,
             )
-            client_transactions = [
-                ClientTransaction.model_validate(el) for el in _transactions
-            ]
+            client_transactions = [ClientTransaction.model_validate(el) for el in _transactions]
 
         extended_services = {}
         for client_transaction in client_transactions:
@@ -101,9 +92,7 @@ class BarsService:
                 client_transaction.name, ExtendedService(name=client_transaction.name)
             )
             extended_service.count += int(client_transaction.count)
-            extended_service.summ += client_transaction.price * int(
-                client_transaction.count
-            )
+            extended_service.summ += client_transaction.price * int(client_transaction.count)
 
         return list(extended_services.values())
 

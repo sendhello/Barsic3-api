@@ -19,30 +19,23 @@ from schemas.report import (
     ReportNameUpdate,
 )
 
-
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.get("/", response_model=list[ReportName])
+@router.get("/")
 async def get_report_names(
     paginate: Annotated[PaginateQueryParams, Depends(PaginateQueryParams)],
-    report_name: Annotated[
-        gen_report_name_enum(), Query(description="Наименование отчета")
-    ] = None,
+    report_name: Annotated[gen_report_name_enum(), Query(description="Наименование отчета")] = None,
 ) -> list[ReportName]:
-
     if report_name is not None:
         raw_report_name = await ReportNameModel.get_by_title(title=report_name.value)
         return [raw_report_name]
 
-    raw_report_names = await ReportNameModel.get_part(
-        page=paginate.page, page_size=paginate.page_size
-    )
-    return raw_report_names
+    return await ReportNameModel.get_part(page=paginate.page, page_size=paginate.page_size)
 
 
-@router.post("/", response_model=ReportName)
+@router.post("/")
 async def create_report_name(report_name_in: ReportNameCreate) -> ReportName:
     report_name_dto = jsonable_encoder(report_name_in)
     try:
@@ -57,42 +50,35 @@ async def create_report_name(report_name_in: ReportNameCreate) -> ReportName:
     return report_names
 
 
-@router.get("/{id}", response_model=ReportNameDetail)
+@router.get("/{id}")
 async def get_report_name(id: UUID) -> ReportNameDetail:
     report_name = await ReportNameModel.get_by_id(id_=id)
     if not report_name:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="ReportName doesn't exists"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ReportName doesn't exists")
 
     return report_name
 
 
-@router.put("/{id}", response_model=ReportName)
+@router.put("/{id}")
 async def update_report_name(id: UUID, report_name_in: ReportNameUpdate) -> ReportName:
     report_name = await ReportNameModel.get_by_id(id_=id)
     if not report_name:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="ReportName doesn't exists"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ReportName doesn't exists")
 
     report_name_dto = jsonable_encoder(report_name_in)
-    report_name = await report_name.update(**report_name_dto)
-    return report_name
+    return await report_name.update(**report_name_dto)
 
 
-@router.delete("/{id}", response_model=ReportName)
+@router.delete("/{id}")
 async def delete_report_name(id: UUID) -> ReportName:
     report_name = await ReportNameModel.get_by_id(id_=id)
     if not report_name:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="ReportName doesn't exists"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ReportName doesn't exists")
 
     return await report_name.delete()
 
 
-@router.post("/{id}/add_groups/", response_model=list[ReportGroup])
+@router.post("/{id}/add_groups/")
 async def add_elements(
     id: Annotated[UUID, Path(description="ID группы")],
     report_groups: Annotated[list[str], Body(description="Список групп отчета")],
@@ -103,9 +89,7 @@ async def add_elements(
     error_groups = []
     for group_name in report_groups:
         try:
-            db_report_group = await ReportGroupModel.create(
-                title=group_name, parent_id=None, report_name_id=id
-            )
+            db_report_group = await ReportGroupModel.create(title=group_name, parent_id=None, report_name_id=id)
             created_groups.append(ReportGroup.model_validate(db_report_group))
 
         except IntegrityError:
@@ -113,24 +97,18 @@ async def add_elements(
 
     if error_groups:
         error_groups = [f'"{error}"' for error in error_groups]
-        error_groups_text = f'{", ".join(error_groups)}'
+        error_groups_text = f"{', '.join(error_groups)}"
         error_message = f"Groups {error_groups_text} already exist"
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=error_message
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_message)
 
     return created_groups
 
 
-@router.post("/add_groups", response_model=list[ReportGroup])
+@router.post("/add_groups")
 async def create_report_groups(
     report_groups: Annotated[list[str], Body(description="Список групп отчета")],
-    report_name: Annotated[
-        gen_report_name_enum(), Query(description="Наименование отчета")
-    ] = None,
-    other_report_name: Annotated[
-        str | None, Query(description="Наименование отчета (если нет в списке)")
-    ] = None,
+    report_name: Annotated[gen_report_name_enum(), Query(description="Наименование отчета")] = None,
+    other_report_name: Annotated[str | None, Query(description="Наименование отчета (если нет в списке)")] = None,
 ) -> list[ReportGroup]:
     """Добавление групп списком. (Для ручного добавления)"""
 
@@ -170,10 +148,8 @@ async def create_report_groups(
 
     if error_groups:
         error_groups = [f'"{error}"' for error in error_groups]
-        error_groups_text = f'{", ".join(error_groups)}'
+        error_groups_text = f"{', '.join(error_groups)}"
         error_message = f"Groups {error_groups_text} already exist"
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=error_message
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=error_message)
 
     return created_groups

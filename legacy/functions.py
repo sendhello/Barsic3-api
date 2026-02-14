@@ -19,8 +19,7 @@ def func_pass():
 
 
 def htmlColorToJSON(htmlColor):
-    if htmlColor.startswith("#"):
-        htmlColor = htmlColor[1:]
+    htmlColor = htmlColor.removeprefix("#")
     return {
         "red": int(htmlColor[0:2], 16) / 255.0,
         "green": int(htmlColor[2:4], 16) / 255.0,
@@ -31,10 +30,9 @@ def htmlColorToJSON(htmlColor):
 def to_bool(s):
     if s == "True":
         return True
-    elif s == "False":
+    if s == "False":
         return False
-    else:
-        return None
+    return None
 
 
 def concatenate_total_reports(*reports: dict[str, tuple]) -> dict[str, tuple]:
@@ -46,7 +44,7 @@ def concatenate_total_reports(*reports: dict[str, tuple]) -> dict[str, tuple]:
 
     result_report = deepcopy(reports[0])
     for another_report in reports[1:]:
-        for position, values in another_report.items():
+        for position in another_report:
             if position in result_report and position != "Дата":
                 result_report[position] = (
                     sum([result_report[position][0], another_report[position][0] or 0]),
@@ -168,12 +166,8 @@ def create_month_agent_report(
                 result[org]["Смайл"][0][2] += smile_report_month.total_sum
                 result[org]["Итого по группе"][0][1] += smile_report_month.total_count
                 result[org]["Итого по группе"][0][2] += smile_report_month.total_sum
-                result["Контрольная сумма"]["Cумма"][0][
-                    1
-                ] += smile_report_month.total_count
-                result["Контрольная сумма"]["Cумма"][0][
-                    2
-                ] += smile_report_month.total_sum
+                result["Контрольная сумма"]["Cумма"][0][1] += smile_report_month.total_count
+                result["Контрольная сумма"]["Cумма"][0][2] += smile_report_month.total_sum
                 result["ИТОГО"][""][0][1] += smile_report_month.total_count
                 result["ИТОГО"][""][0][2] += smile_report_month.total_sum
 
@@ -206,22 +200,16 @@ def create_month_finance_report(
 
     for group_name, groups in total_report_config.items():
         finreport_group = month_finance_report.setdefault(group_name, {})
-        finreport_group_total = finreport_group.setdefault(
-            "Итого по группе", [["Итого по группе", 0, 0.0]]
-        )
+        finreport_group_total = finreport_group.setdefault("Итого по группе", [["Итого по группе", 0, 0.0]])
         for oldgroup in groups:
             try:
                 for service_name in fin_report_config[oldgroup]:
                     try:
-                        service_count, service_sum, org_name, group_name = (
-                            itog_report_month[service_name]
-                        )
+                        service_count, service_sum, org_name, group_name = itog_report_month[service_name]
 
                         if service_name == "Дата":
                             product_group = finreport_group.setdefault(oldgroup, [])
-                            product_group.append(
-                                [service_name, service_count, service_sum]
-                            )
+                            product_group.append([service_name, service_count, service_sum])
                         elif service_name == "Депозит":
                             product_group = finreport_group.setdefault(oldgroup, [])
                             product_group.append([service_name, 0, service_sum])
@@ -230,12 +218,8 @@ def create_month_finance_report(
                         elif service_name == "Организация":
                             pass
                         else:
-                            product_group = finreport_group.setdefault(
-                                org_name, [["Итого по папке", 0, 0.0]]
-                            )
-                            product_group.append(
-                                [service_name, service_count, service_sum]
-                            )
+                            product_group = finreport_group.setdefault(org_name, [["Итого по папке", 0, 0.0]])
+                            product_group.append([service_name, service_count, service_sum])
                             product_group[0][1] += service_count
                             product_group[0][2] += service_sum
                             finreport_group_total[0][1] += service_count
@@ -250,8 +234,7 @@ def create_month_finance_report(
 
             except KeyError as e:
                 logger.error(
-                    f"Несоответствие конфигураций XML-файлов\n"
-                    f"Группа {oldgroup} не существует! \nKeyError: {e}"
+                    f"Несоответствие конфигураций XML-файлов\nГруппа {oldgroup} не существует! \nKeyError: {e}"
                 )
 
             if oldgroup == "Общепит":
@@ -273,12 +256,8 @@ def create_month_finance_report(
 
     control_sum[0][1] += smile_report_month.total_count
     control_sum[0][2] += smile_report_month.total_sum
-    month_finance_report["ИТОГО"]["Итого по группе"][0][
-        1
-    ] += smile_report_month.total_count
-    month_finance_report["ИТОГО"]["Итого по группе"][0][
-        2
-    ] += smile_report_month.total_sum
+    month_finance_report["ИТОГО"]["Итого по группе"][0][1] += smile_report_month.total_count
+    month_finance_report["ИТОГО"]["Итого по группе"][0][2] += smile_report_month.total_sum
     month_finance_report["ИТОГО"][""][0][1] += smile_report_month.total_count
     month_finance_report["ИТОГО"][""][0][2] += smile_report_month.total_sum
     month_finance_report["ИТОГО"][""][1][1] += smile_report_month.total_count

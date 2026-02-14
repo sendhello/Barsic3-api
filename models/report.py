@@ -21,29 +21,23 @@ class ReportNameModel(Base, IDMixin, TitleMixin, CRUDMixin):
 
     __tablename__ = "report_name"
 
-    groups = relationship(
-        "ReportGroupModel", back_populates="report", passive_deletes=True
-    )
+    groups = relationship("ReportGroupModel", back_populates="report", passive_deletes=True)
 
     @classmethod
     async def get_by_id(cls, id_: UUID) -> Self:
         async with async_session() as session:
             request = select(cls).options(joinedload(cls.groups)).where(cls.id == id_)
             result = await session.execute(request)
-            entity = result.scalars().first()
+            return result.scalars().first()
 
-        return entity
 
     @classmethod
     async def get_by_title(cls, title: str) -> Self:
         async with async_session() as session:
-            request = (
-                select(cls).options(joinedload(cls.groups)).where(cls.title == title)
-            )
+            request = select(cls).options(joinedload(cls.groups)).where(cls.title == title)
             result = await session.execute(request)
-            entity = result.scalars().first()
+            return result.scalars().first()
 
-        return entity
 
 
 class ReportGroupModel(Base, IDMixin, CRUDMixin):
@@ -53,16 +47,10 @@ class ReportGroupModel(Base, IDMixin, CRUDMixin):
 
     title = Column(String(255), nullable=False)
     parent_id = Column(UUID)
-    report_name_id = Column(
-        UUID, ForeignKey("report_name.id", ondelete="CASCADE"), nullable=False
-    )
+    report_name_id = Column(UUID, ForeignKey("report_name.id", ondelete="CASCADE"), nullable=False)
     report = relationship("ReportNameModel", back_populates="groups")
-    elements = relationship(
-        "ReportElementModel", back_populates="group", passive_deletes=True
-    )
-    __table_args__ = (
-        UniqueConstraint("title", "report_name_id", name="unique_title_groups"),
-    )
+    elements = relationship("ReportElementModel", back_populates="group", passive_deletes=True)
+    __table_args__ = (UniqueConstraint("title", "report_name_id", name="unique_title_groups"),)
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.title}>"
@@ -72,9 +60,8 @@ class ReportGroupModel(Base, IDMixin, CRUDMixin):
         async with async_session() as session:
             request = select(cls).options(joinedload(cls.elements)).where(cls.id == id_)
             result = await session.execute(request)
-            entity = result.scalars().first()
+            return result.scalars().first()
 
-        return entity
 
     @classmethod
     async def get_by_title(cls, title: str, report_name_id: UUID) -> Self:
@@ -85,18 +72,16 @@ class ReportGroupModel(Base, IDMixin, CRUDMixin):
                 .where(cls.title == title, cls.report_name_id == report_name_id)
             )
             result = await session.execute(request)
-            entity = result.scalars().first()
+            return result.scalars().first()
 
-        return entity
 
     @classmethod
     async def get_by_report_name_id(cls, report_name_id: UUID) -> list[Self]:
         async with async_session() as session:
             request = select(cls).where(cls.report_name_id == report_name_id)
             result = await session.execute(request)
-            entities = result.scalars().all()
+            return result.scalars().all()
 
-        return entities
 
 
 class ReportElementModel(Base, IDMixin, TitleMixin, CRUDMixin):
@@ -105,13 +90,9 @@ class ReportElementModel(Base, IDMixin, TitleMixin, CRUDMixin):
     __tablename__ = "report_element"
 
     title = Column(String(255), nullable=False)
-    group_id = Column(
-        UUID, ForeignKey("report_group.id", ondelete="CASCADE"), nullable=False
-    )
+    group_id = Column(UUID, ForeignKey("report_group.id", ondelete="CASCADE"), nullable=False)
     group = relationship("ReportGroupModel", back_populates="elements")
-    __table_args__ = (
-        UniqueConstraint("title", "group_id", name="unique_title_elements"),
-    )
+    __table_args__ = (UniqueConstraint("title", "group_id", name="unique_title_elements"),)
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.title}>"
@@ -121,9 +102,8 @@ class ReportElementModel(Base, IDMixin, TitleMixin, CRUDMixin):
         async with async_session() as session:
             request = select(cls).where(cls.group_id == report_group_id)
             result = await session.execute(request)
-            entities = result.scalars().all()
+            return result.scalars().all()
 
-        return entities
 
 
 class GoogleReportIdModel(Base, IDMixin, CRUDMixin):
@@ -134,9 +114,7 @@ class GoogleReportIdModel(Base, IDMixin, CRUDMixin):
     doc_id = Column(String(255), nullable=False, unique=True)
     report_type = Column(String(255), nullable=False, default="financial")
     version = Column(Integer, nullable=False)
-    __table_args__ = (
-        UniqueConstraint("month", "report_type", name="unique_report_type_in_month"),
-    )
+    __table_args__ = (UniqueConstraint("month", "report_type", name="unique_report_type_in_month"),)
 
     def __repr__(self) -> str:
         return f"<{self.__class__.__name__} {self.title}>"
@@ -144,10 +122,7 @@ class GoogleReportIdModel(Base, IDMixin, CRUDMixin):
     @classmethod
     async def get_by_month(cls, month: str, report_type: str) -> Self:
         async with async_session() as session:
-            request = select(cls).where(
-                cls.month == month, cls.report_type == report_type
-            )
+            request = select(cls).where(cls.month == month, cls.report_type == report_type)
             result = await session.execute(request)
-            entity = result.scalars().first()
+            return result.scalars().first()
 
-        return entity

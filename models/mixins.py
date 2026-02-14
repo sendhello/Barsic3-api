@@ -44,18 +44,16 @@ class CRUDMixin:
         async with async_session() as session:
             request = select(cls).limit(page_size).offset((page - 1) * page_size)
             result = await session.execute(request)
-            entities = result.scalars().all()
+            return result.scalars().all()
 
-        return entities
 
     @classmethod
     async def get_all(cls) -> list[Self]:
         async with async_session() as session:
             request = select(cls)
             result = await session.execute(request)
-            entities = result.scalars().all()
+            return result.scalars().all()
 
-        return entities
 
 
 class IDMixin:
@@ -74,9 +72,8 @@ class IDMixin:
         async with async_session() as session:
             request = select(cls).where(cls.id == id_)
             result = await session.execute(request)
-            entity = result.scalars().first()
+            return result.scalars().first()
 
-        return entity
 
 
 class TitleMixin:

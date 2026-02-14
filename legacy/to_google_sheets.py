@@ -8,7 +8,6 @@ from dateutil.relativedelta import relativedelta
 from core.settings import settings
 from legacy import functions
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -31,9 +30,7 @@ def create_column_dict() -> dict:
             if ch1 == ord("A") - 1:
                 columns[chr(ch2)] = ch2 - ord("A")
             else:
-                columns[f"{chr(ch1)}{chr(ch2)}"] = (
-                    26 * (ch1 - ord("A") + 1) + ch2 - ord("A")
-                )
+                columns[f"{chr(ch1)}{chr(ch2)}"] = 26 * (ch1 - ord("A") + 1) + ch2 - ord("A")
     return columns
 
 
@@ -47,7 +44,6 @@ def get_letter_column_name(column: int) -> str:
 
 
 class Spreadsheet:
-
     # Класс-оберта методов
     def __init__(self, spreadsheetId, sheetId, service, sheetTitle):
         self.requests = []
@@ -129,7 +125,7 @@ class Spreadsheet:
     def to_grid_range(self, cellsRange):
         columns = create_column_dict()
         if self.sheetId is None:
-            raise SheetNotSetError()
+            raise SheetNotSetError
 
         if isinstance(cellsRange, str):
             startCell, endCell = cellsRange.split(":")[0:2]
@@ -175,9 +171,7 @@ class Spreadsheet:
         )
 
     # formatJSON should be dict with userEnteredFormat to be applied to each cell
-    def prepare_setCellsFormat(
-        self, cellsRange, formatJSON, fields="userEnteredFormat"
-    ):
+    def prepare_setCellsFormat(self, cellsRange, formatJSON, fields="userEnteredFormat"):
         self.requests.append(
             {
                 "repeatCell": {
@@ -189,20 +183,13 @@ class Spreadsheet:
         )
 
     # formatsJSON should be list of lists of dicts with userEnteredFormat for each cell in each row
-    def prepare_setCellsFormats(
-        self, cellsRange, formatsJSON, fields="userEnteredFormat"
-    ):
+    def prepare_setCellsFormats(self, cellsRange, formatsJSON, fields="userEnteredFormat"):
         self.requests.append(
             {
                 "updateCells": {
                     "range": self.to_grid_range(cellsRange),
                     "rows": [
-                        {
-                            "values": [
-                                {"userEnteredFormat": cellFormat}
-                                for cellFormat in rowFormats
-                            ]
-                        }
+                        {"values": [{"userEnteredFormat": cellFormat} for cellFormat in rowFormats]}
                         for rowFormats in formatsJSON
                     ],
                     "fields": fields,
@@ -366,9 +353,7 @@ def create_new_google_doc(
 
     # Доступы к документу
     logging.info("Настройка доступов к файлу GoogleSheets...")
-    driveService = apiclient.discovery.build(
-        "drive", "v3", http=http_auth, cache_discovery=False
-    )
+    driveService = apiclient.discovery.build("drive", "v3", http=http_auth, cache_discovery=False)
     if settings.google_api_settings.google_all_read:
         _ = (
             driveService.permissions()
@@ -384,11 +369,7 @@ def create_new_google_doc(
         )
     # Возможные значения writer, commenter, reader
     # доступ на Чтение определенным пользователоям
-    google_reader_list = [
-        address
-        for address in settings.google_api_settings.google_reader_list.split(",")
-        if address
-    ]
+    google_reader_list = [address for address in settings.google_api_settings.google_reader_list.split(",") if address]
     for address in google_reader_list:
         _ = (
             driveService.permissions()
@@ -404,11 +385,7 @@ def create_new_google_doc(
             .execute()
         )
     # доступ на Запись определенным пользователоям
-    google_writer_list = [
-        address
-        for address in settings.google_api_settings.google_writer_list.split(",")
-        if address
-    ]
+    google_writer_list = [address for address in settings.google_api_settings.google_writer_list.split(",") if address]
     for address in google_writer_list:
         _ = (
             driveService.permissions()
@@ -632,8 +609,7 @@ def create_new_google_doc(
                 "Общепит ФАКТ",
                 "",
                 "",
-                f"Общепит {data_report} "
-                f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
+                f"Общепит {data_report} {datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
                 "",
                 "",
                 "Фотоуслуги ПЛАН",
@@ -652,8 +628,7 @@ def create_new_google_doc(
                 "УЛËТSHOP ФАКТ",
                 "",
                 "",
-                f"УЛËТSHOP {data_report} "
-                f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
+                f"УЛËТSHOP {data_report} {datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
                 "",
                 "",
                 "Аренда полотенец ПЛАН",
@@ -790,10 +765,7 @@ def create_new_google_doc(
     ss.runPrepared()
 
     # ЛИСТ 2
-    logging.info(
-        f"{__name__}: {str(datetime.now())[:-7]}:    "
-        f"Создание листа 2 в файле GoogleSheets..."
-    )
+    logging.info(f"{__name__}: {str(datetime.now())[:-7]}:    Создание листа 2 в файле GoogleSheets...")
     sheetId = 1
     # Ширина столбцов
     ss = Spreadsheet(
@@ -817,9 +789,7 @@ def create_new_google_doc(
     #                           fields='userEnteredFormat.numberFormat')
 
     # Заполнение таблицы
-    ss.prepare_setValues(
-        "A1:C2", [["Смайл", "", ""], ["Дата", "Кол-во", "Сумма"]], "ROWS"
-    )
+    ss.prepare_setValues("A1:C2", [["Смайл", "", ""], ["Дата", "Кол-во", "Сумма"]], "ROWS")
     # ss.prepare_setValues("D5:E6", [["This is D5", "This is D6"], ["This is E5", "=5+5"]], "COLUMNS")
 
     # Цвет фона ячеек
@@ -842,10 +812,7 @@ def create_new_google_doc(
     ss.runPrepared()
 
     # ЛИСТ 3
-    logging.info(
-        f"{__name__}: {str(datetime.now())[:-7]}:    "
-        f"Создание листа 3 в файле GoogleSheets..."
-    )
+    logging.info(f"{__name__}: {str(datetime.now())[:-7]}:    Создание листа 3 в файле GoogleSheets...")
     sheetId = 2
     # Ширина столбцов
     ss = Spreadsheet(
@@ -1008,10 +975,7 @@ def create_new_google_doc(
     # ss.runPrepared()
 
     # Заполнение таблицы 2
-    logging.info(
-        f"{__name__}: {str(datetime.now())[:-7]}:    "
-        f"Заполнение листа 2 в файле GoogleSheets..."
-    )
+    logging.info(f"{__name__}: {str(datetime.now())[:-7]}:    Заполнение листа 2 в файле GoogleSheets...")
 
     # Заполнение строки с данными
     weekday_rus = [
@@ -1024,9 +988,7 @@ def create_new_google_doc(
         "Воскресенье",
     ]
 
-    start_date = datetime.strptime(
-        f"01{finreport_dict['Дата'][0].strftime('%m%Y')}", "%d%m%Y"
-    )
+    start_date = datetime.strptime(f"01{finreport_dict['Дата'][0].strftime('%m%Y')}", "%d%m%Y")
     enddate = start_date + relativedelta(months=1)
     dateline = start_date
     sheet2_line = 3
@@ -1382,10 +1344,7 @@ def create_new_google_doc(
     ss.runPrepared()
 
     # ЛИСТ 4
-    logging.info(
-        f"{__name__}: {str(datetime.now())[:-7]}:    "
-        f"Создание листа 4 в файле GoogleSheets..."
-    )
+    logging.info(f"{__name__}: {str(datetime.now())[:-7]}:    Создание листа 4 в файле GoogleSheets...")
     sheetId = 3
     # Ширина столбцов
     ss = Spreadsheet(
@@ -1448,10 +1407,7 @@ def create_new_google_doc(
     ss.runPrepared()
 
     # ЛИСТ 5
-    logging.info(
-        f"{__name__}: {str(datetime.now())[:-7]}:    "
-        f"Создание листа 5 в файле GoogleSheets..."
-    )
+    logging.info(f"{__name__}: {str(datetime.now())[:-7]}:    Создание листа 5 в файле GoogleSheets...")
     sheetId = 4
     # Ширина столбцов
     ss = Spreadsheet(
@@ -1516,10 +1472,7 @@ def create_new_google_doc(
     ss.runPrepared()
 
     # ЛИСТ 6
-    logging.info(
-        f"{__name__}: {str(datetime.now())[:-7]}:    "
-        f"Создание листа 6 в файле GoogleSheets..."
-    )
+    logging.info(f"{__name__}: {str(datetime.now())[:-7]}:    Создание листа 6 в файле GoogleSheets...")
     sheetId = 5
     # Ширина столбцов
     ss = Spreadsheet(
@@ -1626,9 +1579,8 @@ def create_new_google_doc(
             )
     ss.runPrepared()
 
-    google_doc = (
+    return (
         date_from.strftime("%Y-%m"),
         spreadsheet["spreadsheetId"],
     )
 
-    return google_doc

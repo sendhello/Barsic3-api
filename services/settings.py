@@ -3,7 +3,6 @@ import logging
 from services.bars import BarsService, get_bars_service
 from services.report_config import ReportConfigService, get_report_config_service
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -26,21 +25,14 @@ class SettingsService:
         organizations = self._bars_service.get_organisations()
 
         for organization in organizations:
-            organization_tariffs = self._bars_service.get_tariffs(
-                organization.super_account_id
-            )
+            organization_tariffs = self._bars_service.get_tariffs(organization.super_account_id)
             all_tariffs.extend([tariff.name for tariff in organization_tariffs])
 
         all_tariffs.append("Смайл")
 
-        distributed_tariffs = await self._report_config_service.get_report_elements(
-            report_name
-        )
-        new_tariffs = list(
-            set(all_tariffs) - set([tariff.title for tariff in distributed_tariffs])
-        )
+        distributed_tariffs = await self._report_config_service.get_report_elements(report_name)
+        return list(set(all_tariffs) - {tariff.title for tariff in distributed_tariffs})
 
-        return new_tariffs
 
 
 def get_settings_service():

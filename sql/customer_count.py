@@ -2,7 +2,7 @@
 # Расчитывается количество проходов на вход в Аквазону через турникеты,
 # при этом не учитываются идентификаторы сотрудников
 PERIOD_CUSTOMER_COUNT_SQL = """
-    SELECT DISTINCT 
+    SELECT DISTINCT
         mt.[MasterTransactionId]
         ,[TransTime]
         ,[SuperAccountFrom]

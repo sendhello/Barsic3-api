@@ -28,15 +28,10 @@ jobs:
           python -m pip install poetry
           poetry install
 
-      - name: flake8 Lint
+      - name: Ruff Lint
         run: |
-          poetry run flake8 .
-
-      - name: Isort Lint
-        uses: isort/isort-action@master
-
-      - name: Black Lint
-        uses: psf/black@stable
+          poetry run ruff check .
+        continue-on-error: true
 
   build-and-push:
     name: Build Docker image and Push

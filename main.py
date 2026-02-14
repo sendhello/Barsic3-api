@@ -12,9 +12,7 @@ from middleware.exceptions import exception_traceback_middleware
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    redis_db.redis = Redis(
-        host=settings.redis_host, port=settings.redis_port, db=0, decode_responses=True
-    )
+    redis_db.redis = Redis(host=settings.redis_host, port=settings.redis_port, db=0, decode_responses=True)
     yield
 
     await redis_db.redis.close()

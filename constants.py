@@ -2,7 +2,6 @@ from enum import Enum, EnumType
 
 from core.settings import settings
 
-
 ANONYMOUS = "anonymous"
 GOOGLE_DOC_VERSION = 14
 GOOGLE_SCOPES = [

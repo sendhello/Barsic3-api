@@ -108,9 +108,7 @@ class BarsRepository(BaseRepository):
         sql = GET_LOAN_TRANSACTIONS_BY_SERVICE_NAMES.format(
             date_from=_date_from,
             date_to=_date_to,
-            service_names=", ".join(
-                f"'{service_name}'" for service_name in service_names
-            ),
+            service_names=", ".join(f"'{service_name}'" for service_name in service_names),
             companies_ids=_companies_ids,
         )
         return self._run_sql(sql)

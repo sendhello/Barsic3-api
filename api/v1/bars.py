@@ -8,37 +8,34 @@ from constants import gen_db_name_enum
 from schemas.bars import Category, ExtendedService, Organisation, TotalReport
 from services.bars import BarsService, get_bars_service
 
-
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.post("/tariffs", response_model=list[Category])
+@router.post("/tariffs")
 async def get_tariffs(
     db_name: Annotated[gen_db_name_enum(), Query(description="База данных")],
     organization_id: Annotated[int, Query(description="ID организации")],
-    bars_service: BarsService = Depends(get_bars_service),
+    bars_service: Annotated[BarsService, Depends(get_bars_service)],
 ) -> list[Category]:
     """Список тарифов."""
 
     bars_service.choose_db(db_name=db_name.value)
-    tariffs = bars_service.get_tariffs(organization_id=organization_id)
-    return tariffs
+    return bars_service.get_tariffs(organization_id=organization_id)
 
 
-@router.post("/organisations", response_model=list[Organisation])
+@router.post("/organisations")
 async def get_organisations(
     db_name: Annotated[gen_db_name_enum(), Query(description="База данных")],
-    bars_service: BarsService = Depends(get_bars_service),
+    bars_service: Annotated[BarsService, Depends(get_bars_service)],
 ) -> list[Organisation]:
     """Список Организаций."""
 
     bars_service.choose_db(db_name=db_name.value)
-    organisations = bars_service.get_organisations()
-    return organisations
+    return bars_service.get_organisations()
 
 
-@router.post("/total_report", response_model=TotalReport)
+@router.post("/total_report")
 async def get_total_report(
     db_name: Annotated[gen_db_name_enum(), Query(description="База данных")],
     organization_id: int,
@@ -62,16 +59,12 @@ async def get_total_report(
     )
 
 
-@router.post(
-    "/transactions_by_service_name_pattern", response_model=list[ExtendedService]
-)
+@router.post("/transactions_by_service_name_pattern")
 async def get_loan_transactions_by_service_name_pattern(
     db_name: Annotated[gen_db_name_enum(), Query(description="База данных")],
     date_from: datetime = datetime.combine(date.today(), datetime.min.time()),
     date_to: datetime = datetime.combine(date.today(), datetime.min.time()),
-    service_names: list[str] = Annotated[
-        list[str], Query(description="Паттерн услуги для поиска клиентов")
-    ],
+    service_names: list[str] = Annotated[list[str], Query(description="Паттерн услуги для поиска клиентов")],
     use_like: bool = True,
     bars_service: BarsService = Depends(get_bars_service),
 ) -> list[ExtendedService]:

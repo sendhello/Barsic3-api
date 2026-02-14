@@ -60,11 +60,7 @@ class TotalReport(Model):
         amount = 0
         good_amount = 0.0
         for element in self.elements:
-            if (
-                element.name == "Депозит"
-                or element.good_amount is None
-                or element.amount is None
-            ):
+            if element.name == "Депозит" or element.good_amount is None or element.amount is None:
                 continue
 
             good_amount += element.good_amount

@@ -5,7 +5,6 @@ from pydantic_settings import BaseSettings
 
 from core.logger import LOGGING
 
-
 # Применяем настройки логирования
 logging_config.dictConfig(LOGGING)
 
@@ -78,9 +77,7 @@ class GoogleApiSettings(BaseSettings):
     private_key: str = Field(validation_alias="GOOGLE_API_PRIVATE_KEY")
     client_email: EmailStr = Field(validation_alias="GOOGLE_API_CLIENT_EMAIL")
     client_id: str = Field(validation_alias="GOOGLE_API_CLIENT_ID")
-    client_x509_cert_url: AnyUrl = Field(
-        validation_alias="GOOGLE_API_CLIENT_X509_CERT_URL"
-    )
+    client_x509_cert_url: AnyUrl = Field(validation_alias="GOOGLE_API_CLIENT_X509_CERT_URL")
 
     @property
     def google_service_account_config(self):
