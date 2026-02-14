@@ -732,7 +732,7 @@ class BarsicReport2Service:
                     f"{fin_report_last_year['Кол-во проходов'][0]}",
                     f"='План'!E{self.nex_line}",
                     f"={str(fin_report['ИТОГО'][1]).replace('.', ',')}"
-                    f"-I{self.nex_line}+AL{self.nex_line}+BT{self.nex_line}+BU{self.nex_line}+'Смайл'!C{self.nex_line}",
+                    f"-I{self.nex_line}+AL{self.nex_line}+BT{self.nex_line}+BU{self.nex_line}+'Смайл'!C{self.nex_line}-BR{self.nex_line}",
                     f"=IFERROR(G{self.nex_line}/D{self.nex_line};0)",
                     f"={str(fin_report['MaxBonus'][1]).replace('.', ',')}",
                     f"={str(fin_report_last_year['ИТОГО'][1]).replace('.', ',')}"
