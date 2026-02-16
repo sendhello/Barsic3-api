@@ -41,6 +41,7 @@ fabric.properties
 .idea
 .idea/
 .env
+.env.local
 *.iml
 out
 gen

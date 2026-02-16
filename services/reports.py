@@ -9,7 +9,6 @@ from starlette import status
 from models.report_cache import ReportCacheModel
 from schemas.report_cache import ReportCache, ReportCacheCreate
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -17,14 +16,10 @@ class ReportService:
     def __init__(self):
         pass
 
-    async def get_report_by_date(
-        self, report_type: str, report_date: date
-    ) -> ReportCache | None:
+    async def get_report_by_date(self, report_type: str, report_date: date) -> ReportCache | None:
         """Возвращает отчет по типу и дате."""
 
-        report_cache_ = await ReportCacheModel.get_by_date(
-            report_type=report_type, report_date=report_date
-        )
+        report_cache_ = await ReportCacheModel.get_by_date(report_type=report_type, report_date=report_date)
         if not report_cache_:
             return None
 
@@ -36,15 +31,13 @@ class ReportService:
             await ReportCacheModel.create(**report_cache_dto)
 
         except IntegrityError:
-            raise HTTPException(
+            raise HTTPException(  # noqa: B904
                 status_code=status.HTTP_409_CONFLICT,
                 detail="ReportCache with such 'date' and 'report_type' already exists",
             )
 
     async def delete_report(self, report_type: str, report_date: date) -> None:
-        report_cache_ = await ReportCacheModel.get_by_date(
-            report_type=report_type, report_date=report_date
-        )
+        report_cache_ = await ReportCacheModel.get_by_date(report_type=report_type, report_date=report_date)
         if report_cache_:
             await report_cache_.delete()
 

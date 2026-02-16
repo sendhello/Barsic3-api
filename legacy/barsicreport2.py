@@ -1,8 +1,10 @@
+import contextlib
 import logging
 import re
 from datetime import datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
+from typing import Any
 
 import apiclient
 import httplib2
@@ -12,9 +14,10 @@ from oauth2client.service_account import ServiceAccountCredentials
 from pydantic import BaseModel
 from starlette import status
 
-from constants import GOOGLE_DOC_VERSION
+from constants import FREE_TARIFFS, GOOGLE_DOC_VERSION
 from core.settings import settings
 from db.mssql import MsSqlDatabase
+from gateways.telegram import TelegramBot, get_telegram_bot
 from legacy import functions
 from legacy.to_google_sheets import Spreadsheet, create_new_google_doc
 from repositories.yandex import YandexRepository, get_yandex_repo
@@ -24,8 +27,7 @@ from services.bars import BarsService, get_bars_service
 from services.report_config import ReportConfigService, get_report_config_service
 from services.rk import RKService, get_rk_service
 from services.settings import SettingsService, get_settings_service
-from sql.clients_count import CLIENTS_COUNT_SQL
-
+from sql.customer_count import CURRENT_CUSTOMER_COUNT_SQL
 
 logger = logging.getLogger("barsicreport2")
 
@@ -68,6 +70,7 @@ class BarsicReport2Service:
         self._bars_service: BarsService = get_bars_service()
         self._rk_service: RKService = get_rk_service()
         self._yandex_repo: YandexRepository = get_yandex_repo()
+        self._telegram_bot: TelegramBot = get_telegram_bot()
 
     def get_clients_count(self) -> list[ClientsCount]:
         """Получение количества человек в зоне."""
@@ -75,15 +78,12 @@ class BarsicReport2Service:
         self.bars_srv.set_database(settings.mssql_database1)
         with self.bars_srv as connect:
             cursor = connect.cursor()
-            cursor.execute(CLIENTS_COUNT_SQL)
+            cursor.execute(CURRENT_CUSTOMER_COUNT_SQL)
             rows = cursor.fetchall()
             if not rows:
                 return [ClientsCount(count=0, id=488, zone_name="", code="0003")]
 
-        return [
-            ClientsCount(count=row[0], id=row[1], zone_name=row[2], code=row[3])
-            for row in rows
-        ]
+        return [ClientsCount(count=row[0], id=row[1], zone_name=row[2], code=row[3]) for row in rows]
 
     def count_clients_print(self):
         """Получение количества человек в зоне Аквазоны."""
@@ -123,23 +123,22 @@ class BarsicReport2Service:
         """Получение списка организаций из баз данных Аквапарка и Пляжа."""
 
         aqua_companies_db = self.list_organisation(database=settings.mssql_database1)
-        aqua_companies_map = {
-            company_db[0]: company_db[2] for company_db in aqua_companies_db
-        }
+        aqua_companies_map = {company_db[0]: company_db[2] for company_db in aqua_companies_db}
         companies = [
             Company(id=id_, name=name, db_name=DBName.AQUA)
             for id_, name in aqua_companies_map.items()
             if id_ in AQUA_COMPANIES_IDS
         ]
 
-        beach_companies_db = self.list_organisation(database=settings.mssql_database2)
-        companies.append(
-            Company(
-                id=beach_companies_db[0][0],
-                name=beach_companies_db[0][2],
-                db_name=DBName.BEACH,
+        if settings.add_beach_report:
+            beach_companies_db = self.list_organisation(database=settings.mssql_database2)
+            companies.append(
+                Company(
+                    id=beach_companies_db[0][0],
+                    name=beach_companies_db[0][2],
+                    db_name=DBName.BEACH,
+                )
             )
-        )
 
         return companies
 
@@ -157,11 +156,11 @@ class BarsicReport2Service:
             cursor.execute(
                 f"""
                 SELECT
-                    SuperAccountId, Type, Descr, CanRegister, CanPass, IsStuff, IsBlocked, 
-                    BlockReason, DenyReturn, ClientCategoryId, DiscountCard, PersonalInfoId, 
-                    Address, Inn, ExternalId, RegisterTime,LastTransactionTime, 
-                    LegalEntityRelationTypeId, SellServicePointId, DepositServicePointId, 
-                    AllowIgnoreStoredPledge, Email, Latitude, Longitude, Phone, WebSite, 
+                    SuperAccountId, Type, Descr, CanRegister, CanPass, IsStuff, IsBlocked,
+                    BlockReason, DenyReturn, ClientCategoryId, DiscountCard, PersonalInfoId,
+                    Address, Inn, ExternalId, RegisterTime,LastTransactionTime,
+                    LegalEntityRelationTypeId, SellServicePointId, DepositServicePointId,
+                    AllowIgnoreStoredPledge, Email, Latitude, Longitude, Phone, WebSite,
                     TNG_ProfileId
                 FROM
                     SuperAccount
@@ -169,9 +168,7 @@ class BarsicReport2Service:
                     Type={id_type}
                 """
             )
-            rows = cursor.fetchall()
-
-        return rows
+            return cursor.fetchall()
 
     def reportClientCountTotals(
         self,
@@ -189,9 +186,7 @@ class BarsicReport2Service:
             cursor.execute(
                 f"exec sp_reportClientCountTotals @sa={org},@from='{date_from}',@to='{date_to}',@categoryId=0"
             )
-            rows = cursor.fetchall()
-
-        return rows
+            return cursor.fetchall()
 
     def client_count_totals_period(
         self,
@@ -244,12 +239,8 @@ class BarsicReport2Service:
         self.bars_srv.set_database(database)
         with self.bars_srv as connect:
             cursor = connect.cursor()
-            cursor.execute(
-                f"exec sp_reportCashDeskMoney @from='{date_from}', @to='{date_to}'"
-            )
-            rows = cursor.fetchall()
-
-        return rows
+            cursor.execute(f"exec sp_reportCashDeskMoney @from='{date_from}', @to='{date_to}'")
+            return cursor.fetchall()
 
     def service_point_request(
         self,
@@ -264,13 +255,11 @@ class BarsicReport2Service:
                 """
                     SELECT
                         ServicePointId, Name, SuperAccountId, Type, Code, IsInternal
-                    FROM 
+                    FROM
                         ServicePoint
                 """
             )
-            rows = cursor.fetchall()
-
-        return rows
+            return cursor.fetchall()
 
     def cashdesk_report(
         self,
@@ -352,20 +341,18 @@ class BarsicReport2Service:
         if database == settings.mssql_database1:
             report["Организация"] = [[companies[0].id]]
         elif database == settings.mssql_database2:
-            beach_company = next(
-                company for company in companies if company.db_name == DBName.BEACH
-            )
+            beach_company = next(company for company in companies if company.db_name == DBName.BEACH)
             report["Организация"] = [[beach_company.name]]
         return report
 
-    def create_fin_report(self) -> dict:
+    def create_fin_report(self, fin_report_config: dict[str, Any], customer_count: int = 0) -> dict:
         """Форминует финансовый отчет в установленном формате"""
 
         logger.info("Формирование финансового отчета")
         fin_report = {}
-        is_aquazona = None
+        little_children_count = 0
 
-        for org, services in self.orgs_dict.items():
+        for org, services in fin_report_config.items():
             if org != "Не учитывать":
                 fin_report[org] = [0, 0.00]
                 for serv in services:
@@ -378,23 +365,15 @@ class BarsicReport2Service:
                         elif serv == "Депозит":
                             fin_report[org][1] += itog_report_aqua[serv][1]
 
-                        elif serv == "Аквазона":
-                            fin_report["Кол-во проходов"] = [
-                                itog_report_aqua[serv][0],
-                                0,
-                            ]
-                            fin_report[org][1] += itog_report_aqua[serv][1]
-                            is_aquazona = True
-
                         elif serv == "Организация":
                             pass
 
                         else:
                             for itog_report in self.itog_reports:
-                                if (
-                                    itog_report.get(serv)
-                                    and itog_report[serv][1] != 0.0
-                                ):
+                                if serv in FREE_TARIFFS:
+                                    little_children_count += itog_report.get(serv, [0])[0]
+
+                                if itog_report.get(serv) and itog_report[serv][1] != 0.0:
                                     fin_report[org][0] += itog_report[serv][0]
                                     fin_report[org][1] += itog_report[serv][1]
 
@@ -403,8 +382,8 @@ class BarsicReport2Service:
                     except TypeError:
                         pass
 
-        if not is_aquazona:
-            fin_report["Кол-во проходов"] = [0, 0.00]
+        total_customer_count = customer_count + little_children_count
+        fin_report["Кол-во проходов"] = [total_customer_count, 0.00]
 
         fin_report.setdefault("Online Продажи", [0, 0.0])
         fin_report["Online Продажи"][0] += self.report_bitrix[0]
@@ -420,49 +399,34 @@ class BarsicReport2Service:
         )
         return fin_report
 
-    def create_fin_report_last_year(self) -> dict:
+    def create_fin_report_last_year(self, fin_report_config: dict[str, Any], customer_count: int = 0) -> dict:
         """Форминует финансовый отчет за прошлый год в установленном формате."""
 
         logger.info("Формирование финансового отчета за прошлый год")
         fin_report_last_year = {}
-        is_aquazona = None
+        customers_with_free_tariffs = 0
 
-        for org, services in self.orgs_dict.items():
+        for org, services in fin_report_config.items():
             if org != "Не учитывать":
                 fin_report_last_year[org] = [0, 0.00]
                 for serv in services:
                     itog_report_aqua_lastyear = self.itog_reports_lastyear[0]
                     try:
                         if org == "Дата":
-                            fin_report_last_year[org][0] = itog_report_aqua_lastyear[
-                                serv
-                            ][0]
-                            fin_report_last_year[org][1] = itog_report_aqua_lastyear[
-                                serv
-                            ][1]
+                            fin_report_last_year[org][0] = itog_report_aqua_lastyear[serv][0]
+                            fin_report_last_year[org][1] = itog_report_aqua_lastyear[serv][1]
                         elif serv == "Депозит":
-                            fin_report_last_year[org][1] += itog_report_aqua_lastyear[
-                                serv
-                            ][1]
-                        elif serv == "Аквазона":
-                            fin_report_last_year["Кол-во проходов"] = [
-                                itog_report_aqua_lastyear[serv][0],
-                                0,
-                            ]
-                            fin_report_last_year[org][1] += itog_report_aqua_lastyear[
-                                serv
-                            ][1]
-                            is_aquazona = True
+                            fin_report_last_year[org][1] += itog_report_aqua_lastyear[serv][1]
 
                         elif serv == "Организация":
                             pass
 
                         else:
                             for itog_report in self.itog_reports_lastyear:
-                                if (
-                                    itog_report.get(serv)
-                                    and itog_report[serv][1] != 0.0
-                                ):
+                                if serv in FREE_TARIFFS:
+                                    customers_with_free_tariffs += itog_report.get(serv, [0])[0]
+
+                                if itog_report.get(serv) and itog_report[serv][1] != 0.0:
                                     fin_report_last_year[org][0] += itog_report[serv][0]
                                     fin_report_last_year[org][1] += itog_report[serv][1]
 
@@ -472,8 +436,8 @@ class BarsicReport2Service:
                     except TypeError:
                         pass
 
-        if not is_aquazona:
-            fin_report_last_year["Кол-во проходов"] = [0, 0.00]
+        total_customer_count = customer_count + customers_with_free_tariffs
+        fin_report_last_year["Кол-во проходов"] = [total_customer_count, 0.00]
 
         fin_report_last_year.setdefault("Online Продажи", [0, 0.0])
         fin_report_last_year["Online Продажи"][0] += self.report_bitrix_lastyear[0]
@@ -500,32 +464,23 @@ class BarsicReport2Service:
             "Карты": (0, 0),
             "Итого по отчету": (0, 0),
         }
-        for service in self.itog_report_beach:
-            if service == "Дата":
+        for service in self.itog_report_beach or []:
+            if service in {"Дата", "Выход с пляжа"}:
                 fin_report_beach[service] = (
                     self.itog_report_beach[service][0],
                     self.itog_report_beach[service][1],
                 )
-            elif service == "Выход с пляжа":
-                fin_report_beach[service] = (
-                    self.itog_report_beach[service][0],
-                    self.itog_report_beach[service][1],
-                )
-            elif not self.itog_report_beach[service][3] in fin_report_beach:
+            elif self.itog_report_beach[service][3] not in fin_report_beach:
                 fin_report_beach[self.itog_report_beach[service][3]] = (
                     self.itog_report_beach[service][0],
                     self.itog_report_beach[service][1],
                 )
             else:
-                try:
+                with contextlib.suppress(TypeError):
                     fin_report_beach[self.itog_report_beach[service][3]] = (
-                        fin_report_beach[self.itog_report_beach[service][3]][0]
-                        + self.itog_report_beach[service][0],
-                        fin_report_beach[self.itog_report_beach[service][3]][1]
-                        + self.itog_report_beach[service][1],
+                        fin_report_beach[self.itog_report_beach[service][3]][0] + self.itog_report_beach[service][0],
+                        fin_report_beach[self.itog_report_beach[service][3]][1] + self.itog_report_beach[service][1],
                     )
-                except TypeError:
-                    pass
 
         if "Выход с пляжа" not in fin_report_beach:
             fin_report_beach["Выход с пляжа"] = 0, 0
@@ -533,13 +488,16 @@ class BarsicReport2Service:
         return fin_report_beach
 
     def create_payment_agent_report(
-        self, total_report: dict[str, tuple], aqua_company: Company
+        self,
+        total_report: dict[str, tuple],
+        agent_report_config: dict[str, Any],
+        aqua_company: Company,
     ) -> dict[str, list]:
         """Форминует отчет платежного агента в установленном формате."""
 
         result = {}
         result["Организация"] = [aqua_company.id, aqua_company.name]
-        for org, services in self.agent_dict.items():
+        for org, services in agent_report_config.items():
             if org == "Не учитывать":
                 continue
 
@@ -549,9 +507,7 @@ class BarsicReport2Service:
                     if org == "Дата":
                         result[org][0] = total_report[service][0]
                         result[org][1] = total_report[service][1]
-                    elif service == "Депозит":
-                        result[org][1] += total_report[service][1]
-                    elif service == "Аквазона":
+                    elif service in {"Депозит", "Аквазона"}:
                         result[org][1] += total_report[service][1]
                     elif service == "Организация":
                         pass
@@ -565,9 +521,7 @@ class BarsicReport2Service:
 
         return result
 
-    async def export_to_google_sheet(
-        self, date_from, http_auth, googleservice, fin_report: dict
-    ):
+    async def export_to_google_sheet(self, date_from, http_auth, googleservice, fin_report: dict):
         """
         Формирование и заполнение google-таблицы
         """
@@ -603,18 +557,13 @@ class BarsicReport2Service:
         self.data_report = month[int(self.data_report)]
 
         doc_name = (
-            f"{datetime.strftime(fin_report['Дата'][0], '%Y-%m')} "
-            f"({self.data_report}) - Финансовый отчет по Аквапарку"
+            f"{datetime.strftime(fin_report['Дата'][0], '%Y-%m')} ({self.data_report}) - Финансовый отчет по Аквапарку"
         )
 
         if fin_report["Дата"][0] + timedelta(1) != fin_report["Дата"][1]:
             logger.info("Экспорт отчета в Google Sheet за несколько дней невозможен!")
         else:
-            google_report_id = (
-                await self._report_config_service.get_financial_doc_id_by_date(
-                    date_from
-                )
-            )
+            google_report_id = await self._report_config_service.get_financial_doc_id_by_date(date_from)
             if google_report_id is None:
                 google_doc = create_new_google_doc(
                     googleservice=googleservice,
@@ -659,9 +608,7 @@ class BarsicReport2Service:
 
             google_doc = (google_report_id.month, google_report_id.doc_id)
             self.spreadsheet = (
-                googleservice.spreadsheets()
-                .get(spreadsheetId=google_doc[1], ranges=[], includeGridData=True)
-                .execute()
+                googleservice.spreadsheets().get(spreadsheetId=google_doc[1], ranges=[], includeGridData=True).execute()
             )
 
             # -------------------------------- ЗАПОЛНЕНИЕ ДАННЫМИ ------------------------------------------------
@@ -684,10 +631,9 @@ class BarsicReport2Service:
                         )
                         self.reprint = 0
                         break
-                    elif line_table["values"][0]["formattedValue"] == "ИТОГО":
+                    if line_table["values"][0]["formattedValue"] == "ИТОГО":
                         break
-                    else:
-                        self.start_line += 1
+                    self.start_line += 1
                 except KeyError:
                     self.start_line += 1
             if self.reprint:
@@ -786,7 +732,7 @@ class BarsicReport2Service:
                     f"{fin_report_last_year['Кол-во проходов'][0]}",
                     f"='План'!E{self.nex_line}",
                     f"={str(fin_report['ИТОГО'][1]).replace('.', ',')}"
-                    f"-I{self.nex_line}+AL{self.nex_line}+BT{self.nex_line}+BU{self.nex_line}+'Смайл'!C{self.nex_line}",
+                    f"-I{self.nex_line}+AL{self.nex_line}+BT{self.nex_line}+BU{self.nex_line}+'Смайл'!C{self.nex_line}-BR{self.nex_line}",
                     f"=IFERROR(G{self.nex_line}/D{self.nex_line};0)",
                     f"={str(fin_report['MaxBonus'][1]).replace('.', ',')}",
                     f"={str(fin_report_last_year['ИТОГО'][1]).replace('.', ',')}"
@@ -804,10 +750,8 @@ class BarsicReport2Service:
                     fin_report["Общепит"][0] + fin_report["Смайл"][0],
                     fin_report["Общепит"][1] + fin_report["Смайл"][1],
                     f"=IFERROR(T{self.nex_line}/S{self.nex_line};0)",
-                    fin_report_last_year["Общепит"][0]
-                    + fin_report_last_year["Смайл"][0],
-                    fin_report_last_year["Общепит"][1]
-                    + fin_report_last_year["Смайл"][1],
+                    fin_report_last_year["Общепит"][0] + fin_report_last_year["Смайл"][0],
+                    fin_report_last_year["Общепит"][1] + fin_report_last_year["Смайл"][1],
                     f"=IFERROR(W{self.nex_line}/V{self.nex_line};0)",
                     # Фотоуслуги
                     f"='План'!L{self.nex_line}",
@@ -971,77 +915,11 @@ class BarsicReport2Service:
 
         # Бордер
         for j in range(self.sheet_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=self.nex_line - 1,
+                end_row=self.nex_line,
+                start_col=j,
+                end_col=j + 1,
             )
         ss.runPrepared()
 
@@ -1054,21 +932,17 @@ class BarsicReport2Service:
             try:
                 if line_table["values"][0]["formattedValue"] == "ИТОГО":
                     break
-                else:
-                    self.sheet2_line += 1
+                self.sheet2_line += 1
             except KeyError:
                 self.sheet2_line += 1
 
-        for i, line_table in enumerate(
-            self.spreadsheet["sheets"][0]["data"][0]["rowData"]
-        ):
+        for i, line_table in enumerate(self.spreadsheet["sheets"][0]["data"][0]["rowData"]):
             try:
                 if line_table["values"][0]["formattedValue"] == "ИТОГО":
                     # Если строка переписывается - итого на 1 поз вниз, если новая - на 2 поз
                     height_table = i + self.reprint
                     break
-                else:
-                    height_table = 4
+                height_table = 4
             except KeyError:
                 pass
 
@@ -1512,223 +1386,25 @@ class BarsicReport2Service:
 
         # Бордер
         for j in range(self.sheet_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=height_table - 1,
+                end_row=height_table,
+                start_col=j,
+                end_col=j + 1,
             )
         for j in range(4):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=height_table,
+                end_row=height_table + 1,
+                start_col=j,
+                end_col=j + 1,
             )
         for j in range(4):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=height_table + 1,
+                end_row=height_table + 2,
+                start_col=j,
+                end_col=j + 1,
             )
         ss.runPrepared()
 
@@ -1779,93 +1455,24 @@ class BarsicReport2Service:
 
         # Бордер
         for j in range(self.sheet2_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=self.nex_line - 1,
+                end_row=self.nex_line,
+                start_col=j,
+                end_col=j + 1,
             )
 
         # ------------------------------------------- Заполнение ИТОГО --------------------------------------
         # Вычисление последней строки в таблице
         logger.info("Заполнение строки ИТОГО на листе 2...")
 
-        for i, line_table in enumerate(
-            self.spreadsheet["sheets"][1]["data"][0]["rowData"]
-        ):
+        for i, line_table in enumerate(self.spreadsheet["sheets"][1]["data"][0]["rowData"]):
             try:
                 if line_table["values"][0]["formattedValue"] == "ИТОГО":
                     # Если строка переписывается - итого на 1 поз вниз, если новая - на 2 поз
                     height_table = i + self.reprint
                     break
-                else:
-                    height_table = 4
+                height_table = 4
             except KeyError:
                 pass
 
@@ -1906,77 +1513,11 @@ class BarsicReport2Service:
 
         # Бордер
         for j in range(self.sheet2_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=height_table - 1,
+                end_row=height_table,
+                start_col=j,
+                end_col=j + 1,
             )
         ss.runPrepared()
 
@@ -2041,92 +1582,11 @@ class BarsicReport2Service:
                 fields="userEnteredFormat.backgroundColor",
             )
             for j in range(self.sheet4_width):
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "top": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {"red": 0, "green": 0, "blue": 0},
-                            },
-                        }
-                    }
-                )
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "right": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {
-                                    "red": 0,
-                                    "green": 0,
-                                    "blue": 0,
-                                    "alpha": 1.0,
-                                },
-                            },
-                        }
-                    }
-                )
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "left": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {
-                                    "red": 0,
-                                    "green": 0,
-                                    "blue": 0,
-                                    "alpha": 1.0,
-                                },
-                            },
-                        }
-                    }
-                )
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "bottom": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {
-                                    "red": 0,
-                                    "green": 0,
-                                    "blue": 0,
-                                    "alpha": 1.0,
-                                },
-                            },
-                        }
-                    }
+                ss.set_border_format(
+                    start_row=self.nex_line - 1,
+                    end_row=self.nex_line,
+                    start_col=j,
+                    end_col=j + 1,
                 )
             ss.runPrepared()
 
@@ -2174,103 +1634,20 @@ class BarsicReport2Service:
                     fields="userEnteredFormat.backgroundColor",
                 )
                 for j in range(self.sheet4_width):
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "top": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {"red": 0, "green": 0, "blue": 0},
-                                },
-                            }
-                        }
+                    ss.set_border_format(
+                        start_row=self.nex_line - 1,
+                        end_row=self.nex_line,
+                        start_col=j,
+                        end_col=j + 1,
                     )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "right": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "left": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "bottom": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
+
                 for folder, folder_values in group_values.items():
                     if folder == "Итого по группе":
                         continue
                     if folder == "":
                         continue
                     self.nex_line += 1
-                    if folder is None:
-                        folder_name = "Без группировки"
-                    else:
-                        folder_name = folder
+                    folder_name = "Без группировки" if folder is None else folder
                     ss.prepare_setValues(
                         f"A{self.nex_line}:C{self.nex_line}",
                         [
@@ -2309,93 +1686,13 @@ class BarsicReport2Service:
                         fields="userEnteredFormat.backgroundColor",
                     )
                     for j in range(self.sheet4_width):
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "top": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {"red": 0, "green": 0, "blue": 0},
-                                    },
-                                }
-                            }
+                        ss.set_border_format(
+                            start_row=self.nex_line - 1,
+                            end_row=self.nex_line,
+                            start_col=j,
+                            end_col=j + 1,
                         )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "right": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "left": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "bottom": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
+
                     for service_name, service_count, service_sum in folder_values:
                         if service_name == "Итого по папке":
                             continue
@@ -2427,99 +1724,16 @@ class BarsicReport2Service:
                             ],
                         )
                         for j in range(self.sheet4_width):
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "top": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {"red": 0, "green": 0, "blue": 0},
-                                        },
-                                    }
-                                }
-                            )
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "right": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {
-                                                "red": 0,
-                                                "green": 0,
-                                                "blue": 0,
-                                                "alpha": 1.0,
-                                            },
-                                        },
-                                    }
-                                }
-                            )
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "left": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {
-                                                "red": 0,
-                                                "green": 0,
-                                                "blue": 0,
-                                                "alpha": 1.0,
-                                            },
-                                        },
-                                    }
-                                }
-                            )
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "bottom": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {
-                                                "red": 0,
-                                                "green": 0,
-                                                "blue": 0,
-                                                "alpha": 1.0,
-                                            },
-                                        },
-                                    }
-                                }
+                            ss.set_border_format(
+                                start_row=self.nex_line - 1,
+                                end_row=self.nex_line,
+                                start_col=j,
+                                end_col=j + 1,
                             )
 
             while self.nex_line < self.sheet4_height:
                 self.nex_line += 1
-                ss.prepare_setValues(
-                    f"A{self.nex_line}:C{self.nex_line}", [["", "", ""]], "ROWS"
-                )
+                ss.prepare_setValues(f"A{self.nex_line}:C{self.nex_line}", [["", "", ""]], "ROWS")
                 ss.prepare_setCellsFormat(
                     f"A{self.nex_line}:C{self.nex_line}",
                     {
@@ -2533,74 +1747,13 @@ class BarsicReport2Service:
                     fields="userEnteredFormat.backgroundColor",
                 )
                 for j in range(self.sheet4_width):
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "right": {
-                                    "style": "NONE",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "left": {
-                                    "style": "NONE",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "bottom": {
-                                    "style": "NONE",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
+                    ss.set_border_format(
+                        start_row=self.nex_line - 1,
+                        end_row=self.nex_line,
+                        start_col=j,
+                        end_col=j + 1,
+                        style="NONE",
+                        sides=("right", "left", "bottom"),
                     )
             ss.runPrepared()
 
@@ -2664,92 +1817,11 @@ class BarsicReport2Service:
                 fields="userEnteredFormat.backgroundColor",
             )
             for j in range(self.sheet5_width):
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "top": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {"red": 0, "green": 0, "blue": 0},
-                            },
-                        }
-                    }
-                )
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "right": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {
-                                    "red": 0,
-                                    "green": 0,
-                                    "blue": 0,
-                                    "alpha": 1.0,
-                                },
-                            },
-                        }
-                    }
-                )
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "left": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {
-                                    "red": 0,
-                                    "green": 0,
-                                    "blue": 0,
-                                    "alpha": 1.0,
-                                },
-                            },
-                        }
-                    }
-                )
-                ss.requests.append(
-                    {
-                        "updateBorders": {
-                            "range": {
-                                "sheetId": ss.sheetId,
-                                "startRowIndex": self.nex_line - 1,
-                                "endRowIndex": self.nex_line,
-                                "startColumnIndex": j,
-                                "endColumnIndex": j + 1,
-                            },
-                            "bottom": {
-                                "style": "SOLID",
-                                "width": 1,
-                                "color": {
-                                    "red": 0,
-                                    "green": 0,
-                                    "blue": 0,
-                                    "alpha": 1.0,
-                                },
-                            },
-                        }
-                    }
+                ss.set_border_format(
+                    start_row=self.nex_line - 1,
+                    end_row=self.nex_line,
+                    start_col=j,
+                    end_col=j + 1,
                 )
             ss.runPrepared()
 
@@ -2799,103 +1871,20 @@ class BarsicReport2Service:
                     fields="userEnteredFormat.backgroundColor",
                 )
                 for j in range(self.sheet4_width):
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "top": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {"red": 0, "green": 0, "blue": 0},
-                                },
-                            }
-                        }
+                    ss.set_border_format(
+                        start_row=self.nex_line - 1,
+                        end_row=self.nex_line,
+                        start_col=j,
+                        end_col=j + 1,
                     )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "right": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "left": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "bottom": {
-                                    "style": "SOLID",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
+
                 for folder in self.agentreport_dict_month[group]:
                     if folder == "Итого по группе":
                         continue
                     if folder == "":
                         continue
                     self.nex_line += 1
-                    if folder is None:
-                        folder_name = "Без группировки"
-                    else:
-                        folder_name = folder
+                    folder_name = "Без группировки" if folder is None else folder
                     ss.prepare_setValues(
                         f"A{self.nex_line}:C{self.nex_line}",
                         [
@@ -2934,93 +1923,13 @@ class BarsicReport2Service:
                         fields="userEnteredFormat.backgroundColor",
                     )
                     for j in range(self.sheet4_width):
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "top": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {"red": 0, "green": 0, "blue": 0},
-                                    },
-                                }
-                            }
+                        ss.set_border_format(
+                            start_row=self.nex_line - 1,
+                            end_row=self.nex_line,
+                            start_col=j,
+                            end_col=j + 1,
                         )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "right": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "left": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
-                        ss.requests.append(
-                            {
-                                "updateBorders": {
-                                    "range": {
-                                        "sheetId": ss.sheetId,
-                                        "startRowIndex": self.nex_line - 1,
-                                        "endRowIndex": self.nex_line,
-                                        "startColumnIndex": j,
-                                        "endColumnIndex": j + 1,
-                                    },
-                                    "bottom": {
-                                        "style": "SOLID",
-                                        "width": 1,
-                                        "color": {
-                                            "red": 0,
-                                            "green": 0,
-                                            "blue": 0,
-                                            "alpha": 1.0,
-                                        },
-                                    },
-                                }
-                            }
-                        )
+
                     for servise in self.agentreport_dict_month[group][folder]:
                         if servise[0] == "Итого по папке":
                             continue
@@ -3052,99 +1961,16 @@ class BarsicReport2Service:
                             ],
                         )
                         for j in range(self.sheet5_width):
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "top": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {"red": 0, "green": 0, "blue": 0},
-                                        },
-                                    }
-                                }
-                            )
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "right": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {
-                                                "red": 0,
-                                                "green": 0,
-                                                "blue": 0,
-                                                "alpha": 1.0,
-                                            },
-                                        },
-                                    }
-                                }
-                            )
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "left": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {
-                                                "red": 0,
-                                                "green": 0,
-                                                "blue": 0,
-                                                "alpha": 1.0,
-                                            },
-                                        },
-                                    }
-                                }
-                            )
-                            ss.requests.append(
-                                {
-                                    "updateBorders": {
-                                        "range": {
-                                            "sheetId": ss.sheetId,
-                                            "startRowIndex": self.nex_line - 1,
-                                            "endRowIndex": self.nex_line,
-                                            "startColumnIndex": j,
-                                            "endColumnIndex": j + 1,
-                                        },
-                                        "bottom": {
-                                            "style": "SOLID",
-                                            "width": 1,
-                                            "color": {
-                                                "red": 0,
-                                                "green": 0,
-                                                "blue": 0,
-                                                "alpha": 1.0,
-                                            },
-                                        },
-                                    }
-                                }
+                            ss.set_border_format(
+                                start_row=self.nex_line - 1,
+                                end_row=self.nex_line,
+                                start_col=j,
+                                end_col=j + 1,
                             )
 
             while self.nex_line < self.sheet5_height:
                 self.nex_line += 1
-                ss.prepare_setValues(
-                    f"A{self.nex_line}:C{self.nex_line}", [["", "", ""]], "ROWS"
-                )
+                ss.prepare_setValues(f"A{self.nex_line}:C{self.nex_line}", [["", "", ""]], "ROWS")
                 ss.prepare_setCellsFormat(
                     f"A{self.nex_line}:C{self.nex_line}",
                     {
@@ -3158,74 +1984,13 @@ class BarsicReport2Service:
                     fields="userEnteredFormat.backgroundColor",
                 )
                 for j in range(self.sheet5_width):
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "right": {
-                                    "style": "NONE",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "left": {
-                                    "style": "NONE",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
-                    )
-                    ss.requests.append(
-                        {
-                            "updateBorders": {
-                                "range": {
-                                    "sheetId": ss.sheetId,
-                                    "startRowIndex": self.nex_line - 1,
-                                    "endRowIndex": self.nex_line,
-                                    "startColumnIndex": j,
-                                    "endColumnIndex": j + 1,
-                                },
-                                "bottom": {
-                                    "style": "NONE",
-                                    "width": 1,
-                                    "color": {
-                                        "red": 0,
-                                        "green": 0,
-                                        "blue": 0,
-                                        "alpha": 1.0,
-                                    },
-                                },
-                            }
-                        }
+                    ss.set_border_format(
+                        start_row=self.nex_line - 1,
+                        end_row=self.nex_line,
+                        start_col=j,
+                        end_col=j + 1,
+                        style="NONE",
+                        sides=("right", "left", "bottom"),
                     )
             ss.runPrepared()
 
@@ -3250,30 +2015,31 @@ class BarsicReport2Service:
             "Воскресенье",
         ]
         self.nex_line = self.start_line
-        ss.prepare_setValues(
-            f"A{self.nex_line}:P{self.nex_line}",
-            [
+        if settings.add_beach_report:
+            ss.prepare_setValues(
+                f"A{self.nex_line}:P{self.nex_line}",
                 [
-                    datetime.strftime(fin_report_beach["Дата"][0], "%d.%m.%Y"),
-                    weekday_rus[fin_report_beach["Дата"][0].weekday()],
-                    f"='План'!L{self.nex_line}",
-                    fin_report_beach["Выход с пляжа"][0],
-                    f"='План'!M{self.nex_line}",
-                    str(fin_report_beach["Итого по отчету"][1]).replace(".", ","),
-                    fin_report_beach["Депозит"][1],
-                    fin_report_beach["Карты"][0],
-                    fin_report_beach["Карты"][1],
-                    f"=IFERROR(I{self.nex_line}/H{self.nex_line};0)",
-                    fin_report_beach["Услуги"][0],
-                    fin_report_beach["Услуги"][1],
-                    f"=IFERROR(L{self.nex_line}/K{self.nex_line};0)",
-                    fin_report_beach["Товары"][0],
-                    fin_report_beach["Товары"][1],
-                    f"=IFERROR(O{self.nex_line}/N{self.nex_line};0)",
-                ]
-            ],
-            "ROWS",
-        )
+                    [
+                        datetime.strftime(fin_report_beach["Дата"][0], "%d.%m.%Y"),
+                        weekday_rus[fin_report_beach["Дата"][0].weekday()],
+                        f"='План'!L{self.nex_line}",
+                        fin_report_beach["Выход с пляжа"][0],
+                        f"='План'!M{self.nex_line}",
+                        str(fin_report_beach["Итого по отчету"][1]).replace(".", ","),
+                        fin_report_beach["Депозит"][1],
+                        fin_report_beach["Карты"][0],
+                        fin_report_beach["Карты"][1],
+                        f"=IFERROR(I{self.nex_line}/H{self.nex_line};0)",
+                        fin_report_beach["Услуги"][0],
+                        fin_report_beach["Услуги"][1],
+                        f"=IFERROR(L{self.nex_line}/K{self.nex_line};0)",
+                        fin_report_beach["Товары"][0],
+                        fin_report_beach["Товары"][1],
+                        f"=IFERROR(O{self.nex_line}/N{self.nex_line};0)",
+                    ]
+                ],
+                "ROWS",
+            )
 
         # Задание форматы вывода строки
         ss.prepare_setCellsFormats(
@@ -3312,92 +2078,23 @@ class BarsicReport2Service:
 
         # Бордер
         for j in range(self.sheet6_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": self.nex_line - 1,
-                            "endRowIndex": self.nex_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=self.nex_line - 1,
+                end_row=self.nex_line,
+                start_col=j,
+                end_col=j + 1,
             )
 
         # ------------------------------------------- Заполнение ИТОГО --------------------------------------
         logger.info("Заполнение строки ИТОГО на листе 2...")
 
-        for i, line_table in enumerate(
-            self.spreadsheet["sheets"][1]["data"][0]["rowData"]
-        ):
+        for i, line_table in enumerate(self.spreadsheet["sheets"][1]["data"][0]["rowData"]):
             try:
                 if line_table["values"][0]["formattedValue"] == "ИТОГО":
                     # Если строка переписывается - итого на 1 поз вниз, если новая - на 2 поз
                     height_table = i + self.reprint
                     break
-                else:
-                    height_table = 4
+                height_table = 4
             except KeyError:
                 pass
 
@@ -3598,223 +2295,25 @@ class BarsicReport2Service:
 
         # Бордер
         for j in range(self.sheet6_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table - 1,
-                            "endRowIndex": height_table,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=height_table - 1,
+                end_row=height_table,
+                start_col=j,
+                end_col=j + 1,
             )
         for j in range(4):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table,
-                            "endRowIndex": height_table + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=height_table,
+                end_row=height_table + 1,
+                start_col=j,
+                end_col=j + 1,
             )
         for j in range(4):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": height_table + 1,
-                            "endRowIndex": height_table + 2,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1.0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=height_table + 1,
+                end_row=height_table + 2,
+                start_col=j,
+                end_col=j + 1,
             )
         ss.runPrepared()
 
@@ -3825,12 +2324,12 @@ class BarsicReport2Service:
         resporse = "Отчет по аквапарку за "
 
         if fin_report["Дата"][0] == fin_report["Дата"][1] - timedelta(1):
-            resporse += f'{datetime.strftime(fin_report["Дата"][0], "%d.%m.%Y")}:\n'
+            resporse += f"{datetime.strftime(fin_report['Дата'][0], '%d.%m.%Y')}:\n"
 
         else:
             resporse += (
-                f'{datetime.strftime(fin_report["Дата"][0], "%d.%m.%Y")} '
-                f'- {datetime.strftime(fin_report["Дата"][1] - timedelta(1), "%d.%m.%Y")}:\n'
+                f"{datetime.strftime(fin_report['Дата'][0], '%d.%m.%Y')} "
+                f"- {datetime.strftime(fin_report['Дата'][1] - timedelta(1), '%d.%m.%Y')}:\n"
             )
 
         def get_sum(field_name: str) -> float:
@@ -3843,7 +2342,7 @@ class BarsicReport2Service:
         total_sum = bars_sum - bonuses + smile
 
         if fin_report["ИТОГО"][1]:
-            resporse += f'Люди - {fin_report["Кол-во проходов"][0]};\n'
+            resporse += f"Люди - {fin_report['Кол-во проходов'][0]};\n"
             resporse += f"По аквапарку - {get_sum('Билеты аквапарка') + get_sum('Билеты аквапарка КОРП'):.2f} ₽;\n"
             resporse += f"По общепиту - {(get_sum('Общепит') + smile):.2f} ₽;\n"
 
@@ -3858,54 +2357,60 @@ class BarsicReport2Service:
 
         resporse += f"Общая ИТОГО - {total_sum:.2f} ₽;\n\n"
 
-        if self.itog_report_beach["Итого по отчету"][1]:
-            try:
-                resporse += f'Люди (пляж) - {self.itog_report_beach["Летняя зона | БЕЗЛИМИТ | 1 проход"][0]};\n'
-            except KeyError:
-                pass
-            resporse += f'Итого по пляжу - {self.itog_report_beach["Итого по отчету"][1]:.2f} ₽;\n'
+        if settings.add_beach_report and self.itog_report_beach["Итого по отчету"][1]:
+            with contextlib.suppress(KeyError):
+                resporse += f"Люди (пляж) - {self.itog_report_beach['Летняя зона | БЕЗЛИМИТ | 1 проход'][0]};\n"
+            resporse += f"Итого по пляжу - {self.itog_report_beach['Итого по отчету'][1]:.2f} ₽;\n"
 
         resporse += "Без ЧП."
 
-        with open(
-            f'reports/{date_from.strftime("%Y.%m.%d")}_sms.txt', "w", encoding="utf-8"
-        ) as f:
+        with open(f"reports/{date_from.strftime('%Y.%m.%d')}_sms.txt", "w", encoding="utf-8") as f:
             f.write(resporse)
         return resporse
 
-    async def save_reports(self, date_from, aqua_company: Company):
+    async def save_reports(
+        self,
+        date_from,
+        aqua_company: Company,
+        fin_report_config: dict[str, Any],
+        total_report_config: dict[str, Any],
+        agent_report_config: dict[str, Any],
+        customer_count: int = 0,
+        customer_count_last_year: int = 0,
+    ) -> tuple[list[str], list[str]]:
         """
         Функция управления
         """
-        self.fin_report = self.create_fin_report()
+
+        to_yandex = []
+        to_messanger = []
+
+        self.fin_report = self.create_fin_report(fin_report_config, customer_count)
         payment_agent_report = self.create_payment_agent_report(
             functions.concatenate_total_reports(
                 self.itog_reports[0],
                 {"Смайл": (self.smile_report.total_count, self.smile_report.total_sum)},
             ),
+            agent_report_config=agent_report_config,
             aqua_company=aqua_company,
         )
         # agentreport_xls
-        self.path_list.append(
-            self._yandex_repo.export_payment_agent_report(
-                payment_agent_report, date_from
-            )
-        )
+        to_yandex.append(self._yandex_repo.export_payment_agent_report(payment_agent_report, date_from))
         # finreport_google
-        self.fin_report_last_year = self.create_fin_report_last_year()
+        self.fin_report_last_year = self.create_fin_report_last_year(fin_report_config, customer_count_last_year)
         self.fin_report_beach = self.create_fin_report_beach()
 
         self.finreport_dict_month = None
         if self.itog_report_month:
             self.finreport_dict_month = functions.create_month_finance_report(
                 itog_report_month=self.itog_report_month,
-                itogreport_group_dict=self.itogreport_group_dict,
-                orgs_dict=self.orgs_dict,
+                total_report_config=total_report_config,
+                fin_report_config=fin_report_config,
                 smile_report_month=self.smile_report_month,
             )
             self.agentreport_dict_month = functions.create_month_agent_report(
                 month_total_report=self.itog_report_month,
-                agent_dict=self.agent_dict,
+                agent_report_config=agent_report_config,
                 smile_report_month=self.smile_report_month,
             )
 
@@ -3919,9 +2424,7 @@ class BarsicReport2Service:
         httpAuth = credentials.authorize(httplib2.Http())
         try:
             logger.info("Попытка авторизации с Google-документами ...")
-            googleservice = apiclient.discovery.build(
-                "sheets", "v4", http=httpAuth, cache_discovery=False
-            )
+            googleservice = apiclient.discovery.build("sheets", "v4", http=httpAuth, cache_discovery=False)
 
         except IndexError as e:
             error_message = f"Ошибка {repr(e)}"
@@ -3931,55 +2434,31 @@ class BarsicReport2Service:
                 detail=error_message,
             )
 
-        await self.export_to_google_sheet(
-            date_from, httpAuth, googleservice, fin_report=self.fin_report
-        )
+        await self.export_to_google_sheet(date_from, httpAuth, googleservice, fin_report=self.fin_report)
 
         # finreport_telegram:
-        self.sms_report_list.append(
-            self.sms_report(date_from, fin_report=self.fin_report)
-        )
+        to_messanger.append(self.sms_report(date_from, fin_report=self.fin_report))
 
         # check_itogreport_xls:
         for itog_report in self.itog_reports:
             if itog_report["Итого по отчету"][1]:
-                self.path_list.append(
-                    self._yandex_repo.save_organisation_total(itog_report, date_from)
-                )
+                to_yandex.append(self._yandex_repo.save_organisation_total(itog_report, date_from))
 
-        if self.itog_report_beach["Итого по отчету"][1]:
-            self.path_list.append(
-                self._yandex_repo.save_organisation_total(
-                    self.itog_report_beach, date_from
-                )
-            )
+        if settings.add_beach_report and self.itog_report_beach["Итого по отчету"][1]:
+            to_yandex.append(self._yandex_repo.save_organisation_total(self.itog_report_beach, date_from))
 
         # check_cashreport_xls:
         if self.cashdesk_report_org1["Итого"][0][1]:
-            self.path_list.append(
-                self._yandex_repo.save_cashdesk_report(
-                    self.cashdesk_report_org1, date_from
-                )
-            )
-        if self.cashdesk_report_org2["Итого"][0][1]:
-            self.path_list.append(
-                self._yandex_repo.save_cashdesk_report(
-                    self.cashdesk_report_org2, date_from
-                )
-            )
+            to_yandex.append(self._yandex_repo.save_cashdesk_report(self.cashdesk_report_org1, date_from))
+        if settings.add_beach_report and self.cashdesk_report_org2["Итого"][0][1]:
+            to_yandex.append(self._yandex_repo.save_cashdesk_report(self.cashdesk_report_org2, date_from))
         # check_client_count_total_xls:
         if self.client_count_totals_org1[-1][1]:
-            self.path_list.append(
-                self._yandex_repo.save_client_count_totals(
-                    self.client_count_totals_org1, date_from
-                )
-            )
-        if self.client_count_totals_org2[-1][1]:
-            self.path_list.append(
-                self._yandex_repo.save_client_count_totals(
-                    self.client_count_totals_org2, date_from
-                )
-            )
+            to_yandex.append(self._yandex_repo.save_client_count_totals(self.client_count_totals_org1, date_from))
+        if settings.add_beach_report and self.client_count_totals_org2[-1][1]:
+            to_yandex.append(self._yandex_repo.save_client_count_totals(self.client_count_totals_org2, date_from))
+
+        return to_yandex, to_messanger
 
     async def load_report(
         self,
@@ -4004,7 +2483,6 @@ class BarsicReport2Service:
         if companies[0]:
             self.bars_srv.set_database(settings.mssql_database1)
             with self.bars_srv as connect:
-
                 self.itog_reports = []
                 self.itog_reports_lastyear = []
                 for company in companies:
@@ -4031,9 +2509,7 @@ class BarsicReport2Service:
                     )
 
             self.itog_report_month = None
-            if int((date_to - timedelta(1)).strftime("%y%m")) < int(
-                date_to.strftime("%y%m")
-            ):
+            if int((date_to - timedelta(1)).strftime("%y%m")) < int(date_to.strftime("%y%m")):
                 self._bars_service.choose_db(settings.mssql_database1)
                 organizations = self._bars_service.get_organisations()
                 itog_report_month = {}
@@ -4056,9 +2532,7 @@ class BarsicReport2Service:
 
                 self.itog_report_month = itog_report_month
                 self.smile_report_month = self._rk_service.get_smile_report(
-                    date_from=datetime.strptime(
-                        "01" + (date_to - timedelta(1)).strftime("%m%y"), "%d%m%y"
-                    ),
+                    date_from=datetime.strptime("01" + (date_to - timedelta(1)).strftime("%m%y"), "%d%m%y"),
                     date_to=date_to,
                 )
 
@@ -4082,9 +2556,9 @@ class BarsicReport2Service:
                 date_to=date_to,
             )
 
-        beach_company = next(
-            company for company in companies if company.db_name == DBName.BEACH
-        )
+        beach_company = None
+        if settings.add_beach_report:
+            beach_company = next(company for company in companies if company.db_name == DBName.BEACH)
         if beach_company:
             self.bars_srv.set_database(settings.mssql_database2)
             with self.bars_srv as connect:
@@ -4111,19 +2585,19 @@ class BarsicReport2Service:
                 date_to=date_to,
             )
 
-    async def run_report(self, date_from, date_to, use_yadisk: bool = False):
-        self.path_list = []
-        self.sms_report_list = []
-
-        companies = self.get_companies()
-
+    async def run_report(
+        self,
+        date_from,
+        date_to,
+        use_yadisk: bool = False,
+        telegram_report: bool = False,
+    ):
         period = []
         while True:
             period.append(date_from)
             if date_from + timedelta(1) == date_to:
                 break
-            else:
-                date_from = date_from + timedelta(1)
+            date_from = date_from + timedelta(1)
 
         # Поиск новых услуг
         for report_name in ("GoogleReport", "PlatAgentReport"):
@@ -4137,35 +2611,44 @@ class BarsicReport2Service:
                     detail=error_message,
                 )
 
+        to_yandex = []
+        to_messanger = []
+        companies = self.get_companies()
         for date in period:
             date_from = date
             date_to = date + timedelta(1)
             await self.load_report(date_from, date_to, companies)
 
-            self.orgs_dict = (
-                await self._report_config_service.get_report_elements_with_groups(
-                    "GoogleReport"
-                )
+            self._bars_service.choose_db(settings.mssql_database1)
+            customer_count = self._bars_service.get_customer_count(date_from, date_to)
+            customer_count_last_year = self._bars_service.get_customer_count(
+                date_from - relativedelta(years=1), date_to - relativedelta(years=1)
             )
-            self.itogreport_group_dict = (
-                await self._report_config_service.get_report_elements_with_groups(
-                    "ItogReport"
-                )
+
+            fin_report_config = await self._report_config_service.get_report_elements_with_groups("GoogleReport")
+            total_report_config = await self._report_config_service.get_report_elements_with_groups("ItogReport")
+            agent_report_config = await self._report_config_service.get_report_elements_with_groups("PlatAgentReport")
+            to_yandex, to_messanger = await self.save_reports(
+                date_from=date_from,
+                aqua_company=companies[0],
+                fin_report_config=fin_report_config,
+                total_report_config=total_report_config,
+                agent_report_config=agent_report_config,
+                customer_count=customer_count,
+                customer_count_last_year=customer_count_last_year,
             )
-            self.agent_dict = (
-                await self._report_config_service.get_report_elements_with_groups(
-                    "PlatAgentReport"
-                )
-            )
-            await self.save_reports(date_from, aqua_company=companies[0])
 
         # Отправка в яндекс диск
         if use_yadisk:
-            self.path_list = filter(lambda x: x is not None, self.path_list)
             self._yandex_repo.sync_to_yadisk(
-                self.path_list, settings.yadisk_token, date_from
+                paths=to_yandex,
+                token=settings.yadisk_token,
+                date_from=date_from,
             )
-            self.path_list = []
+
+        if telegram_report:
+            for message in to_messanger:
+                await self._telegram_bot.send_message(settings.telegram_chanel_id, message)
 
 
 def get_legacy_service() -> BarsicReport2Service:

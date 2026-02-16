@@ -1,10 +1,8 @@
 
 lint:
-	black --check .
-	isort --check-only .
-	flake8 .
+	poetry run ruff check .
 
 
 format:
-	black .
-	isort .
+	poetry run ruff format
+	poetry run ruff check . --fix

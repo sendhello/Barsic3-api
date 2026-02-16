@@ -15,21 +15,16 @@ from schemas.report import (
 )
 from services.settings import SettingsService, get_settings_service
 
-
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
 
-@router.get("/new_services", response_model=list[str])
+@router.get("/new_services")
 async def get_new_services(
     settings_service: Annotated[SettingsService, Depends(get_settings_service)],
     db_name: Annotated[gen_db_name_enum(), Query(description="База данных")],
-    report_name: Annotated[
-        gen_report_name_enum(), Query(description="Наименование отчета")
-    ] = None,
-    other_report_name: Annotated[
-        str | None, Query(description="Наименование отчета (если нет в списке)")
-    ] = None,
+    report_name: Annotated[gen_report_name_enum(), Query(description="Наименование отчета")] = None,
+    other_report_name: Annotated[str | None, Query(description="Наименование отчета (если нет в списке)")] = None,
 ) -> list[str]:
     """Поиск новых тарифов."""
 
@@ -44,17 +39,13 @@ async def get_new_services(
         )
 
     settings_service.choose_db(db_name=db_name.value)
-    new_tariffs = await settings_service.get_new_tariff(report_name_title)
-    return new_tariffs
+    return await settings_service.get_new_tariff(report_name_title)
 
 
-@router.get("/distributed_services", response_model=ReportNameFullDetail)
+@router.get("/distributed_services")
 async def get_report_names(
-    report_name: Annotated[
-        gen_report_name_enum(), Query(description="Наименование отчета")
-    ] = None,
+    report_name: Annotated[gen_report_name_enum(), Query(description="Наименование отчета")] = None,
 ) -> ReportNameFullDetail:
-
     if report_name is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -66,36 +57,24 @@ async def get_report_names(
 
     groups = []
     for group in report_name_detail.groups:
-        raw_report_groups = await ReportElementModel.get_by_group_id(
-            report_group_id=group.id
-        )
+        raw_report_groups = await ReportElementModel.get_by_group_id(report_group_id=group.id)
         groups.append(
             ReportGroupDetail(
                 id=group.id,
                 title=group.title,
                 parent_id=group.parent_id,
                 report_name_id=group.report_name_id,
-                elements=[
-                    ReportElementDetail.model_validate(report_group)
-                    for report_group in raw_report_groups
-                ],
+                elements=[ReportElementDetail.model_validate(report_group) for report_group in raw_report_groups],
             )
         )
 
-    report_name_full_detail = ReportNameFullDetail(
-        id=report_name_detail.id, title=report_name_detail.title, groups=groups
-    )
-
-    return report_name_full_detail
+    return ReportNameFullDetail(id=report_name_detail.id, title=report_name_detail.title, groups=groups)
 
 
-@router.get("/search_duplicates", response_model=dict)
+@router.get("/search_duplicates")
 async def search_duplicates(
-    report_name: Annotated[
-        gen_report_name_enum(), Query(description="Наименование отчета")
-    ] = None,
+    report_name: Annotated[gen_report_name_enum(), Query(description="Наименование отчета")] = None,
 ) -> dict:
-
     if report_name is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -107,9 +86,7 @@ async def search_duplicates(
 
     elements = {}
     for group in report_name_detail.groups:
-        raw_report_elements = await ReportElementModel.get_by_group_id(
-            report_group_id=group.id
-        )
+        raw_report_elements = await ReportElementModel.get_by_group_id(report_group_id=group.id)
         for raw_element in raw_report_elements:
             element = ReportElementDetail.model_validate(raw_element)
             element_group = elements.setdefault(element.title, [])

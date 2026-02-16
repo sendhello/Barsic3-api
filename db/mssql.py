@@ -7,7 +7,6 @@ from constants import MssqlDriverType
 from core.settings import settings
 from utils.backoff import backoff
 
-
 logger = logging.getLogger(__name__)
 
 

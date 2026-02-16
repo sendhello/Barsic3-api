@@ -1,12 +1,12 @@
 import logging
 from datetime import datetime, timedelta
+from typing import Any
 
 import apiclient
 from dateutil.relativedelta import relativedelta
 
 from core.settings import settings
 from legacy import functions
-
 
 logger = logging.getLogger(__name__)
 
@@ -23,17 +23,15 @@ class SheetNotSetError(SpreadsheetError):
     pass
 
 
-def create_columnDict() -> dict:
-    columnDict = {}
+def create_column_dict() -> dict:
+    columns = {}
     for ch1 in range(ord("A") - 1, ord("C") + 1):
         for ch2 in range(ord("A"), ord("Z") + 1):
             if ch1 == ord("A") - 1:
-                columnDict[chr(ch2)] = ch2 - ord("A")
+                columns[chr(ch2)] = ch2 - ord("A")
             else:
-                columnDict[f"{chr(ch1)}{chr(ch2)}"] = (
-                    26 * (ch1 - ord("A") + 1) + ch2 - ord("A")
-                )
-    return columnDict
+                columns[f"{chr(ch1)}{chr(ch2)}"] = 26 * (ch1 - ord("A") + 1) + ch2 - ord("A")
+    return columns
 
 
 def get_letter_column_name(column: int) -> str:
@@ -46,7 +44,6 @@ def get_letter_column_name(column: int) -> str:
 
 
 class Spreadsheet:
-
     # Класс-оберта методов
     def __init__(self, spreadsheetId, sheetId, service, sheetTitle):
         self.requests = []
@@ -125,10 +122,11 @@ class Spreadsheet:
         #   "A5:B"  -> {sheetId: id of current sheet, startRowIndex: 4,
         #   startColumnIndex: 0, endColumnIndex: 2}
 
-    def toGridRange(self, cellsRange):
-        columnDict = create_columnDict()
+    def to_grid_range(self, cellsRange):
+        columns = create_column_dict()
         if self.sheetId is None:
-            raise SheetNotSetError()
+            raise SheetNotSetError
+
         if isinstance(cellsRange, str):
             startCell, endCell = cellsRange.split(":")[0:2]
             cellsRange = {}
@@ -147,8 +145,8 @@ class Spreadsheet:
                     break
                 i += 1
             try:
-                cellsRange["startColumnIndex"] = int(columnDict[startCellColumn])
-                cellsRange["endColumnIndex"] = int(columnDict[endCellColumn]) + 1
+                cellsRange["startColumnIndex"] = int(columns[startCellColumn])
+                cellsRange["endColumnIndex"] = int(columns[endCellColumn]) + 1
             except KeyError:
                 raise (
                     KeyError,
@@ -158,6 +156,7 @@ class Spreadsheet:
                 cellsRange["startRowIndex"] = startCellRow - 1
             if endCellRow > 0:
                 cellsRange["endRowIndex"] = endCellRow
+
         cellsRange["sheetId"] = self.sheetId
         return cellsRange
 
@@ -165,20 +164,18 @@ class Spreadsheet:
         self.requests.append(
             {
                 "mergeCells": {
-                    "range": self.toGridRange(cellsRange),
+                    "range": self.to_grid_range(cellsRange),
                     "mergeType": mergeType,
                 }
             }
         )
 
     # formatJSON should be dict with userEnteredFormat to be applied to each cell
-    def prepare_setCellsFormat(
-        self, cellsRange, formatJSON, fields="userEnteredFormat"
-    ):
+    def prepare_setCellsFormat(self, cellsRange, formatJSON, fields="userEnteredFormat"):
         self.requests.append(
             {
                 "repeatCell": {
-                    "range": self.toGridRange(cellsRange),
+                    "range": self.to_grid_range(cellsRange),
                     "cell": {"userEnteredFormat": formatJSON},
                     "fields": fields,
                 }
@@ -186,20 +183,13 @@ class Spreadsheet:
         )
 
     # formatsJSON should be list of lists of dicts with userEnteredFormat for each cell in each row
-    def prepare_setCellsFormats(
-        self, cellsRange, formatsJSON, fields="userEnteredFormat"
-    ):
+    def prepare_setCellsFormats(self, cellsRange, formatsJSON, fields="userEnteredFormat"):
         self.requests.append(
             {
                 "updateCells": {
-                    "range": self.toGridRange(cellsRange),
+                    "range": self.to_grid_range(cellsRange),
                     "rows": [
-                        {
-                            "values": [
-                                {"userEnteredFormat": cellFormat}
-                                for cellFormat in rowFormats
-                            ]
-                        }
+                        {"values": [{"userEnteredFormat": cellFormat} for cellFormat in rowFormats]}
                         for rowFormats in formatsJSON
                     ],
                     "fields": fields,
@@ -207,32 +197,56 @@ class Spreadsheet:
             }
         )
 
-    def prepare_setBorderFormats(self, cellsRange, fields="userEnteredFormat"):
+    def set_border_format_by_cells_range(
+        self,
+        cells_range,
+        style: str = "SOLID",
+        sides: tuple[str, ...] = ("top", "right", "left", "bottom"),
+    ):
+        """Добавление рамок таблицы через cells_range"""
+
+        self._border_format(self.to_grid_range(cells_range), style=style, sides=sides)
+
+    def set_border_format(
+        self,
+        start_row: int,
+        end_row: int,
+        start_col: int,
+        end_col: int,
+        style: str = "SOLID",
+        sides: tuple[str, ...] = ("top", "right", "left", "bottom"),
+    ) -> None:
+        """Добавление рамок таблицы."""
+
+        self._border_format(
+            {
+                "sheetId": self.sheetId,
+                "startRowIndex": start_row,
+                "endRowIndex": end_row,
+                "startColumnIndex": start_col,
+                "endColumnIndex": end_col,
+            },
+            sides=sides,
+            style=style,
+        )
+
+    def _border_format(
+        self,
+        range: dict[str, Any],
+        style: str = "SOLID",
+        sides: tuple[str, ...] = ("top", "right", "left", "bottom"),
+    ):
+        colors = {"red": 0, "green": 0, "blue": 0, "alpha": 1.0}
+        border_request = {"range": range}
+        for side in sides:
+            border_request[side] = {
+                "style": style,
+                "width": 1,
+                "color": colors,
+            }
         self.requests.append(
             {
-                "updateBorders": {
-                    "range": self.toGridRange(cellsRange),
-                    "bottom": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1},
-                    },
-                    "top": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1},
-                    },
-                    "left": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1},
-                    },
-                    "right": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {"red": 0, "green": 0, "blue": 0, "alpha": 1},
-                    },
-                }
+                "updateBorders": border_request,
             }
         )
 
@@ -339,9 +353,7 @@ def create_new_google_doc(
 
     # Доступы к документу
     logging.info("Настройка доступов к файлу GoogleSheets...")
-    driveService = apiclient.discovery.build(
-        "drive", "v3", http=http_auth, cache_discovery=False
-    )
+    driveService = apiclient.discovery.build("drive", "v3", http=http_auth, cache_discovery=False)
     if settings.google_api_settings.google_all_read:
         _ = (
             driveService.permissions()
@@ -357,11 +369,7 @@ def create_new_google_doc(
         )
     # Возможные значения writer, commenter, reader
     # доступ на Чтение определенным пользователоям
-    google_reader_list = [
-        address
-        for address in settings.google_api_settings.google_reader_list.split(",")
-        if address
-    ]
+    google_reader_list = [address for address in settings.google_api_settings.google_reader_list.split(",") if address]
     for address in google_reader_list:
         _ = (
             driveService.permissions()
@@ -377,11 +385,7 @@ def create_new_google_doc(
             .execute()
         )
     # доступ на Запись определенным пользователоям
-    google_writer_list = [
-        address
-        for address in settings.google_api_settings.google_writer_list.split(",")
-        if address
-    ]
+    google_writer_list = [address for address in settings.google_api_settings.google_writer_list.split(",") if address]
     for address in google_writer_list:
         _ = (
             driveService.permissions()
@@ -605,8 +609,7 @@ def create_new_google_doc(
                 "Общепит ФАКТ",
                 "",
                 "",
-                f"Общепит {data_report} "
-                f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
+                f"Общепит {data_report} {datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
                 "",
                 "",
                 "Фотоуслуги ПЛАН",
@@ -625,8 +628,7 @@ def create_new_google_doc(
                 "УЛËТSHOP ФАКТ",
                 "",
                 "",
-                f"УЛËТSHOP {data_report} "
-                f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
+                f"УЛËТSHOP {data_report} {datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
                 "",
                 "",
                 "Аренда полотенец ПЛАН",
@@ -753,78 +755,17 @@ def create_new_google_doc(
     # Бордер
     for i in range(2):
         for j in range(sheet_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": i,
-                            "endRowIndex": i + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=i,
+                end_row=i + 1,
+                start_col=j,
+                end_col=j + 1,
+                sides=("top", "right", "left"),
             )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": i,
-                            "endRowIndex": i + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {
-                                "red": 0,
-                                "green": 0,
-                                "blue": 0,
-                                "alpha": 1.0,
-                            },
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": i,
-                            "endRowIndex": i + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {
-                                "red": 0,
-                                "green": 0,
-                                "blue": 0,
-                                "alpha": 1.0,
-                            },
-                        },
-                    }
-                }
-            )
-
     ss.runPrepared()
 
     # ЛИСТ 2
-    logging.info(
-        f"{__name__}: {str(datetime.now())[:-7]}:    "
-        f"Создание листа 2 в файле GoogleSheets..."
-    )
+    logging.info(f"{__name__}: {str(datetime.now())[:-7]}:    Создание листа 2 в файле GoogleSheets...")
     sheetId = 1
     # Ширина столбцов
     ss = Spreadsheet(
@@ -848,9 +789,7 @@ def create_new_google_doc(
     #                           fields='userEnteredFormat.numberFormat')
 
     # Заполнение таблицы
-    ss.prepare_setValues(
-        "A1:C2", [["Смайл", "", ""], ["Дата", "Кол-во", "Сумма"]], "ROWS"
-    )
+    ss.prepare_setValues("A1:C2", [["Смайл", "", ""], ["Дата", "Кол-во", "Сумма"]], "ROWS")
     # ss.prepare_setValues("D5:E6", [["This is D5", "This is D6"], ["This is E5", "=5+5"]], "COLUMNS")
 
     # Цвет фона ячеек
@@ -863,78 +802,17 @@ def create_new_google_doc(
     # Бордер
     for i in range(2):
         for j in range(sheet2_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": i,
-                            "endRowIndex": i + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=i,
+                end_row=i + 1,
+                start_col=j,
+                end_col=j + 1,
+                sides=("top", "right", "left"),
             )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": i,
-                            "endRowIndex": i + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {
-                                "red": 0,
-                                "green": 0,
-                                "blue": 0,
-                                "alpha": 1.0,
-                            },
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": i,
-                            "endRowIndex": i + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {
-                                "red": 0,
-                                "green": 0,
-                                "blue": 0,
-                                "alpha": 1.0,
-                            },
-                        },
-                    }
-                }
-            )
-
     ss.runPrepared()
 
     # ЛИСТ 3
-    logging.info(
-        f"{__name__}: {str(datetime.now())[:-7]}:    "
-        f"Создание листа 3 в файле GoogleSheets..."
-    )
+    logging.info(f"{__name__}: {str(datetime.now())[:-7]}:    Создание листа 3 в файле GoogleSheets...")
     sheetId = 2
     # Ширина столбцов
     ss = Spreadsheet(
@@ -1087,77 +965,17 @@ def create_new_google_doc(
     # Бордер
     for i in range(2):
         for j in range(sheet3_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": i,
-                            "endRowIndex": i + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": i,
-                            "endRowIndex": i + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {
-                                "red": 0,
-                                "green": 0,
-                                "blue": 0,
-                                "alpha": 1.0,
-                            },
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": i,
-                            "endRowIndex": i + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {
-                                "red": 0,
-                                "green": 0,
-                                "blue": 0,
-                                "alpha": 1.0,
-                            },
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=i,
+                end_row=i + 1,
+                start_col=j,
+                end_col=j + 1,
+                sides=("top", "right", "left"),
             )
     # ss.runPrepared()
 
     # Заполнение таблицы 2
-    logging.info(
-        f"{__name__}: {str(datetime.now())[:-7]}:    "
-        f"Заполнение листа 2 в файле GoogleSheets..."
-    )
+    logging.info(f"{__name__}: {str(datetime.now())[:-7]}:    Заполнение листа 2 в файле GoogleSheets...")
 
     # Заполнение строки с данными
     weekday_rus = [
@@ -1170,9 +988,7 @@ def create_new_google_doc(
         "Воскресенье",
     ]
 
-    start_date = datetime.strptime(
-        f"01{finreport_dict['Дата'][0].strftime('%m%Y')}", "%d%m%Y"
-    )
+    start_date = datetime.strptime(f"01{finreport_dict['Дата'][0].strftime('%m%Y')}", "%d%m%Y")
     enddate = start_date + relativedelta(months=1)
     dateline = start_date
     sheet2_line = 3
@@ -1317,92 +1133,11 @@ def create_new_google_doc(
 
         # Бордер
         for j in range(sheet3_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": sheet2_line - 1,
-                            "endRowIndex": sheet2_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": sheet2_line - 1,
-                            "endRowIndex": sheet2_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {
-                                "red": 0,
-                                "green": 0,
-                                "blue": 0,
-                                "alpha": 1.0,
-                            },
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": sheet2_line - 1,
-                            "endRowIndex": sheet2_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {
-                                "red": 0,
-                                "green": 0,
-                                "blue": 0,
-                                "alpha": 1.0,
-                            },
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": sheet2_line - 1,
-                            "endRowIndex": sheet2_line,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "bottom": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {
-                                "red": 0,
-                                "green": 0,
-                                "blue": 0,
-                                "alpha": 1.0,
-                            },
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=sheet2_line - 1,
+                end_row=sheet2_line,
+                start_col=j,
+                end_col=j + 1,
             )
         # ss.runPrepared()
         sheet2_line += 1
@@ -1600,100 +1335,16 @@ def create_new_google_doc(
 
     # Бордер
     for j in range(sheet3_width):
-        ss.requests.append(
-            {
-                "updateBorders": {
-                    "range": {
-                        "sheetId": ss.sheetId,
-                        "startRowIndex": sheet2_line - 1,
-                        "endRowIndex": sheet2_line,
-                        "startColumnIndex": j,
-                        "endColumnIndex": j + 1,
-                    },
-                    "top": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {"red": 0, "green": 0, "blue": 0},
-                    },
-                }
-            }
-        )
-        ss.requests.append(
-            {
-                "updateBorders": {
-                    "range": {
-                        "sheetId": ss.sheetId,
-                        "startRowIndex": sheet2_line - 1,
-                        "endRowIndex": sheet2_line,
-                        "startColumnIndex": j,
-                        "endColumnIndex": j + 1,
-                    },
-                    "right": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 0,
-                            "alpha": 1.0,
-                        },
-                    },
-                }
-            }
-        )
-        ss.requests.append(
-            {
-                "updateBorders": {
-                    "range": {
-                        "sheetId": ss.sheetId,
-                        "startRowIndex": sheet2_line - 1,
-                        "endRowIndex": sheet2_line,
-                        "startColumnIndex": j,
-                        "endColumnIndex": j + 1,
-                    },
-                    "left": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 0,
-                            "alpha": 1.0,
-                        },
-                    },
-                }
-            }
-        )
-        ss.requests.append(
-            {
-                "updateBorders": {
-                    "range": {
-                        "sheetId": ss.sheetId,
-                        "startRowIndex": sheet2_line - 1,
-                        "endRowIndex": sheet2_line,
-                        "startColumnIndex": j,
-                        "endColumnIndex": j + 1,
-                    },
-                    "bottom": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 0,
-                            "alpha": 1.0,
-                        },
-                    },
-                }
-            }
+        ss.set_border_format(
+            start_row=sheet2_line - 1,
+            end_row=sheet2_line,
+            start_col=j,
+            end_col=j + 1,
         )
     ss.runPrepared()
 
     # ЛИСТ 4
-    logging.info(
-        f"{__name__}: {str(datetime.now())[:-7]}:    "
-        f"Создание листа 4 в файле GoogleSheets..."
-    )
+    logging.info(f"{__name__}: {str(datetime.now())[:-7]}:    Создание листа 4 в файле GoogleSheets...")
     sheetId = 3
     # Ширина столбцов
     ss = Spreadsheet(
@@ -1747,100 +1398,16 @@ def create_new_google_doc(
     # Бордер
     i = 0
     for j in range(sheet4_width):
-        ss.requests.append(
-            {
-                "updateBorders": {
-                    "range": {
-                        "sheetId": ss.sheetId,
-                        "startRowIndex": i,
-                        "endRowIndex": i + 1,
-                        "startColumnIndex": j,
-                        "endColumnIndex": j + 1,
-                    },
-                    "top": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {"red": 0, "green": 0, "blue": 0},
-                    },
-                }
-            }
-        )
-        ss.requests.append(
-            {
-                "updateBorders": {
-                    "range": {
-                        "sheetId": ss.sheetId,
-                        "startRowIndex": i,
-                        "endRowIndex": i + 1,
-                        "startColumnIndex": j,
-                        "endColumnIndex": j + 1,
-                    },
-                    "right": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 0,
-                            "alpha": 1.0,
-                        },
-                    },
-                }
-            }
-        )
-        ss.requests.append(
-            {
-                "updateBorders": {
-                    "range": {
-                        "sheetId": ss.sheetId,
-                        "startRowIndex": i,
-                        "endRowIndex": i + 1,
-                        "startColumnIndex": j,
-                        "endColumnIndex": j + 1,
-                    },
-                    "left": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 0,
-                            "alpha": 1.0,
-                        },
-                    },
-                }
-            }
-        )
-        ss.requests.append(
-            {
-                "updateBorders": {
-                    "range": {
-                        "sheetId": ss.sheetId,
-                        "startRowIndex": i,
-                        "endRowIndex": i + 1,
-                        "startColumnIndex": j,
-                        "endColumnIndex": j + 1,
-                    },
-                    "bottom": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 0,
-                            "alpha": 1.0,
-                        },
-                    },
-                }
-            }
+        ss.set_border_format(
+            start_row=i,
+            end_row=i + 1,
+            start_col=j,
+            end_col=j + 1,
         )
     ss.runPrepared()
 
     # ЛИСТ 5
-    logging.info(
-        f"{__name__}: {str(datetime.now())[:-7]}:    "
-        f"Создание листа 5 в файле GoogleSheets..."
-    )
+    logging.info(f"{__name__}: {str(datetime.now())[:-7]}:    Создание листа 5 в файле GoogleSheets...")
     sheetId = 4
     # Ширина столбцов
     ss = Spreadsheet(
@@ -1896,100 +1463,16 @@ def create_new_google_doc(
     # Бордер
     i = 0
     for j in range(sheet4_width):
-        ss.requests.append(
-            {
-                "updateBorders": {
-                    "range": {
-                        "sheetId": ss.sheetId,
-                        "startRowIndex": i,
-                        "endRowIndex": i + 1,
-                        "startColumnIndex": j,
-                        "endColumnIndex": j + 1,
-                    },
-                    "top": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {"red": 0, "green": 0, "blue": 0},
-                    },
-                }
-            }
-        )
-        ss.requests.append(
-            {
-                "updateBorders": {
-                    "range": {
-                        "sheetId": ss.sheetId,
-                        "startRowIndex": i,
-                        "endRowIndex": i + 1,
-                        "startColumnIndex": j,
-                        "endColumnIndex": j + 1,
-                    },
-                    "right": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 0,
-                            "alpha": 1.0,
-                        },
-                    },
-                }
-            }
-        )
-        ss.requests.append(
-            {
-                "updateBorders": {
-                    "range": {
-                        "sheetId": ss.sheetId,
-                        "startRowIndex": i,
-                        "endRowIndex": i + 1,
-                        "startColumnIndex": j,
-                        "endColumnIndex": j + 1,
-                    },
-                    "left": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 0,
-                            "alpha": 1.0,
-                        },
-                    },
-                }
-            }
-        )
-        ss.requests.append(
-            {
-                "updateBorders": {
-                    "range": {
-                        "sheetId": ss.sheetId,
-                        "startRowIndex": i,
-                        "endRowIndex": i + 1,
-                        "startColumnIndex": j,
-                        "endColumnIndex": j + 1,
-                    },
-                    "bottom": {
-                        "style": "SOLID",
-                        "width": 1,
-                        "color": {
-                            "red": 0,
-                            "green": 0,
-                            "blue": 0,
-                            "alpha": 1.0,
-                        },
-                    },
-                }
-            }
+        ss.set_border_format(
+            start_row=i,
+            end_row=i + 1,
+            start_col=j,
+            end_col=j + 1,
         )
     ss.runPrepared()
 
     # ЛИСТ 6
-    logging.info(
-        f"{__name__}: {str(datetime.now())[:-7]}:    "
-        f"Создание листа 6 в файле GoogleSheets..."
-    )
+    logging.info(f"{__name__}: {str(datetime.now())[:-7]}:    Создание листа 6 в файле GoogleSheets...")
     sheetId = 5
     # Ширина столбцов
     ss = Spreadsheet(
@@ -2087,76 +1570,16 @@ def create_new_google_doc(
     # Бордер
     for i in range(2):
         for j in range(sheet6_width):
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": i,
-                            "endRowIndex": i + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "top": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {"red": 0, "green": 0, "blue": 0},
-                        },
-                    }
-                }
+            ss.set_border_format(
+                start_row=i,
+                end_row=i + 1,
+                start_col=j,
+                end_col=j + 1,
+                sides=("top", "right", "left"),
             )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": i,
-                            "endRowIndex": i + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "right": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {
-                                "red": 0,
-                                "green": 0,
-                                "blue": 0,
-                                "alpha": 1.0,
-                            },
-                        },
-                    }
-                }
-            )
-            ss.requests.append(
-                {
-                    "updateBorders": {
-                        "range": {
-                            "sheetId": ss.sheetId,
-                            "startRowIndex": i,
-                            "endRowIndex": i + 1,
-                            "startColumnIndex": j,
-                            "endColumnIndex": j + 1,
-                        },
-                        "left": {
-                            "style": "SOLID",
-                            "width": 1,
-                            "color": {
-                                "red": 0,
-                                "green": 0,
-                                "blue": 0,
-                                "alpha": 1.0,
-                            },
-                        },
-                    }
-                }
-            )
-
     ss.runPrepared()
 
-    google_doc = (
+    return (
         date_from.strftime("%Y-%m"),
         spreadsheet["spreadsheetId"],
     )
-
-    return google_doc

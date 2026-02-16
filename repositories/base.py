@@ -12,17 +12,21 @@ class BaseRepository(ABC):
     def set_database(self, db_name: str) -> None:
         self._db.set_database(db_name)
 
-    def _run_sql(self, sql: str) -> list[Row]:
+    def _fetchall(self, sql: str) -> list[Row]:
         with self._db as conn:
             cursor = conn.cursor()
             cursor.execute(sql)
-            rows = cursor.fetchall()
-            return rows
+            return cursor.fetchall()
+
+    def _fetchone(self, sql: str) -> Row:
+        with self._db as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql)
+            return cursor.fetchone()
 
     def _run_sql_to_dict(self, sql: str) -> list[dict]:
         with self._db as conn:
             cursor = conn.cursor()
             cursor.execute(sql)
             columns = [column[0] for column in cursor.description]
-            results = [dict(zip(columns, row)) for row in cursor.fetchall()]
-            return results
+            return [dict(zip(columns, row, strict=False)) for row in cursor.fetchall()]

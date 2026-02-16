@@ -4,7 +4,6 @@ from datetime import datetime
 from repositories.rk import RKRepository, get_rk_repo
 from schemas.rk import SmileReport
 
-
 logger = logging.getLogger(__name__)
 
 

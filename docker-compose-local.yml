@@ -3,13 +3,13 @@ version: '3.8'
 services:
 
   postgres:
-    container_name: postgres
+    container_name: postgres-barsic
     hostname: postgres
     image: postgres:15.2
     networks:
       - network
     ports:
-      - "5433:5432"
+      - "5434:5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -24,7 +24,7 @@ services:
       start_period: 10s
 
   redis:
-    container_name: redis
+    container_name: redis-barsic
     hostname: redis
     image: redis:7.2-rc1
     environment:
@@ -39,9 +39,12 @@ services:
   mssql:
     container_name: mssql
     hostname: mssql
-    image: mcr.microsoft.com/azure-sql-edge:latest
+    image: mcr.microsoft.com/azure-sql-edge:1.0.7
     cap_add:
       - SYS_PTRACE
+    security_opt:
+      - seccomp:unconfined
+    privileged: true
     environment:
       ACCEPT_EULA: ${ACCEPT_EULA}
       MSSQL_USER: ${MSSQL_USER}
@@ -54,6 +57,23 @@ services:
       - "1433:1433"
     networks:
       - network
+
+#  sqlcmd:
+#    image: mcr.microsoft.com/mssql-tools:latest
+#    command: /opt/mssql_scripts/restore.sh
+#    stdin_open: true
+#    environment:
+#      MSSQL_HOST: ${MSSQL_HOST}
+#      MSSQL_PORT: ${MSSQL_PORT}
+#      MSSQL_USER: ${MSSQL_USER}
+#      MSSQL_SA_PASSWORD: ${MSSQL_SA_PASSWORD}
+#    volumes:
+#      - ./dev/mssql_scripts/:/opt/mssql_scripts
+#    networks:
+#      - network
+#    depends_on:
+#      mssql:
+#        condition: service_started
 
 volumes:
   barsic_pg:

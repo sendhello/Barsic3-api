@@ -5,7 +5,6 @@ from pydantic_settings import BaseSettings
 
 from core.logger import LOGGING
 
-
 # Применяем настройки логирования
 logging_config.dictConfig(LOGGING)
 
@@ -48,11 +47,15 @@ class AppSettings(BaseSettings):
     mssql_user: str = Field(validation_alias="MSSQL_USER")
     mssql_pwd: str = Field(validation_alias="MSSQL_PWD")
     mssql_database1: str = Field(validation_alias="MSSQL_DATABASE1")
+
+    add_beach_report: bool = Field(False, validation_alias="ADD_BEACH_REPORT")
     mssql_database2: str = Field(validation_alias="MSSQL_DATABASE2")
+
     mssql_server_rk: str = Field(validation_alias="MSSQL_SERVER_RK")
     mssql_user_rk: str = Field(validation_alias="MSSQL_USER_RK")
     mssql_pwd_rk: str = Field(validation_alias="MSSQL_PWD_RK")
     mssql_database_rk: str = Field(validation_alias="MSSQL_DATABASE_RK")
+
     local_folder: str = Field(validation_alias="LOCAL_FOLDER")
     report_path: str = Field(validation_alias="REPORT_PATH")
     yadisk_token: str = Field(validation_alias="YADISK_TOKEN")
@@ -74,17 +77,20 @@ class GoogleApiSettings(BaseSettings):
     private_key: str = Field(validation_alias="GOOGLE_API_PRIVATE_KEY")
     client_email: EmailStr = Field(validation_alias="GOOGLE_API_CLIENT_EMAIL")
     client_id: str = Field(validation_alias="GOOGLE_API_CLIENT_ID")
-    client_x509_cert_url: AnyUrl = Field(
-        validation_alias="GOOGLE_API_CLIENT_X509_CERT_URL"
-    )
+    client_x509_cert_url: AnyUrl = Field(validation_alias="GOOGLE_API_CLIENT_X509_CERT_URL")
 
     @property
     def google_service_account_config(self):
+        private_key = self.private_key
+        if private_key:
+            private_key = private_key.strip().strip('"').strip("'")
+            private_key = private_key.replace("\\n", "\n")
+
         return {
             "type": "service_account",
             "project_id": self.project_id,
             "private_key_id": self.private_key_id,
-            "private_key": self.private_key,
+            "private_key": private_key,
             "client_email": self.client_email,
             "client_id": self.client_id,
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",

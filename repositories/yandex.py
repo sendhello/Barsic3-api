@@ -12,7 +12,6 @@ from yadisk.objects.resources import SyncResourceLinkObject
 
 from core.settings import settings
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -184,14 +183,10 @@ class YandexRepository:
         # ws['A1'] = "Hello!"
 
         ws[column[3] + next_row()] = "Отчет по купленным товарам"
-        ws.merge_cells(
-            start_row=self.row, start_column=3, end_row=self.row, end_column=12
-        )
+        ws.merge_cells(start_row=self.row, start_column=3, end_row=self.row, end_column=12)
         ws[column[1] + next_row()] = ""
         ws[column[3] + next_row()] = f"По товарам: {', '.join(goods)}"
-        ws.merge_cells(
-            start_row=self.row, start_column=3, end_row=self.row, end_column=12
-        )
+        ws.merge_cells(start_row=self.row, start_column=3, end_row=self.row, end_column=12)
         ws[column[3] + self.row].font = ReportStyle.font
         ws[column[3] + self.row].alignment = ReportStyle.align_top
         ws[column[1] + next_row()] = ""
@@ -213,23 +208,15 @@ class YandexRepository:
             ws[column[7] + self.row] = "По:"
             ws[column[7] + self.row].font = ReportStyle.font
             ws[column[7] + self.row].alignment = ReportStyle.align_top
-            ws[column[9] + self.row] = (date_to - timedelta(days=1)).strftime(
-                "%d.%m.%Y"
-            )
+            ws[column[9] + self.row] = (date_to - timedelta(days=1)).strftime("%d.%m.%Y")
             ws[column[9] + self.row].font = ReportStyle.font_bold
             ws[column[9] + self.row].alignment = ReportStyle.align_top
 
         # ТАБЛИЦА
         def merge_table():
-            ws.merge_cells(
-                start_row=self.row, start_column=2, end_row=self.row, end_column=9
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=10, end_row=self.row, end_column=11
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=12, end_row=self.row, end_column=13
-            )
+            ws.merge_cells(start_row=self.row, start_column=2, end_row=self.row, end_column=9)
+            ws.merge_cells(start_row=self.row, start_column=10, end_row=self.row, end_column=11)
+            ws.merge_cells(start_row=self.row, start_column=12, end_row=self.row, end_column=13)
             ws[column[2] + self.row].font = ReportStyle.font
             ws[column[10] + self.row].font = ReportStyle.font
             ws[column[12] + self.row].font = ReportStyle.font
@@ -242,15 +229,9 @@ class YandexRepository:
                 b += 1
 
         def merge_table_h3():
-            ws.merge_cells(
-                start_row=self.row, start_column=2, end_row=self.row, end_column=9
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=10, end_row=self.row, end_column=11
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=12, end_row=self.row, end_column=13
-            )
+            ws.merge_cells(start_row=self.row, start_column=2, end_row=self.row, end_column=9)
+            ws.merge_cells(start_row=self.row, start_column=10, end_row=self.row, end_column=11)
+            ws.merge_cells(start_row=self.row, start_column=12, end_row=self.row, end_column=13)
             ws[column[2] + self.row].font = ReportStyle.h3
             ws[column[10] + self.row].font = ReportStyle.h3
             ws[column[12] + self.row].font = ReportStyle.h3
@@ -261,15 +242,9 @@ class YandexRepository:
             ws[column[13] + self.row].border = ReportStyle.border_right
 
         def merge_table_h2():
-            ws.merge_cells(
-                start_row=self.row, start_column=2, end_row=self.row, end_column=9
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=10, end_row=self.row, end_column=11
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=12, end_row=self.row, end_column=13
-            )
+            ws.merge_cells(start_row=self.row, start_column=2, end_row=self.row, end_column=9)
+            ws.merge_cells(start_row=self.row, start_column=10, end_row=self.row, end_column=11)
+            ws.merge_cells(start_row=self.row, start_column=12, end_row=self.row, end_column=13)
             ws[column[2] + self.row].font = ReportStyle.h2
             ws[column[10] + self.row].font = ReportStyle.h2
             ws[column[12] + self.row].font = ReportStyle.h2
@@ -280,9 +255,7 @@ class YandexRepository:
             ws[column[13] + self.row].border = ReportStyle.border_right
 
         def merge_width_h2():
-            ws.merge_cells(
-                start_row=self.row, start_column=2, end_row=self.row, end_column=13
-            )
+            ws.merge_cells(start_row=self.row, start_column=2, end_row=self.row, end_column=13)
             ws[column[2] + self.row].font = ReportStyle.h2
             ws[column[2] + self.row].alignment = ReportStyle.align_top
             b = 2
@@ -296,9 +269,7 @@ class YandexRepository:
                 b += 1
 
         def merge_width_h3():
-            ws.merge_cells(
-                start_row=self.row, start_column=2, end_row=self.row, end_column=13
-            )
+            ws.merge_cells(start_row=self.row, start_column=2, end_row=self.row, end_column=13)
             ws[column[2] + self.row].font = ReportStyle.h3
             ws[column[2] + self.row].alignment = ReportStyle.align_top
             b = 2
@@ -324,21 +295,15 @@ class YandexRepository:
             if hide_zero and line.summ == Decimal(0):
                 continue
 
-            ws[column[2] + next_row()] = (
-                line.name[8:] if line.name.startswith("Долг за") else line.name
-            )
+            ws[column[2] + next_row()] = line.name[8:] if line.name.startswith("Долг за") else line.name
             ws[column[10] + self.row] = line.count
             ws[column[12] + self.row] = line.summ
             ws[column[12] + self.row].number_format = "#,##0.00 ₽"
             merge_table()
 
         ws[column[2] + next_row()] = "Итого"
-        ws[column[10] + self.row] = sum(
-            line.count for line in report if line.name not in goods
-        )
-        ws[column[12] + self.row] = sum(
-            line.summ for line in report if line.name not in goods
-        )
+        ws[column[10] + self.row] = sum(line.count for line in report if line.name not in goods)
+        ws[column[12] + self.row] = sum(line.summ for line in report if line.name not in goods)
         ws[column[12] + self.row].number_format = "#,##0.00 ₽"
         merge_table_h2()
         ws[column[2] + self.row].alignment = ReportStyle.align_bottom
@@ -396,8 +361,8 @@ class YandexRepository:
             date_ = datetime.strftime(date_from, "%Y-%m-%d")
         else:
             date_ = (
-                f'{datetime.strftime(date_from, "%Y-%m-%d")} - '
-                f'{datetime.strftime(date_to - timedelta(days=1), "%Y-%m-%d")}'
+                f"{datetime.strftime(date_from, '%Y-%m-%d')} - "
+                f"{datetime.strftime(date_to - timedelta(days=1), '%Y-%m-%d')}"
             )
         path = (
             settings.local_folder
@@ -413,9 +378,7 @@ class YandexRepository:
     def export_payment_agent_report(self, report: dict[str, list], date_from: datetime):
         """Сохраняет отчет платежного агента в виде Excel-файла в локальную директорию"""
 
-        table_color = PatternFill(
-            fill_type="solid", start_color="e2e2e2", end_color="e9e9e9"
-        )
+        table_color = PatternFill(fill_type="solid", start_color="e2e2e2", end_color="e9e9e9")
 
         column = ["", "A", "B", "C", "D", "E"]
 
@@ -449,9 +412,7 @@ class YandexRepository:
         # значение ячейки
         # ws['A1'] = "Hello!"
 
-        ws[column[1] + next_row()] = (
-            "Отчет платежного агента по приему денежных средств"
-        )
+        ws[column[1] + next_row()] = "Отчет платежного агента по приему денежных средств"
         ws.merge_cells(
             start_row=self.row,
             start_column=1,
@@ -465,7 +426,7 @@ class YandexRepository:
         # Высота строк
         ws.row_dimensions[1].height = 24
 
-        ws[column[1] + next_row()] = f'{report["Организация"][1]}'
+        ws[column[1] + next_row()] = f"{report['Организация'][1]}"
         ws.merge_cells(
             start_row=self.row,
             start_column=1,
@@ -484,9 +445,7 @@ class YandexRepository:
         ws[column[3] + self.row] = "по"
         ws[column[3] + self.row].font = ReportStyle.font
         ws[column[3] + self.row].alignment = ReportStyle.align_top
-        ws[column[4] + self.row] = (report["Дата"][1] - timedelta(1)).strftime(
-            "%d.%m.%Y"
-        )
+        ws[column[4] + self.row] = (report["Дата"][1] - timedelta(1)).strftime("%d.%m.%Y")
         ws[column[4] + self.row].font = ReportStyle.font_bold
         ws[column[4] + self.row].alignment = ReportStyle.align_top
 
@@ -494,9 +453,7 @@ class YandexRepository:
         self.color = False
 
         def merge_table():
-            ws.merge_cells(
-                start_row=self.row, start_column=1, end_row=self.row, end_column=4
-            )
+            ws.merge_cells(start_row=self.row, start_column=1, end_row=self.row, end_column=4)
             ws[column[1] + self.row].font = ReportStyle.font
             ws[column[5] + self.row].font = ReportStyle.font
             ws[column[1] + self.row].alignment = ReportStyle.align_top
@@ -516,9 +473,7 @@ class YandexRepository:
                 self.color = True
 
         def merge_table_bold():
-            ws.merge_cells(
-                start_row=self.row, start_column=1, end_row=self.row, end_column=4
-            )
+            ws.merge_cells(start_row=self.row, start_column=1, end_row=self.row, end_column=4)
             ws[column[1] + self.row].font = ReportStyle.font_bold
             ws[column[5] + self.row].font = ReportStyle.font_bold
             ws[column[1] + self.row].alignment = ReportStyle.align_top
@@ -539,7 +494,7 @@ class YandexRepository:
 
         itog_sum = 0
         for line in report:
-            if line != "Организация" and line != "Дата" and line != "ИТОГО":
+            if line not in {"Организация", "Дата", "ИТОГО"}:
                 try:
                     itog_sum += report[line][1]
                     ws[column[1] + next_row()] = line
@@ -553,13 +508,13 @@ class YandexRepository:
             logger.error(
                 f"Ошибка. Отчет платежного агента: сумма строк "
                 f"({itog_sum}) не равна строке ИТОГО "
-                f'({report["ИТОГО"][1]})'
+                f"({report['ИТОГО'][1]})"
             )
             logger.info(
                 "Ошибка. Отчет платежного агента",
                 "Ошибка. Отчет платежного агента: сумма строк "
                 f"({itog_sum}) не равна строке ИТОГО "
-                f'({report["ИТОГО"][1]})',
+                f"({report['ИТОГО'][1]})",
             )
         ws[column[5] + self.row] = itog_sum
         ws[column[5] + self.row].number_format = "#,##0.00 ₽"
@@ -576,20 +531,17 @@ class YandexRepository:
             date_ = datetime.strftime(report["Дата"][0], "%Y-%m-%d")
         else:
             date_ = (
-                f'{datetime.strftime(report["Дата"][0], "%Y-%m-%d")} - '
-                f'{datetime.strftime(report["Дата"][1], "%Y-%m-%d")}'
+                f"{datetime.strftime(report['Дата'][0], '%Y-%m-%d')} - "
+                f"{datetime.strftime(report['Дата'][1], '%Y-%m-%d')}"
             )
         path = (
             settings.local_folder
             + settings.report_path
             + date_
-            + f' Отчет платежного агента {report["Организация"][1]}'
+            + f" Отчет платежного агента {report['Организация'][1]}"
             + ".xlsx"
         )
-        logger.info(
-            f"Сохранение отчета платежного агента "
-            f'{report["Организация"][1]} в {path}'
-        )
+        logger.info(f"Сохранение отчета платежного агента {report['Организация'][1]} в {path}")
         path = self.create_path(path, date_from)
         self.save_file(path, wb)
         return path
@@ -649,16 +601,10 @@ class YandexRepository:
         # ws['A1'] = "Hello!"
 
         ws[column[3] + next_row()] = "Итоговый отчет"
-        ws.merge_cells(
-            start_row=self.row, start_column=3, end_row=self.row, end_column=12
-        )
+        ws.merge_cells(start_row=self.row, start_column=3, end_row=self.row, end_column=12)
         ws[column[1] + next_row()] = ""
-        ws[column[3] + next_row()] = organisation_total["Организация"]["Организация"][
-            0
-        ][0]
-        ws.merge_cells(
-            start_row=self.row, start_column=3, end_row=self.row, end_column=12
-        )
+        ws[column[3] + next_row()] = organisation_total["Организация"]["Организация"][0][0]
+        ws.merge_cells(start_row=self.row, start_column=3, end_row=self.row, end_column=12)
         ws[column[3] + self.row].font = ReportStyle.font
         ws[column[3] + self.row].alignment = ReportStyle.align_top
         ws[column[1] + next_row()] = ""
@@ -672,23 +618,15 @@ class YandexRepository:
         ws[column[7] + self.row] = "По:"
         ws[column[7] + self.row].font = ReportStyle.font
         ws[column[7] + self.row].alignment = ReportStyle.align_top
-        ws[column[9] + self.row] = (itog_report["Дата"][1] - timedelta(1)).strftime(
-            "%d.%m.%Y"
-        )
+        ws[column[9] + self.row] = (itog_report["Дата"][1] - timedelta(1)).strftime("%d.%m.%Y")
         ws[column[9] + self.row].font = ReportStyle.font_bold
         ws[column[9] + self.row].alignment = ReportStyle.align_top
 
         # ТАБЛИЦА
         def merge_table():
-            ws.merge_cells(
-                start_row=self.row, start_column=2, end_row=self.row, end_column=9
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=10, end_row=self.row, end_column=11
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=12, end_row=self.row, end_column=13
-            )
+            ws.merge_cells(start_row=self.row, start_column=2, end_row=self.row, end_column=9)
+            ws.merge_cells(start_row=self.row, start_column=10, end_row=self.row, end_column=11)
+            ws.merge_cells(start_row=self.row, start_column=12, end_row=self.row, end_column=13)
             ws[column[2] + self.row].font = ReportStyle.font
             ws[column[10] + self.row].font = ReportStyle.font
             ws[column[12] + self.row].font = ReportStyle.font
@@ -701,15 +639,9 @@ class YandexRepository:
                 b += 1
 
         def merge_table_h3():
-            ws.merge_cells(
-                start_row=self.row, start_column=2, end_row=self.row, end_column=9
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=10, end_row=self.row, end_column=11
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=12, end_row=self.row, end_column=13
-            )
+            ws.merge_cells(start_row=self.row, start_column=2, end_row=self.row, end_column=9)
+            ws.merge_cells(start_row=self.row, start_column=10, end_row=self.row, end_column=11)
+            ws.merge_cells(start_row=self.row, start_column=12, end_row=self.row, end_column=13)
             ws[column[2] + self.row].font = ReportStyle.h3
             ws[column[10] + self.row].font = ReportStyle.h3
             ws[column[12] + self.row].font = ReportStyle.h3
@@ -720,15 +652,9 @@ class YandexRepository:
             ws[column[13] + self.row].border = ReportStyle.border_right
 
         def merge_table_h2():
-            ws.merge_cells(
-                start_row=self.row, start_column=2, end_row=self.row, end_column=9
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=10, end_row=self.row, end_column=11
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=12, end_row=self.row, end_column=13
-            )
+            ws.merge_cells(start_row=self.row, start_column=2, end_row=self.row, end_column=9)
+            ws.merge_cells(start_row=self.row, start_column=10, end_row=self.row, end_column=11)
+            ws.merge_cells(start_row=self.row, start_column=12, end_row=self.row, end_column=13)
             ws[column[2] + self.row].font = ReportStyle.h2
             ws[column[10] + self.row].font = ReportStyle.h2
             ws[column[12] + self.row].font = ReportStyle.h2
@@ -739,9 +665,7 @@ class YandexRepository:
             ws[column[13] + self.row].border = ReportStyle.border_right
 
         def merge_width_h2():
-            ws.merge_cells(
-                start_row=self.row, start_column=2, end_row=self.row, end_column=13
-            )
+            ws.merge_cells(start_row=self.row, start_column=2, end_row=self.row, end_column=13)
             ws[column[2] + self.row].font = ReportStyle.h2
             ws[column[2] + self.row].alignment = ReportStyle.align_top
             b = 2
@@ -755,9 +679,7 @@ class YandexRepository:
                 b += 1
 
         def merge_width_h3():
-            ws.merge_cells(
-                start_row=self.row, start_column=2, end_row=self.row, end_column=13
-            )
+            ws.merge_cells(start_row=self.row, start_column=2, end_row=self.row, end_column=13)
             ws[column[2] + self.row].font = ReportStyle.h3
             ws[column[2] + self.row].alignment = ReportStyle.align_top
             b = 2
@@ -906,20 +828,17 @@ class YandexRepository:
             date_ = datetime.strftime(itog_report["Дата"][0], "%Y-%m-%d")
         else:
             date_ = (
-                f'{datetime.strftime(itog_report["Дата"][0], "%Y-%m-%d")} - '
-                f'{datetime.strftime(itog_report["Дата"][1] - timedelta(1), "%Y-%m-%d")}'
+                f"{datetime.strftime(itog_report['Дата'][0], '%Y-%m-%d')} - "
+                f"{datetime.strftime(itog_report['Дата'][1] - timedelta(1), '%Y-%m-%d')}"
             )
         path = (
             settings.local_folder
             + settings.report_path
             + date_
-            + f' Итоговый отчет по {organisation_total["Организация"]["Организация"][0][0]} '
+            + f" Итоговый отчет по {organisation_total['Организация']['Организация'][0][0]} "
             + ".xlsx"
         )
-        logger.info(
-            f"Сохранение Итогового отчета "
-            f'по {organisation_total["Организация"]["Организация"][0][0]} в {path}'
-        )
+        logger.info(f"Сохранение Итогового отчета по {organisation_total['Организация']['Организация'][0][0]} в {path}")
         path = self.create_path(path, date_from)
         self.save_file(path, wb)
         return path
@@ -998,7 +917,7 @@ class YandexRepository:
         # Высота строк
         ws.row_dimensions[1].height = 24
 
-        ws[column[1] + next_row()] = f'{cashdesk_report["Организация"][0][0]}'
+        ws[column[1] + next_row()] = f"{cashdesk_report['Организация'][0][0]}"
         ws.merge_cells(
             start_row=self.row,
             start_column=1,
@@ -1012,37 +931,23 @@ class YandexRepository:
         ws[column[1] + self.row].font = ReportStyle.font
         ws[column[1] + self.row].alignment = ReportStyle.align_top
         ws[column[2] + self.row] = cashdesk_report["Дата"][0][0].strftime("%d.%m.%Y")
-        ws.merge_cells(
-            start_row=self.row, start_column=2, end_row=self.row, end_column=3
-        )
+        ws.merge_cells(start_row=self.row, start_column=2, end_row=self.row, end_column=3)
         ws[column[2] + self.row].font = ReportStyle.font_bold
         ws[column[2] + self.row].alignment = ReportStyle.align_top
         ws[column[4] + self.row] = "по"
         ws[column[4] + self.row].font = ReportStyle.font
         ws[column[4] + self.row].alignment = ReportStyle.align_top
-        ws[column[5] + self.row] = (
-            cashdesk_report["Дата"][0][1] - timedelta(1)
-        ).strftime("%d.%m.%Y")
-        ws.merge_cells(
-            start_row=self.row, start_column=5, end_row=self.row, end_column=7
-        )
+        ws[column[5] + self.row] = (cashdesk_report["Дата"][0][1] - timedelta(1)).strftime("%d.%m.%Y")
+        ws.merge_cells(start_row=self.row, start_column=5, end_row=self.row, end_column=7)
         ws[column[5] + self.row].font = ReportStyle.font_bold
         ws[column[5] + self.row].alignment = ReportStyle.align_top
 
         # ТАБЛИЦА
         def merge_table():
-            ws.merge_cells(
-                start_row=self.row, start_column=1, end_row=self.row, end_column=2
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=3, end_row=self.row, end_column=6
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=7, end_row=self.row, end_column=9
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=11, end_row=self.row, end_column=12
-            )
+            ws.merge_cells(start_row=self.row, start_column=1, end_row=self.row, end_column=2)
+            ws.merge_cells(start_row=self.row, start_column=3, end_row=self.row, end_column=6)
+            ws.merge_cells(start_row=self.row, start_column=7, end_row=self.row, end_column=9)
+            ws.merge_cells(start_row=self.row, start_column=11, end_row=self.row, end_column=12)
             ws[column[1] + self.row].font = ReportStyle.font
             ws[column[3] + self.row].font = ReportStyle.font
             ws[column[7] + self.row].font = ReportStyle.font
@@ -1069,18 +974,10 @@ class YandexRepository:
                 b += 1
 
         def merge_table_h3():
-            ws.merge_cells(
-                start_row=self.row, start_column=1, end_row=self.row, end_column=2
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=3, end_row=self.row, end_column=6
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=7, end_row=self.row, end_column=9
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=11, end_row=self.row, end_column=12
-            )
+            ws.merge_cells(start_row=self.row, start_column=1, end_row=self.row, end_column=2)
+            ws.merge_cells(start_row=self.row, start_column=3, end_row=self.row, end_column=6)
+            ws.merge_cells(start_row=self.row, start_column=7, end_row=self.row, end_column=9)
+            ws.merge_cells(start_row=self.row, start_column=11, end_row=self.row, end_column=12)
             ws[column[1] + self.row].font = ReportStyle.h3
             ws[column[3] + self.row].font = ReportStyle.h3
             ws[column[7] + self.row].font = ReportStyle.h3
@@ -1107,18 +1004,10 @@ class YandexRepository:
                 b += 1
 
         def merge_table_red():
-            ws.merge_cells(
-                start_row=self.row, start_column=1, end_row=self.row, end_column=2
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=3, end_row=self.row, end_column=6
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=7, end_row=self.row, end_column=9
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=11, end_row=self.row, end_column=12
-            )
+            ws.merge_cells(start_row=self.row, start_column=1, end_row=self.row, end_column=2)
+            ws.merge_cells(start_row=self.row, start_column=3, end_row=self.row, end_column=6)
+            ws.merge_cells(start_row=self.row, start_column=7, end_row=self.row, end_column=9)
+            ws.merge_cells(start_row=self.row, start_column=11, end_row=self.row, end_column=12)
             ws[column[1] + self.row].font = ReportStyle.font_red
             ws[column[3] + self.row].font = ReportStyle.font_red
             ws[column[7] + self.row].font = ReportStyle.font_red
@@ -1178,7 +1067,7 @@ class YandexRepository:
             b += 1
 
         for typpe in cashdesk_report:
-            if typpe != "Дата" and typpe != "Организация":
+            if typpe not in {"Дата", "Организация"}:
                 if typpe != "Итого":
                     ws[column[1] + next_row()] = typpe
                     merge_width_red()
@@ -1204,26 +1093,21 @@ class YandexRepository:
             rd = ws.row_dimensions[i]
             rd.height = 18
             i += 1
-        if cashdesk_report["Дата"][0][0] == cashdesk_report["Дата"][0][1] - timedelta(
-            1
-        ):
+        if cashdesk_report["Дата"][0][0] == cashdesk_report["Дата"][0][1] - timedelta(1):
             date_ = datetime.strftime(cashdesk_report["Дата"][0][0], "%Y-%m-%d")
         else:
             date_ = (
-                f'{datetime.strftime(cashdesk_report["Дата"][0][0], "%Y-%m-%d")} - '
-                f'{datetime.strftime(cashdesk_report["Дата"][0][1] - timedelta(1), "%Y-%m-%d")}'
+                f"{datetime.strftime(cashdesk_report['Дата'][0][0], '%Y-%m-%d')} - "
+                f"{datetime.strftime(cashdesk_report['Дата'][0][1] - timedelta(1), '%Y-%m-%d')}"
             )
         path = (
             settings.local_folder
             + settings.report_path
             + date_
-            + f' Суммовой отчет по {cashdesk_report["Организация"][0][0]}'
+            + f" Суммовой отчет по {cashdesk_report['Организация'][0][0]}"
             + ".xlsx"
         )
-        logger.info(
-            f"Сохранение Суммового отчета "
-            f'по {cashdesk_report["Организация"][0][0]} в {path}'
-        )
+        logger.info(f"Сохранение Суммового отчета по {cashdesk_report['Организация'][0][0]} в {path}")
         path = self.create_path(path, date_from)
         self.save_file(path, wb)
         return path
@@ -1293,29 +1177,21 @@ class YandexRepository:
         ws[column[1] + self.row].font = ReportStyle.font
         ws[column[1] + self.row].alignment = ReportStyle.align_top
         ws[column[2] + self.row] = client_count_totals_org[1][0].strftime("%d.%m.%Y")
-        ws.merge_cells(
-            start_row=self.row, start_column=2, end_row=self.row, end_column=3
-        )
+        ws.merge_cells(start_row=self.row, start_column=2, end_row=self.row, end_column=3)
         ws[column[2] + self.row].font = ReportStyle.font_bold
         ws[column[2] + self.row].alignment = ReportStyle.align_top
         ws[column[4] + self.row] = "по"
         ws[column[4] + self.row].font = ReportStyle.font
         ws[column[4] + self.row].alignment = ReportStyle.align_top
         ws[column[5] + self.row] = (client_count_totals_org[-2][0]).strftime("%d.%m.%Y")
-        ws.merge_cells(
-            start_row=self.row, start_column=5, end_row=self.row, end_column=7
-        )
+        ws.merge_cells(start_row=self.row, start_column=5, end_row=self.row, end_column=7)
         ws[column[5] + self.row].font = ReportStyle.font_bold
         ws[column[5] + self.row].alignment = ReportStyle.align_top
 
         # ТАБЛИЦА
         def merge_table():
-            ws.merge_cells(
-                start_row=self.row, start_column=1, end_row=self.row, end_column=2
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=3, end_row=self.row, end_column=5
-            )
+            ws.merge_cells(start_row=self.row, start_column=1, end_row=self.row, end_column=2)
+            ws.merge_cells(start_row=self.row, start_column=3, end_row=self.row, end_column=5)
             ws[column[1] + self.row].font = ReportStyle.font
             ws[column[3] + self.row].font = ReportStyle.font
             ws[column[1] + self.row].alignment = ReportStyle.align_top
@@ -1326,12 +1202,8 @@ class YandexRepository:
                 b += 1
 
         def merge_table_bold():
-            ws.merge_cells(
-                start_row=self.row, start_column=1, end_row=self.row, end_column=2
-            )
-            ws.merge_cells(
-                start_row=self.row, start_column=3, end_row=self.row, end_column=5
-            )
+            ws.merge_cells(start_row=self.row, start_column=1, end_row=self.row, end_column=2)
+            ws.merge_cells(start_row=self.row, start_column=3, end_row=self.row, end_column=5)
             ws[column[1] + self.row].font = ReportStyle.font_bold
             ws[column[3] + self.row].font = ReportStyle.font_bold
             ws[column[1] + self.row].alignment = ReportStyle.align_top
@@ -1373,8 +1245,8 @@ class YandexRepository:
             date_ = datetime.strftime(client_count_totals_org[1][0], "%Y-%m")
         else:
             date_ = (
-                f'{datetime.strftime(client_count_totals_org[1][0], "%Y-%m-%d")} - '
-                f'{datetime.strftime(client_count_totals_org[-2][0], "%Y-%m-%d")}'
+                f"{datetime.strftime(client_count_totals_org[1][0], '%Y-%m-%d')} - "
+                f"{datetime.strftime(client_count_totals_org[-2][0], '%Y-%m-%d')}"
             )
         path = (
             settings.local_folder
@@ -1383,10 +1255,7 @@ class YandexRepository:
             + f" Количество клиентов за день по {client_count_totals_org[0][0]}"
             + ".xlsx"
         )
-        logger.info(
-            f"Сохранение отчета по количеству клиентов "
-            f"по {client_count_totals_org[0][0]} в {path}"
-        )
+        logger.info(f"Сохранение отчета по количеству клиентов по {client_count_totals_org[0][0]} в {path}")
         path = self.create_path(path, date_from)
         self.save_file(path, wb)
         return path
@@ -1455,46 +1324,46 @@ class YandexRepository:
                 directory = folder + "/"
             else:
                 directory = folder + "/"
-        path = list_path_yandex[-1] + "/"
-        return path
+        return list_path_yandex[-1] + "/"
 
-    def sync_to_yadisk(
-        self, path_list: list[str], token: str, date_from: datetime
-    ) -> list[SyncResourceLinkObject]:
+    def sync_to_yadisk(self, paths: list[str], token: str, date_from: datetime) -> list[SyncResourceLinkObject]:
         """Копирует локальные файлы в Яндекс Диск."""
 
         logger.info("Копирование отчетов в Яндекс.Диск...")
-        if not path_list:
+        if not paths:
             logger.warning("Нет ни одного отчета для отправки в Yandex.Disk")
-            return None
+            return []
 
         links = []
         yadisk = YaDisk(token=token)
         if yadisk.check_token():
-            path = "" + settings.report_path
-            remote_folder = self.create_path_yadisk(path, date_from, yadisk)
-            for local_path in path_list:
-                remote_path = remote_folder + local_path.split("/")[-1]
-                file_name = f"'{local_path.split('/')[-1]}'"
+            yadisk_path = "" + settings.report_path
+            remote_folder = self.create_path_yadisk(yadisk_path, date_from, yadisk)
+            for path in paths:
+                if path is None:
+                    continue
+
+                remote_path = remote_folder + path.split("/")[-1]
+                file_name = f"'{path.split('/')[-1]}'"
                 files_list_yandex = list(yadisk.listdir(remote_folder))
                 files_list = []
                 for key in files_list_yandex:
                     if key["file"]:
-                        files_list.append(remote_folder + key["name"])
+                        files_list.append(remote_folder + key["name"])  # PERF401
+
                 if remote_path in files_list:
-                    logger.warning(
-                        f"Файл {file_name} уже существует в '{remote_folder}' и будет заменен!"
-                    )
+                    logger.warning(f"Файл {file_name} уже существует в '{remote_folder}' и будет заменен!")
                     yadisk.remove(remote_path, permanently=True)
-                links.append(yadisk.upload(local_path, remote_path))
+
+                links.append(yadisk.upload(path, remote_path))
+
             return links
-        else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Ошибка YaDisk: token не валиден",
-            )
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ошибка YaDisk: token не валиден",
+        )
 
 
 def get_yandex_repo() -> YandexRepository:
-    yandex_repo = YandexRepository()
-    return yandex_repo
+    return YandexRepository()

@@ -9,7 +9,6 @@ from db.postgres import Base, async_session
 
 from .mixins import CRUDMixin, IDMixin
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -20,9 +19,7 @@ class ReportCacheModel(Base, IDMixin, CRUDMixin):
     report_date = Column(String(255), nullable=False)
     report_type = Column(String(255), nullable=False)
     report_data = Column(JSONB, nullable=False, default=dict)
-    __table_args__ = (
-        UniqueConstraint("report_date", "report_type", name="unique_report"),
-    )
+    __table_args__ = (UniqueConstraint("report_date", "report_type", name="unique_report"),)
 
     @classmethod
     async def get_by_date(cls, report_type: str, report_date: date) -> Self:
@@ -32,6 +29,4 @@ class ReportCacheModel(Base, IDMixin, CRUDMixin):
                 cls.report_type == report_type,
             )
             result = await session.execute(request)
-            entity = result.scalars().first()
-
-        return entity
+            return result.scalars().first()
