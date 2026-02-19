@@ -274,6 +274,8 @@ HOMEBREW_ACCEPT_EULA=Y brew install msodbcsql18 mssql-tools18
 Create a Yandex application and obtain a token following the instructions at:
 https://yandex.ru/dev/disk/webdav/
 
+Run script get_yadisk_token.py and follow the instructions to obtain a token.
+
 ## Deployment
 
 ### Docker Production Build

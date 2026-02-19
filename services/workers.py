@@ -327,7 +327,7 @@ class WorkerService:
         )
         result = {"ok": True, "local_path": report_path}
         if save_to_yandex:
-            links = self._yandex_repo.sync_to_yadisk([report_path], settings.yadisk_token, date_from)
+            links = self._yandex_repo.sync_to_yadisk([report_path], date_from)
             link = links[0].publish().get_meta()
             return {
                 **result,
