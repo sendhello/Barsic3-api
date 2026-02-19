@@ -65,7 +65,12 @@ async def main():
 
         async for path, item in walk_all(client, report_path):
             if getattr(item, "type", None) == "file" and path.endswith(".xlsx") and "Итоговый отчет" in item.name:
-                if datetime.strptime(item.name.split(" ")[0], "%Y-%m-%d") < start_date:
+                try:
+                    report_date = datetime.strptime(item.name.split(" ")[0], "%Y-%m-%d")
+                except ValueError:
+                    continue
+
+                if report_date < start_date:
                     continue
 
                 with tempfile.NamedTemporaryFile(suffix=".xlsx") as tmp:
