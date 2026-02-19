@@ -2422,21 +2422,28 @@ standard = ["colorama (>=0.4) ; sys_platform == \"win32\"", "httptools (>=0.5.0)
 
 [[package]]
 name = "yadisk"
-version = "2.1.0"
+version = "3.4.0"
 description = "Библиотека-клиент REST API Яндекс.Диска / Yandex.Disk REST API client library"
 optional = false
-python-versions = ">=3.8"
+python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "yadisk-2.1.0-py3-none-any.whl", hash = "sha256:38217dea233c6ce0dba64bc90c824b5985eea0fb41f249c7fde0b6c784f5a2ed"},
-    {file = "yadisk-2.1.0.tar.gz", hash = "sha256:1052b70065f932a726d52dc936540928f19efe9b1f2be9e36bda6beb854fa294"},
+    {file = "yadisk-3.4.0-py3-none-any.whl", hash = "sha256:c32d64a3b62812d6ed68ef7a7aefb9404d9b6d8ba923abe2406e0d45aff717c9"},
+    {file = "yadisk-3.4.0.tar.gz", hash = "sha256:6a0a79fb77fe248813f6378fedb17966165950c30cc278ceb660b04d75a9f965"},
 ]
 
+[package.dependencies]
+aiofiles = {version = "*", optional = true, markers = "extra == \"async-defaults\""}
+httpx = {version = "*", optional = true, markers = "extra == \"async-defaults\""}
+
 [package.extras]
+aiohttp = ["aiohttp"]
 async-defaults = ["aiofiles", "httpx"]
 async-files = ["aiofiles"]
+httpx = ["httpx"]
+pycurl = ["pycurl"]
+requests = ["requests"]
 sync-defaults = ["requests"]
-test = ["aiofiles", "httpx", "pycurl", "requests"]
 
 [[package]]
 name = "yarl"
@@ -2538,4 +2545,4 @@ propcache = ">=0.2.0"
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.11,<4.0"
-content-hash = "5e7831594fe4a84cc3b11a415fd1fc06f69ee10b813447e6cdefa9d8da05ffb8"
+content-hash = "a6f07b2a4a1777946ba045d8d1de5c2d850d290c893549ecef570818f382833e"

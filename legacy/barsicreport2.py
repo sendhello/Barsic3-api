@@ -2642,7 +2642,6 @@ class BarsicReport2Service:
         if use_yadisk:
             self._yandex_repo.sync_to_yadisk(
                 paths=to_yandex,
-                token=settings.yadisk_token,
                 date_from=date_from,
             )
 

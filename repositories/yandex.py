@@ -7,8 +7,8 @@ from fastapi.exceptions import HTTPException
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from starlette import status
-from yadisk import YaDisk
-from yadisk.objects.resources import SyncResourceLinkObject
+from yadisk import AsyncYaDisk, YaDisk
+from yadisk.objects import SyncResourceLinkObject
 
 from core.settings import settings
 
@@ -130,8 +130,9 @@ class ReportStyle:
 
 
 class YandexRepository:
-    def __init__(self):
-        pass
+    def __init__(self, token: str):
+        self._yadisk = YaDisk(token=token)
+        self._async_yadisk = AsyncYaDisk(token=token)
 
     def save_purchased_goods_report(
         self,
@@ -1293,7 +1294,7 @@ class YandexRepository:
         except PermissionError as e:
             logger.error(f'Файл "{path}" занят другим процессом.\n{repr(e)}')
 
-    def create_path_yadisk(self, path, date_from, yadisk):
+    def create_path_yadisk(self, path, date_from):
         """Проверяет наличие указанного пути в Яндекс Диске.
 
         В случае отсутствия каких-либо папок создает их.
@@ -1313,20 +1314,20 @@ class YandexRepository:
         directory = "/"
         for folder in list_path_yandex:
             folders_list = []
-            folders_list_yandex = list(yadisk.listdir(directory))
+            folders_list_yandex = list(self._yadisk.listdir(directory))
             for key in folders_list_yandex:
                 if not key["file"]:
                     folders_list.append(directory + key["name"])
 
             if folder not in folders_list:
-                yadisk.mkdir(folder)
+                self._yadisk.mkdir(folder)
                 logger.info(f'Создание новой папки в YandexDisk - "{folder}"')
                 directory = folder + "/"
             else:
                 directory = folder + "/"
         return list_path_yandex[-1] + "/"
 
-    def sync_to_yadisk(self, paths: list[str], token: str, date_from: datetime) -> list[SyncResourceLinkObject]:
+    def sync_to_yadisk(self, paths: list[str], date_from: datetime) -> list[SyncResourceLinkObject]:
         """Копирует локальные файлы в Яндекс Диск."""
 
         logger.info("Копирование отчетов в Яндекс.Диск...")
@@ -1335,17 +1336,16 @@ class YandexRepository:
             return []
 
         links = []
-        yadisk = YaDisk(token=token)
-        if yadisk.check_token():
+        if self._yadisk.check_token():
             yadisk_path = "" + settings.report_path
-            remote_folder = self.create_path_yadisk(yadisk_path, date_from, yadisk)
+            remote_folder = self.create_path_yadisk(yadisk_path, date_from)
             for path in paths:
                 if path is None:
                     continue
 
                 remote_path = remote_folder + path.split("/")[-1]
                 file_name = f"'{path.split('/')[-1]}'"
-                files_list_yandex = list(yadisk.listdir(remote_folder))
+                files_list_yandex = list(self._yadisk.listdir(remote_folder))
                 files_list = []
                 for key in files_list_yandex:
                     if key["file"]:
@@ -1353,9 +1353,9 @@ class YandexRepository:
 
                 if remote_path in files_list:
                     logger.warning(f"Файл {file_name} уже существует в '{remote_folder}' и будет заменен!")
-                    yadisk.remove(remote_path, permanently=True)
+                    self._yadisk.remove(remote_path, permanently=True)
 
-                links.append(yadisk.upload(path, remote_path))
+                links.append(self._yadisk.upload(path, remote_path))
 
             return links
 
@@ -1364,6 +1364,9 @@ class YandexRepository:
             detail="Ошибка YaDisk: token не валиден",
         )
 
+    async def read_yadisk_files(self, root_path: str, date_from: datetime, file_template_name: str):
+        yield self._async_yadisk.listdir(root_path)
+
 
 def get_yandex_repo() -> YandexRepository:
-    return YandexRepository()
+    return YandexRepository(token=settings.yadisk_token)
