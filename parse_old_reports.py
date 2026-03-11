@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import asyncio
+import csv
+import logging
 import os
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, date as dt_date
 from typing import Any, AsyncIterator, Tuple
 
 import yadisk
 from openpyxl import load_workbook
 
 from repositories.yandex import get_yandex_repo
+
+logger = logging.getLogger(__name__)
 
 
 def _is_dir(item: Any) -> bool:
@@ -53,11 +57,23 @@ repo = get_yandex_repo()
 report_path = os.getenv("REPORT_PATH")
 TOKEN = os.getenv("YADISK_TOKEN")
 start_date = datetime.strptime("2020-01-01", "%Y-%m-%d")
+end_date = datetime.now()
 
 
 async def main():
     tariffs = set()
     dates = []
+    result = []
+
+    tariff_config = {}
+    with open("tariff_config.csv") as csvfile:
+        reader = csv.DictReader(csvfile)
+        for row in reader:
+            for group, tariff_name in row.items():
+                if tariff_name:
+                    group_data = tariff_config.setdefault(group, [])
+                    group_data.append(tariff_name)
+
     async with yadisk.AsyncClient(token=TOKEN) as client:
         ok = await client.check_token()
         if not ok:
@@ -73,58 +89,98 @@ async def main():
                 if report_date < start_date:
                     continue
 
+                if report_date > end_date:
+                    continue
+
                 with tempfile.NamedTemporaryFile(suffix=".xlsx") as tmp:
-                    await client.download(path, tmp.name)
+                    for _ in range(10):
+                        try:
+                            await client.download(path, tmp.name)
+                        except yadisk.exceptions.RequestError:
+                            logger.error("Request error. Try again later.")
+                            await asyncio.sleep(3)
+                            continue
+                        else:
+                            break
+
                     wb = load_workbook(tmp.name, data_only=True)
                     ws = wb.active
+                    result_line = {}
                     for row in ws.iter_rows(min_row=1):
-                        val_b = row[1].value if len(row) > 1 else None
-                        val_d = row[4].value if len(row) > 4 else None
-                        val_j = row[9].value if len(row) > 9 else None
-                        val_l = row[11].value if len(row) > 11 else None
-                        if val_b and isinstance(val_j, int) and isinstance(val_l, int):
-                            tariffs.add(val_b)
+                        tariff_field = row[1].value if len(row) > 1 else None
+                        date_field = row[4].value if len(row) > 4 else None
+                        count_field = row[9].value if len(row) > 9 else None
+                        sum_field = row[11].value if len(row) > 11 else None
+                        if tariff_field and isinstance(count_field, int) and isinstance(sum_field, int):
+                            tariffs.add(tariff_field)
 
-                        if val_d:
-                            dates.append(val_d)
+                            for group, tariff_collection in tariff_config.items():
+                                if tariff_field in tariff_collection:
+                                    result_line.setdefault(group, 0)
+                                    result_line[group] += count_field
 
-        tariffs_list = sorted(map(str, tariffs))
-        file_name = f"tariffs from {start_date.strftime('%Y-%m-%d')} ({len(tariffs_list)}).txt"
-        remote_path = f"{report_path.rstrip('/')}/{file_name}"
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8") as tmp_txt:
-            tmp_txt.write("\n".join(tariffs_list))
-            tmp_txt.flush()
-            await client.upload(tmp_txt.name, remote_path, overwrite=True)
+                        if date_field:
+                            dates.append(date_field)
 
-        sorted_dates = sorted(dates)
-        file_name = f"dates from {start_date.strftime('%Y-%m-%d')}.txt"
-        remote_path = f"{report_path.rstrip('/')}/{file_name}"
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8") as tmp_txt:
-            tmp_txt.write("\n".join(sorted_dates))
-            tmp_txt.flush()
-            await client.upload(tmp_txt.name, remote_path, overwrite=True)
+                            result_line["Дата"] = date_field
 
-        exclude_dates = []
+                    if len(result_line) < 2:
+                        continue
 
-        def get_next_date(_start_date: datetime) -> GeneratorExit[str]:
-            current_date = _start_date
-            while True:
-                yield datetime.strftime(current_date, "%Y-%m-%d")
-                current_date += timedelta(days=1)
-                if current_date > datetime.now():
-                    break
+                    result.append(result_line)
 
-        for date in get_next_date(start_date):
-            if date not in dates:
-                exclude_dates.append(date)
+        result = sorted(result, key=lambda x: dt_date.fromisoformat(x.get("Дата")))
+        for line in result:
+            for group in tariff_config:
+                if group not in line:
+                    line[group] = 0
 
-        sorted_exclude_dates = sorted(exclude_dates)
-        file_name = f"exclude_dates from {start_date.strftime('%Y-%m-%d')}.txt"
-        remote_path = f"{report_path.rstrip('/')}/{file_name}"
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8") as tmp_txt:
-            tmp_txt.write("\n".join(sorted_exclude_dates))
-            tmp_txt.flush()
-            await client.upload(tmp_txt.name, remote_path, overwrite=True)
+        with open("result.csv", "w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=result[0].keys())
+            writer.writeheader()
+            writer.writerows(result)
+
+        remote_csv_path = f"{report_path.rstrip('/')}/result.csv"
+        await client.upload("result.csv", remote_csv_path, overwrite=True)
+        logger.info("CSV загружен на Яндекс.Диск: %s", remote_csv_path)
+
+        # tariffs_list = sorted(map(str, tariffs))
+        # file_name = f"tariffs from {start_date.strftime('%Y-%m-%d')} ({len(tariffs_list)}).txt"
+        # remote_path = f"{report_path.rstrip('/')}/{file_name}"
+        # with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8") as tmp_txt:
+        #     tmp_txt.write("\n".join(tariffs_list))
+        #     tmp_txt.flush()
+        #     await client.upload(tmp_txt.name, remote_path, overwrite=True)
+        #
+        # sorted_dates = sorted(dates)
+        # file_name = f"dates from {start_date.strftime('%Y-%m-%d')}.txt"
+        # remote_path = f"{report_path.rstrip('/')}/{file_name}"
+        # with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8") as tmp_txt:
+        #     tmp_txt.write("\n".join(sorted_dates))
+        #     tmp_txt.flush()
+        #     await client.upload(tmp_txt.name, remote_path, overwrite=True)
+        #
+        # exclude_dates = []
+        #
+        # def get_next_date(_start_date: datetime) -> GeneratorExit[str]:
+        #     current_date = _start_date
+        #     while True:
+        #         yield datetime.strftime(current_date, "%Y-%m-%d")
+        #         current_date += timedelta(days=1)
+        #         if current_date > datetime.now():
+        #             break
+        #
+        # for date in get_next_date(start_date):
+        #     if date not in dates:
+        #         exclude_dates.append(date)
+        #
+        # sorted_exclude_dates = sorted(exclude_dates)
+        # file_name = f"exclude_dates from {start_date.strftime('%Y-%m-%d')}.txt"
+        # remote_path = f"{report_path.rstrip('/')}/{file_name}"
+        # with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8") as tmp_txt:
+        #     tmp_txt.write("\n".join(sorted_exclude_dates))
+        #     tmp_txt.flush()
+        #     await client.upload(tmp_txt.name, remote_path, overwrite=True)
 
 
 asyncio.run(main())
