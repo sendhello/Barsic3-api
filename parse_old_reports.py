@@ -129,7 +129,7 @@ async def main():
 
                     result.append(result_line)
 
-        result = sorted(result, key=lambda x: dt_date.fromisoformat(x.get("Дата")))
+        result = sorted(result, key=lambda x: datetime.strptime(x.get("Дата"), "%d.%m.%Y"))
         for line in result:
             for group in tariff_config:
                 if group not in line:
