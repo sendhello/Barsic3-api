@@ -70,6 +70,8 @@ async def main():
         reader = csv.DictReader(csvfile)
         for row in reader:
             for group, tariff_name in row.items():
+                group = group.strip()
+                tariff_name = tariff_name.strip()
                 if tariff_name:
                     group_data = tariff_config.setdefault(group, [])
                     group_data.append(tariff_name)
