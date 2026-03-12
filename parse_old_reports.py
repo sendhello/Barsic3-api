@@ -66,8 +66,9 @@ async def main():
     result = []
 
     tariff_config = {}
+    skipped_tariffs = []
     with open("tariff_config.csv") as csvfile:
-        reader = csv.DictReader(csvfile)
+        reader = csv.DictReader(csvfile, delimiter=";")
         for row in reader:
             for group, tariff_name in row.items():
                 group = group.strip()
@@ -116,10 +117,15 @@ async def main():
                         if tariff_field and isinstance(count_field, int) and isinstance(sum_field, int):
                             tariffs.add(tariff_field)
 
+                            is_skipped = True
                             for group, tariff_collection in tariff_config.items():
                                 if tariff_field in tariff_collection:
                                     result_line.setdefault(group, 0)
                                     result_line[group] += count_field
+                                    is_skipped = False
+
+                            if is_skipped:
+                                skipped_tariffs.append(tariff_field)
 
                         if date_field:
                             dates.append(date_field)
@@ -145,6 +151,13 @@ async def main():
         remote_csv_path = f"{report_path.rstrip('/')}/result_from_{start_date.strftime('%Y-%m-%d')}_to_{end_date.strftime('%Y-%m-%d')}.csv"
         await client.upload("result.csv", remote_csv_path, overwrite=True)
         logger.info("CSV загружен на Яндекс.Диск: %s", remote_csv_path)
+
+        file_name = f"skipped_tariffs_from_{start_date.strftime('%Y-%m-%d')}_to_{end_date.strftime('%Y-%m-%d')}.txt"
+        remote_path = f"{report_path.rstrip('/')}/{file_name}"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8") as tmp_txt:
+            tmp_txt.write("\n".join(skipped_tariffs))
+            tmp_txt.flush()
+            await client.upload(tmp_txt.name, remote_path, overwrite=True)
 
         # tariffs_list = sorted(map(str, tariffs))
         # file_name = f"tariffs from {start_date.strftime('%Y-%m-%d')} ({len(tariffs_list)}).txt"
