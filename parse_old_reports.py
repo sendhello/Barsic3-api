@@ -76,6 +76,7 @@ async def main():
                 if tariff_name:
                     group_data = tariff_config.setdefault(group, [])
                     group_data.append(tariff_name)
+                    skipped_tariffs.append(tariff_name)
 
     async with yadisk.AsyncClient(token=TOKEN) as client:
         ok = await client.check_token()
@@ -117,15 +118,14 @@ async def main():
                         if tariff_field and isinstance(count_field, int) and isinstance(sum_field, int):
                             tariffs.add(tariff_field)
 
-                            is_skipped = True
                             for group, tariff_collection in tariff_config.items():
                                 if tariff_field in tariff_collection:
                                     result_line.setdefault(group, 0)
                                     result_line[group] += count_field
-                                    is_skipped = False
-
-                            if is_skipped:
-                                skipped_tariffs.append(tariff_field)
+                                    try:
+                                        skipped_tariffs.remove(tariff_field)
+                                    except ValueError:
+                                        pass
 
                         if date_field:
                             dates.append(date_field)
