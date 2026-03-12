@@ -140,7 +140,7 @@ async def main():
             writer.writeheader()
             writer.writerows(result)
 
-        remote_csv_path = f"{report_path.rstrip('/')}/result.csv"
+        remote_csv_path = f"{report_path.rstrip('/')}/result_from_{start_date.strftime('%Y-%m-%d')}_to_{end_date.strftime('%Y-%m-%d')}.csv"
         await client.upload("result.csv", remote_csv_path, overwrite=True)
         logger.info("CSV загружен на Яндекс.Диск: %s", remote_csv_path)
 
