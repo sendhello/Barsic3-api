@@ -36,6 +36,10 @@ def to_bool(s):
 
 
 def concatenate_total_reports(*reports: dict[str, tuple]) -> dict[str, tuple]:
+    """Конкатенирует несколько отчетов по общему виду в один отчет."""
+
+    reports = [report for report in reports if report is not None]
+
     if len(reports) == 0:
         return {}
 

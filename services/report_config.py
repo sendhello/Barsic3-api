@@ -64,6 +64,34 @@ class ReportConfigService:
 
         return all_elements
 
+    async def get_report_tree(self, report_name: str) -> dict[str, dict | list[str]]:
+        """Получение дерева групп отчета, где в листьях находятся названия элементов."""
+
+        report_groups = await self.get_report_groups(report_name)
+        group_ids = {group.id for group in report_groups}
+
+        children_by_parent: dict[UUID | None, list[ReportGroup]] = {}
+        elements_by_group: dict[UUID, list[str]] = {}
+
+        for group in report_groups:
+            children_by_parent.setdefault(group.parent_id, []).append(group)
+
+            elements_ = await ReportElementModel.get_by_group_id(report_group_id=group.id)
+            elements_by_group[group.id] = [ReportElement.model_validate(el).title for el in elements_]
+
+        root_groups = [
+            group for group in report_groups if group.parent_id is None
+        ]
+
+        def build_group_tree(group: ReportGroup) -> dict | list[str]:
+            nested_groups = children_by_parent.get(group.id, [])
+            if not nested_groups:
+                return elements_by_group.get(group.id, [])
+
+            return {nested_group.title: build_group_tree(nested_group) for nested_group in nested_groups}
+
+        return {group.title: build_group_tree(group) for group in root_groups}
+
     async def get_google_doc_ids(self) -> list[GoogleReportId]:
         google_doc_ids_ = await GoogleReportIdModel.get_all()
 

@@ -28,26 +28,12 @@ from services.report_config import ReportConfigService, get_report_config_servic
 from services.rk import RKService, get_rk_service
 from services.settings import SettingsService, get_settings_service
 from sql.customer_count import CURRENT_CUSTOMER_COUNT_SQL
+from schemas.total_report import DBName, Company
 
 logger = logging.getLogger("barsicreport2")
 
 
 AQUA_COMPANIES_IDS = (36, 7203673, 7203674, 13240081, 15826592, 16049033)
-
-
-class DBName(StrEnum):
-    """Название базы данных."""
-
-    AQUA = "aqua"
-    BEACH = "beach"
-
-
-class Company(BaseModel):
-    """Информация об организации."""
-
-    id: int
-    name: str
-    db_name: DBName
 
 
 class BarsicReport2Service:

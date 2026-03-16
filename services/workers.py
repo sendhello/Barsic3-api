@@ -2,11 +2,13 @@ import logging
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date, datetime, timedelta
-
+from typing import Optional, List, Dict, Any, Union, Tuple, Set, Iterable, AsyncIterable, AsyncIterator
 import gspread
 import gspread_formatting as gf
 from fastapi import HTTPException
 
+from schemas.bars import TotalReport
+from schemas.total_report import DBName, Company
 from core.settings import settings
 from db.mssql import MsSqlDatabase
 from legacy import functions
@@ -62,15 +64,7 @@ class WorkerService:
 
         total_detail_full_report = defaultdict()
 
-        if date_from >= date_to:
-            raise HTTPException(status_code=404, detail="date_from >= date_to")
-
-        if date_from.month == date_to.month - 1:
-            days_in_month = monthrange(date_from.year, date_from.month)[1]
-            date_to = datetime.combine(
-                date(date_from.year, date_from.month, days_in_month),
-                datetime.max.time(),
-            )
+        date_from, date_to = self._period_cutting(date_from, date_to)
 
         logger.info(f"Try build total by day report from {date_from} to {date_to}")
         current_date = date_from
@@ -336,6 +330,126 @@ class WorkerService:
             }
 
         return result
+
+
+    async def create_attendance_report(
+        self,
+        date_from: datetime,
+        date_to: datetime,
+        save_to_yandex: bool,
+        save_to_google: bool,
+        use_cache: bool = True,
+    ) -> dict:
+
+        attendance_report = {}
+        date_from, date_to = self._period_cutting(date_from, date_to)
+
+        logger.info(f"Try build attendance report from {date_from} to {date_to}")
+        current_date = date_from
+        while current_date < date_to and (
+                current_date.month == date_to.month or current_date + timedelta(days=1) == date_to
+        ):
+            report_type = "attendance"
+            if use_cache:
+                current_attendance_report = await self._report_service.get_report_by_date(report_type, current_date.date())
+            else:
+                current_attendance_report = None
+                await self._report_service.delete_report(report_type, current_date.date())
+
+            if current_attendance_report is None:
+                report_config = await self._report_config_service.get_report_tree(report_type)
+                companies = [company for company in self._legacy_service.get_companies() if company.db_name == DBName.AQUA]
+
+                total_report = None
+                for company in companies:
+                    company_total_report = self._bars_service.get_total_report(
+                        organization_id=company.id,
+                        date_from=current_date,
+                        date_to=current_date + timedelta(days=1),
+                        hide_zeroes=False,
+                        hide_internal=True,
+                        hide_discount=False,
+                    )
+                    if total_report is None:
+                        total_report = company_total_report
+                    else:
+                        total_report += company_total_report
+
+                customer_count = self._bars_service.get_customer_count(date_from=current_date, date_to=current_date + timedelta(days=1))
+
+                report_data = self._create_attendance_report(
+                    total_report=total_report,
+                    report_config=report_config,
+                    customer_count=customer_count,
+                )
+                current_attendance_report = ReportCacheCreate(
+                    report_date=current_date.date(),
+                    report_type=report_type,
+                    report_data=report_data,
+                )
+                await self._report_service.save_report(current_attendance_report)
+
+                attendance_report[current_date.date()] = current_attendance_report
+
+        # Save to Yandex
+        report_path = self._yandex_repo.save_purchased_goods_report(
+            report=attendance_report,
+            date_from=date_from,
+            date_to=date_to,
+        )
+        result = {"ok": True, "local_path": report_path}
+        if save_to_yandex:
+            links = self._yandex_repo.sync_to_yadisk([report_path], date_from)
+            link = links[0].publish().get_meta()
+            return {
+                **result,
+                "public_url": link.public_url,
+                "download_link": link.get_download_link(),
+            }
+
+        return {
+            "google_report": None,
+            "yandex_public_url": None,
+            "yandex_download_link": None,
+        }
+
+    def _create_attendance_report(
+            self,
+            total_report: TotalReport,
+            report_config: dict[str, Any],
+            customer_count: int,
+    ):
+        """Создает отчет по посещаемости."""
+
+        total_report_map = {el.name: el for el in total_report.elements}
+
+        result = {}
+        for h1_header, h2_headers in report_config.items():
+            h1 = result.setdefault(h1_header, {})
+            for h2_header, h3_headers in h2_headers.items():
+                h2 = h1.setdefault(h2_header, {})
+                for h3_header, elements in h3_headers.items():
+                    h2.setdefault(h3_header, 0)
+                    for element in elements:
+                        if total_report_map.get(element):
+                            h2[h3_header] += total_report_map[element].good_amount
+
+        result["Количество посещений"]["Количество посещений / Количество посещений"]["Количество посещений / Количество посещений / Количество посещений"] = customer_count
+
+        return result
+
+    @staticmethod
+    def _period_cutting(date_from: datetime, date_to: datetime) -> tuple[datetime, datetime]:
+        """Cut date_to to the end of a date_from month if date_from and date_to are in different months,
+        because the report is built by month
+        """
+        if date_from.month == date_to.month - 1:
+            days_in_month = monthrange(date_from.year, date_from.month)[1]
+            date_to = datetime.combine(
+                date(date_from.year, date_from.month, days_in_month),
+                datetime.max.time(),
+            )
+        return date_from, date_to
 
 
 def get_worker_service():

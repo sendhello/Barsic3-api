@@ -2,7 +2,10 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import Field
+from dns.grange import from_text
+
+from typing import Self
+from pydantic import Field, field_validator
 
 from .base import Model
 
@@ -43,11 +46,21 @@ class TotalReportElement(Model):
     super_name: str = Field(alias="SuperName")
     view_string: str | None = Field(alias="ViewString")
     name: str = Field(alias="Name")
-    good_amount: int | None = Field(alias="GoodAmount")
-    amount: float | None = Field(alias="Amount")
+    good_amount: int = Field(alias="GoodAmount")
+    amount: float = Field(alias="Amount")
     # super_parent_id: int = Field(alias="SuperParentId")
     # good_stock_id_from: int = Field(alias="GoodStockIdFrom")
     # lookup_interface_id: int | None = Field(alias="LookupInterfaceId")
+
+    @field_validator("amount", mode="before")
+    @classmethod
+    def float_validator(cls, v) -> float:
+        return float(v or 0)
+
+    @field_validator("good_amount", mode="before")
+    @classmethod
+    def int_validator(cls, v) -> int:
+        return int(v or 0)
 
 
 class TotalReport(Model):
@@ -60,9 +73,6 @@ class TotalReport(Model):
         amount = 0
         good_amount = 0.0
         for element in self.elements:
-            if element.name == "Депозит" or element.good_amount is None or element.amount is None:
-                continue
-
             good_amount += element.good_amount
             amount += element.amount
 
@@ -73,6 +83,26 @@ class TotalReport(Model):
             good_amount=good_amount,
             amount=amount,
         )
+
+    def __add__(self, other: Self) -> Self:
+
+        for other_element in other.elements:
+            is_updated = False
+            for self_element in self.elements:
+                if (
+                        other_element.name == self_element.name
+                        and other_element.view_string == self_element.view_string
+                        and other_element.super_name == self_element.super_name
+                ):
+                    self_element.good_amount += other_element.good_amount
+                    self_element.amount += other_element.amount
+                    is_updated = True
+                    break
+
+            if not is_updated:
+                self.elements.append(other_element)
+
+        return self
 
 
 class ClientsCount(Model):
