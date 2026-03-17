@@ -1,10 +1,11 @@
 import logging
 import os
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from fastapi.exceptions import HTTPException
 from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from starlette import status
 from yadisk import AsyncYaDisk, YaDisk
@@ -372,6 +373,391 @@ class YandexRepository:
             + f" Отчет по купленным товарам ({datetime.now().timestamp()}).xlsx"
         )
         logger.info(f"Сохранение отчета по купленным товарам за {date_} в {path}")
+        path = self.create_path(path, date_from)
+        self.save_file(path, wb)
+        return path
+
+    def save_attendance_report(
+        self,
+        report: dict,
+        date_from: datetime,
+        date_to: datetime,
+    ) -> str:
+        """Сохраняет отчет по посещаемости в Excel (генерация с нуля)."""
+
+        level1_order = [
+            "тарифы (посещение)",
+            "плавание",
+            "гашение в барсе (посещение)",
+            "товары (покупки)",
+            "онлайн продукты (insales) (покупки)",
+        ]
+        level2_order = {
+            "тарифы (посещение)": ["частные гости", "корпоративные гости", "промо"],
+            "плавание": ["плавание"],
+            "гашение в барсе (посещение)": ["частные гости", "корпоративные гости", "гости отеля", "промо"],
+            "товары (покупки)": ["частные гости", "корпоративные гости"],
+            "онлайн продукты (insales) (покупки)": ["частные гости", "корпоративные гости", "промо"],
+        }
+        level2_aliases = {
+            "корп": "корпоративные гости",
+            "корп гости": "корпоративные гости",
+            "корпоративные гости": "корпоративные гости",
+        }
+        swimming_section = "плавание"
+        attendance_sections = {"тарифы (посещение)", "гашение в барсе (посещение)"}
+
+        def normalize(text: str | None) -> str:
+            if text is None:
+                return ""
+            return " ".join(str(text).replace("\xa0", " ").split()).strip().lower()
+
+        def title_last(text: str | None) -> str:
+            parts = [part.strip() for part in str(text or "").split("/") if part.strip()]
+            if not parts:
+                return ""
+            return " ".join(parts[-1].replace("\xa0", " ").split()).strip()
+
+        def canonical_level2(text: str) -> str:
+            normalized = normalize(text)
+            return level2_aliases.get(normalized, normalized)
+
+        def to_date(value: date | datetime | str) -> date | None:
+            if isinstance(value, datetime):
+                return value.date()
+            if isinstance(value, date):
+                return value
+            if isinstance(value, str):
+                try:
+                    return datetime.fromisoformat(value).date()
+                except ValueError:
+                    return None
+            return None
+
+        def get_report_data(report_item) -> dict:
+            if hasattr(report_item, "report_data"):
+                return report_item.report_data or {}
+            if isinstance(report_item, dict):
+                return report_item.get("report_data", report_item)
+            return {}
+
+        def order_level1(level1_key: str) -> tuple[int, str]:
+            try:
+                return (level1_order.index(level1_key), level1_key)
+            except ValueError:
+                return (len(level1_order), level1_key)
+
+        def order_level2(level1_key: str, level2_key: str) -> tuple[int, str]:
+            expected_order = level2_order.get(level1_key, [])
+            try:
+                return (expected_order.index(level2_key), level2_key)
+            except ValueError:
+                return (len(expected_order), level2_key)
+
+        metrics_tree: dict[str, dict[str, set[str]]] = {}
+        level1_titles: dict[str, str] = {}
+        level2_titles: dict[tuple[str, str], str] = {}
+        level3_titles: dict[tuple[str, str, str], str] = {}
+        reports_by_date: dict[date, dict] = {}
+        swim_metric_keys: set[tuple[str, str, str]] = set()
+        swim_title = "Плавание"
+
+        for day_key, day_value in (report or {}).items():
+            day = to_date(day_key)
+            if day is None:
+                continue
+
+            day_data = get_report_data(day_value)
+            reports_by_date[day] = day_data
+
+            if not isinstance(day_data, dict):
+                continue
+            for h1, h2_data in day_data.items():
+                if not isinstance(h2_data, dict):
+                    continue
+
+                h1_title = title_last(h1)
+                h1_key = normalize(h1_title)
+                if "количество посещений" in h1_key:
+                    continue
+
+                if h1_key == swimming_section:
+                    for h2, h3_data in h2_data.items():
+                        if not isinstance(h3_data, dict):
+                            continue
+                        h2_key = canonical_level2(title_last(h2))
+                        for h3, value in h3_data.items():
+                            if not isinstance(value, int | float | Decimal):
+                                continue
+                            h3_title = title_last(h3)
+                            h3_key = normalize(h3_title)
+                            swim_metric_keys.add((h1_key, h2_key, h3_key))
+                            if h3_key == swimming_section:
+                                swim_title = h3_title
+                    continue
+
+                level1_titles.setdefault(h1_key, h1_title)
+                level1_metrics = metrics_tree.setdefault(h1_key, {})
+                for h2, h3_data in h2_data.items():
+                    if not isinstance(h3_data, dict):
+                        continue
+
+                    h2_title = title_last(h2)
+                    h2_key = canonical_level2(h2_title)
+                    level2_titles.setdefault((h1_key, h2_key), h2_title)
+                    level2_metrics = level1_metrics.setdefault(h2_key, set())
+                    for h3, value in h3_data.items():
+                        if not isinstance(value, int | float | Decimal):
+                            continue
+                        h3_title = title_last(h3)
+                        h3_key = normalize(h3_title)
+                        level3_titles.setdefault((h1_key, h2_key, h3_key), h3_title)
+                        level2_metrics.add(h3_key)
+
+        ordered_metrics: list[tuple[str, str, str]] = []
+        for level1_key in sorted(metrics_tree.keys(), key=order_level1):
+            level2_map = metrics_tree[level1_key]
+            for level2_key in sorted(level2_map.keys(), key=lambda item: order_level2(level1_key, item)):
+                level3_keys = sorted(
+                    level2_map[level2_key],
+                    key=lambda item: normalize(level3_titles.get((level1_key, level2_key, item), item)),
+                )
+                for level3_key in level3_keys:
+                    ordered_metrics.append((level1_key, level2_key, level3_key))
+
+        attendance_metrics = [metric for metric in ordered_metrics if metric[0] in attendance_sections]
+        purchase_metrics = [metric for metric in ordered_metrics if metric[0] not in attendance_sections]
+
+        attendance_start_col = 3
+        swimming_col = None
+        swim_order_index = level1_order.index(swimming_section)
+        swim_insert_pos = sum(
+            1
+            for metric in attendance_metrics
+            if order_level1(metric[0])[0] < swim_order_index
+        )
+
+        metric_column_map: dict[tuple[str, str, str], int] = {}
+        current_col = attendance_start_col
+        for i, metric in enumerate(attendance_metrics):
+            if swim_metric_keys and i == swim_insert_pos:
+                swimming_col = current_col
+                current_col += 1
+            metric_column_map[metric] = current_col
+            current_col += 1
+        if swim_metric_keys and swim_insert_pos >= len(attendance_metrics):
+            swimming_col = current_col
+            current_col += 1
+
+        attendance_end_col = current_col - 1 if current_col > attendance_start_col else attendance_start_col - 1
+        sales_col = attendance_end_col + 1 if attendance_end_col >= attendance_start_col else attendance_start_col
+        purchase_start_col = sales_col + 1
+        purchase_end_col = purchase_start_col + len(purchase_metrics) - 1
+        last_col = max(2, sales_col, purchase_end_col, swimming_col or 0)
+
+        for i, metric in enumerate(purchase_metrics):
+            metric_column_map[metric] = purchase_start_col + i
+        level1_by_col = {col: metric[0] for metric, col in metric_column_map.items()}
+        grouped_metric_columns = set(metric_column_map.values())
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = str(date_from.year)
+
+        header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        metric_header_align = Alignment(horizontal="center", vertical="bottom", text_rotation=90, wrap_text=True)
+        data_align = Alignment(horizontal="center", vertical="center")
+        day_header_fill = PatternFill(fill_type="solid", start_color="FFF7CB4D", end_color="FFF7CB4D")
+        total_header_fill = PatternFill(fill_type="solid", start_color="FFFFFF00", end_color="FFFFFF00")
+        default_group_fill = PatternFill(fill_type="solid", start_color="FFE2E2E2", end_color="FFE2E2E2")
+        group_fills = {
+            "тарифы (посещение)": PatternFill(fill_type="solid", start_color="FFF7CB4D", end_color="FFF7CB4D"),
+            "плавание": PatternFill(fill_type="solid", start_color="FF9BD4F5", end_color="FF9BD4F5"),
+            "гашение в барсе (посещение)": PatternFill(fill_type="solid", start_color="FFF4A6A6", end_color="FFF4A6A6"),
+            "товары (покупки)": PatternFill(fill_type="solid", start_color="FFB7D7A8", end_color="FFB7D7A8"),
+            "онлайн продукты (insales) (покупки)": PatternFill(
+                fill_type="solid",
+                start_color="FFF9CB9C",
+                end_color="FFF9CB9C",
+            ),
+        }
+
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=last_col)
+        ws.cell(row=1, column=1).value = "Отчет по количеству в разрезе дня"
+        ws.cell(row=1, column=1).font = ReportStyle.h1
+        ws.cell(row=1, column=1).alignment = header_align
+
+        grouped_metrics = sorted(metric_column_map.items(), key=lambda item: item[1])
+        if grouped_metrics:
+            first_metric, first_col = grouped_metrics[0]
+            start_col = first_col
+            prev_col = first_col
+            current_level1 = first_metric[0]
+            for metric, col in grouped_metrics[1:]:
+                if metric[0] != current_level1 or col != prev_col + 1:
+                    ws.merge_cells(start_row=2, start_column=start_col, end_row=2, end_column=prev_col)
+                    ws.cell(row=2, column=start_col).value = level1_titles.get(current_level1, current_level1)
+                    start_col = col
+                    current_level1 = metric[0]
+                prev_col = col
+            ws.merge_cells(start_row=2, start_column=start_col, end_row=2, end_column=prev_col)
+            ws.cell(row=2, column=start_col).value = level1_titles.get(current_level1, current_level1)
+
+            first_metric, first_col = grouped_metrics[0]
+            start_col = first_col
+            prev_col = first_col
+            current_pair = (first_metric[0], first_metric[1])
+            for metric, col in grouped_metrics[1:]:
+                pair = (metric[0], metric[1])
+                if pair != current_pair or col != prev_col + 1:
+                    ws.merge_cells(start_row=3, start_column=start_col, end_row=3, end_column=prev_col)
+                    ws.cell(row=3, column=start_col).value = level2_titles.get(current_pair, current_pair[1])
+                    start_col = col
+                    current_pair = pair
+                prev_col = col
+            ws.merge_cells(start_row=3, start_column=start_col, end_row=3, end_column=prev_col)
+            ws.cell(row=3, column=start_col).value = level2_titles.get(current_pair, current_pair[1])
+
+        for metric in attendance_metrics:
+            col = metric_column_map[metric]
+            ws.cell(row=4, column=col).value = level3_titles.get(metric, metric[2])
+        for metric in purchase_metrics:
+            col = metric_column_map[metric]
+            ws.cell(row=4, column=col).value = level3_titles.get(metric, metric[2])
+
+        ws.merge_cells(start_row=2, start_column=1, end_row=4, end_column=1)
+        ws.cell(row=2, column=1).value = "Дни/Продукт"
+
+        ws.merge_cells(start_row=2, start_column=2, end_row=4, end_column=2)
+        ws.cell(row=2, column=2).value = "Количество посещений"
+
+        ws.merge_cells(start_row=2, start_column=sales_col, end_row=4, end_column=sales_col)
+        ws.cell(row=2, column=sales_col).value = "Количество продаж"
+
+        if swimming_col is not None:
+            ws.merge_cells(start_row=2, start_column=swimming_col, end_row=4, end_column=swimming_col)
+            ws.cell(row=2, column=swimming_col).value = swim_title
+
+        special_vertical_cols = {2, sales_col}
+        if swimming_col is not None:
+            special_vertical_cols.add(swimming_col)
+
+        for row in range(2, 5):
+            for col in range(1, last_col + 1):
+                cell = ws.cell(row=row, column=col)
+                cell.font = ReportStyle.h3 if row in {2, 3} else ReportStyle.font_bold
+                if col in special_vertical_cols:
+                    cell.alignment = metric_header_align
+                elif row == 4 and col in grouped_metric_columns:
+                    cell.alignment = metric_header_align
+                else:
+                    cell.alignment = header_align
+                cell.border = ReportStyle.border
+                if col == 1:
+                    cell.fill = day_header_fill
+                elif col in {2, sales_col}:
+                    cell.fill = total_header_fill
+                elif swimming_col is not None and col == swimming_col:
+                    cell.fill = group_fills.get(swimming_section, default_group_fill)
+                else:
+                    cell.fill = group_fills.get(level1_by_col.get(col), default_group_fill)
+
+        ws.column_dimensions["A"].width = 14
+        ws.column_dimensions["B"].width = 7
+        if swimming_col is not None:
+            ws.column_dimensions[get_column_letter(swimming_col)].width = 7
+        ws.column_dimensions[get_column_letter(sales_col)].width = 7
+        for metric, col in metric_column_map.items():
+            header = level3_titles.get(metric, metric[2])
+            width = min(max(len(header) * 0.18 + 2, 4.5), 10)
+            if metric[1] == "гости отеля":
+                width = min(width * 2, 20)
+            ws.column_dimensions[get_column_letter(col)].width = width
+
+        ws.row_dimensions[1].height = 32
+        ws.row_dimensions[2].height = 34
+        ws.row_dimensions[3].height = 34
+        ws.row_dimensions[4].height = 140
+        ws.freeze_panes = "A5"
+
+        period_end = (date_to - timedelta(days=1)).date() if date_to.time() == datetime.min.time() else date_to.date()
+        if period_end < date_from.date():
+            period_end = date_from.date()
+
+        current_day = date_from.date()
+        row = 5
+        while current_day <= period_end:
+            ws.cell(row=row, column=1).value = current_day
+            ws.cell(row=row, column=1).number_format = "DD.MM.YYYY"
+
+            day_data = reports_by_date.get(current_day, {})
+            customer_count = None
+            swim_value = 0
+
+            if isinstance(day_data, dict):
+                for h1, h2_data in day_data.items():
+                    if not isinstance(h2_data, dict):
+                        continue
+                    h1_key = normalize(title_last(h1))
+                    for h2, h3_data in h2_data.items():
+                        if not isinstance(h3_data, dict):
+                            continue
+                        h2_key = canonical_level2(title_last(h2))
+                        for h3, value in h3_data.items():
+                            if not isinstance(value, int | float | Decimal):
+                                continue
+                            if "количество посещений" in h1_key:
+                                customer_count = value
+                                continue
+                            h3_key = normalize(title_last(h3))
+                            metric_key = (h1_key, h2_key, h3_key)
+                            if metric_key in swim_metric_keys:
+                                swim_value += value
+                                continue
+                            col = metric_column_map.get(metric_key)
+                            if col is not None:
+                                ws.cell(row=row, column=col).value = value
+
+            if swimming_col is not None:
+                ws.cell(row=row, column=swimming_col).value = swim_value
+
+            if attendance_end_col >= attendance_start_col:
+                ws.cell(row=row, column=2).value = (
+                    f"=SUM({get_column_letter(attendance_start_col)}{row}:{get_column_letter(attendance_end_col)}{row})"
+                )
+            elif customer_count is not None:
+                ws.cell(row=row, column=2).value = customer_count
+            else:
+                ws.cell(row=row, column=2).value = 0
+
+            if purchase_metrics:
+                ws.cell(row=row, column=sales_col).value = (
+                    f"=SUM({get_column_letter(purchase_start_col)}{row}:{get_column_letter(purchase_end_col)}{row})"
+                )
+            else:
+                ws.cell(row=row, column=sales_col).value = 0
+
+            for col in range(1, last_col + 1):
+                cell = ws.cell(row=row, column=col)
+                cell.font = ReportStyle.font
+                cell.alignment = data_align
+                cell.border = ReportStyle.border
+
+            row += 1
+            current_day += timedelta(days=1)
+
+        if date_from.date() == period_end:
+            period_name = date_from.strftime("%Y-%m-%d")
+        else:
+            period_name = f"{date_from:%Y-%m-%d} - {period_end:%Y-%m-%d}"
+
+        path = (
+            settings.local_folder
+            + settings.report_path
+            + period_name
+            + f" Отчет посещаемости ({datetime.now().timestamp()}).xlsx"
+        )
+        logger.info(f"Сохранение отчета по посещаемости за {period_name} в {path}")
         path = self.create_path(path, date_from)
         self.save_file(path, wb)
         return path

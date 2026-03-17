@@ -391,12 +391,15 @@ class WorkerService:
 
                 attendance_report[current_date.date()] = current_attendance_report
 
+            current_date += timedelta(days=1)
+
         # Save to Yandex
-        report_path = self._yandex_repo.save_purchased_goods_report(
+        report_path = self._yandex_repo.save_attendance_report(
             report=attendance_report,
             date_from=date_from,
             date_to=date_to,
         )
+
         result = {"ok": True, "local_path": report_path}
         if save_to_yandex:
             links = self._yandex_repo.sync_to_yadisk([report_path], date_from)
@@ -434,7 +437,7 @@ class WorkerService:
                         if total_report_map.get(element):
                             h2[h3_header] += total_report_map[element].good_amount
 
-        result["Количество посещений"]["Количество посещений / Количество посещений"]["Количество посещений / Количество посещений / Количество посещений"] = customer_count
+        result.setdefault("Количество посещений", {}).setdefault("Количество посещений / Количество посещений", {}).setdefault("Количество посещений / Количество посещений / Количество посещений", customer_count)
 
         return result
 
