@@ -118,6 +118,14 @@ class ReportConfigService:
 
         return GoogleReportId.model_validate(google_doc_id_)
 
+    async def get_attendance_doc_id_by_date(self, date_: datetime) -> GoogleReportId | None:
+        month = date_.strftime("%Y-%m")
+        google_doc_id_ = await GoogleReportIdModel.get_by_month(month, report_type="attendance")
+        if google_doc_id_ is None:
+            return None
+
+        return GoogleReportId.model_validate(google_doc_id_)
+
     async def add_google_report_id(self, google_report_id: GoogleReportIdCreate) -> None:
         google_doc_id_dto = jsonable_encoder(google_report_id)
         try:
@@ -128,6 +136,18 @@ class ReportConfigService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="GoogleReportId with such title already exists",
             )
+
+    async def save_google_report_id(self, google_report_id: GoogleReportIdCreate) -> None:
+        google_doc_id_dto = jsonable_encoder(google_report_id)
+        existed_google_doc_id = await GoogleReportIdModel.get_by_month(
+            month=google_report_id.month,
+            report_type=google_report_id.report_type,
+        )
+        if existed_google_doc_id is None:
+            await GoogleReportIdModel.create(**google_doc_id_dto)
+            return
+
+        await existed_google_doc_id.update(**google_doc_id_dto)
 
 
 def get_report_config_service():

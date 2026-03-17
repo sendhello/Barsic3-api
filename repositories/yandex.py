@@ -746,16 +746,13 @@ class YandexRepository:
             row += 1
             current_day += timedelta(days=1)
 
-        if date_from.date() == period_end:
-            period_name = date_from.strftime("%Y-%m-%d")
-        else:
-            period_name = f"{date_from:%Y-%m-%d} - {period_end:%Y-%m-%d}"
+        period_name = date_from.strftime("%Y-%m")
 
         path = (
             settings.local_folder
             + settings.report_path
             + period_name
-            + f" Отчет посещаемости ({datetime.now().timestamp()}).xlsx"
+            + f" Отчет посещаемости.xlsx"
         )
         logger.info(f"Сохранение отчета по посещаемости за {period_name} в {path}")
         path = self.create_path(path, date_from)

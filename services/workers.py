@@ -14,6 +14,7 @@ from db.mssql import MsSqlDatabase
 from legacy import functions
 from legacy.barsicreport2 import BarsicReport2Service, get_legacy_service
 from legacy.to_google_sheets import get_letter_column_name
+from repositories.google import GoogleRepository, get_google_repo
 from repositories.yandex import YandexRepository, get_yandex_repo
 from schemas.google_report_ids import GoogleReportIdCreate
 from schemas.report_cache import ReportCacheCreate
@@ -35,6 +36,7 @@ class WorkerService:
         legacy_service: BarsicReport2Service,
         report_service: ReportService,
         yandex_repo: YandexRepository,
+        google_repo: GoogleRepository,
     ):
         self._bars_srv = bars_srv
         self._bars_service = bars_service
@@ -43,6 +45,7 @@ class WorkerService:
         self._legacy_service = legacy_service
         self._report_service = report_service
         self._yandex_repo = yandex_repo
+        self._google_repo = google_repo
 
     def choose_db(self, db_name: str):
         self._bars_service.choose_db(db_name)
@@ -388,33 +391,76 @@ class WorkerService:
                     report_data=report_data,
                 )
                 await self._report_service.save_report(current_attendance_report)
-
-                attendance_report[current_date.date()] = current_attendance_report
+            attendance_report[current_date.date()] = current_attendance_report
 
             current_date += timedelta(days=1)
 
-        # Save to Yandex
         report_path = self._yandex_repo.save_attendance_report(
             report=attendance_report,
             date_from=date_from,
             date_to=date_to,
         )
 
-        result = {"ok": True, "local_path": report_path}
+        result = {
+            "ok": True,
+            "local_path": report_path,
+            "yandex_public_url": None,
+            "yandex_download_link": None,
+            "google_report": None,
+        }
+
         if save_to_yandex:
             links = self._yandex_repo.sync_to_yadisk([report_path], date_from)
             link = links[0].publish().get_meta()
-            return {
-                **result,
-                "public_url": link.public_url,
-                "download_link": link.get_download_link(),
-            }
+            result.update({
+                "yandex_public_url": link.public_url,
+                "yandex_download_link": link.get_download_link(),
+            })
 
-        return {
-            "google_report": None,
-            "yandex_public_url": None,
-            "yandex_download_link": None,
-        }
+        if save_to_google:
+            google_report = await self._get_cached_attendance_report_for_month(
+                date_from=date_from,
+                report_type="attendance",
+                report=attendance_report,
+            )
+            existed_google_report = await self._report_config_service.get_attendance_doc_id_by_date(date_from)
+            report_path, google_doc_id = self._google_repo.save_attendance_report(
+                report=google_report,
+                date_from=date_from,
+                date_to=date_to,
+                google_doc_id=existed_google_report.doc_id if existed_google_report is not None else None,
+            )
+            await self._report_config_service.save_google_report_id(
+                GoogleReportIdCreate(
+                    month=date_from.strftime("%Y-%m"),
+                    doc_id=google_doc_id,
+                    report_type="attendance",
+                    version=1,
+                )
+            )
+            result.update({
+                "google_report": report_path,
+            })
+
+        return result
+
+    async def _get_cached_attendance_report_for_month(
+        self,
+        date_from: datetime,
+        report_type: str,
+        report: dict[date, Any],
+    ) -> dict[date, Any]:
+        month_report: dict[date, Any] = {}
+        days_in_month = monthrange(date_from.year, date_from.month)[1]
+        for day in range(1, days_in_month + 1):
+            current_day = date(date_from.year, date_from.month, day)
+            day_report = report.get(current_day)
+            if day_report is None:
+                day_report = await self._report_service.get_report_by_date(report_type, current_day)
+            if day_report is not None:
+                month_report[current_day] = day_report
+
+        return month_report
 
     def _create_attendance_report(
             self,
@@ -469,4 +515,5 @@ def get_worker_service():
         legacy_service=get_legacy_service(),
         report_service=get_report_service(),
         yandex_repo=get_yandex_repo(),
+        google_repo=get_google_repo(),
     )

@@ -104,7 +104,6 @@ async def create_purchased_goods_report(
 
 @router.post("/create_attendance_report")
 async def create_attendance_report(
-    db_name: Annotated[gen_db_name_enum(), Query(description="База данных")],
     date_from: datetime = datetime.combine(date.today(), datetime.min.time()),
     date_to: datetime = datetime.combine(date.today(), datetime.min.time()),
     save_to_yandex: bool = False,
@@ -112,7 +111,7 @@ async def create_attendance_report(
     use_cache: bool = True,
     worker_service: WorkerService = Depends(get_worker_service),
 ) -> dict:
-    """Список Организаций."""
+    """Отчет по посещениям."""
 
     if not save_to_google and not save_to_yandex:
         raise HTTPException(status_code=404, detail="At least one of 'save_to_google' or 'save_to_yandex' must be True")
@@ -120,7 +119,7 @@ async def create_attendance_report(
     if date_from >= date_to:
         raise HTTPException(status_code=404, detail="date_from >= date_to")
 
-    worker_service.choose_db(db_name=db_name.value)
+    worker_service.choose_db(db_name="Aquapark_Ulyanovsk")
     return await worker_service.create_attendance_report(
         date_from=date_from,
         date_to=date_to,
