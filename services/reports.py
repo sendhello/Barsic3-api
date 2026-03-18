@@ -31,7 +31,7 @@ class ReportService:
             await ReportCacheModel.create(**report_cache_dto)
 
         except IntegrityError:
-            raise HTTPException(  # noqa: B904
+            raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="ReportCache with such 'date' and 'report_type' already exists",
             )

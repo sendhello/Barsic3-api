@@ -64,42 +64,25 @@ exclude = ["tests", "migrations"]
 
 
 [tool.ruff.lint]
-select = ["ALL"]
+select = [
+  "E",   # pycodestyle errors
+  "F",   # pyflakes
+  "W",   # pycodestyle warnings
+  "I",   # isort (imports)
+  "UP",  # pyupgrade
+  "B",   # flake8-bugbear
+  "C4",  # flake8-comprehensions
+  "SIM", # flake8-simplify
+  "RET", # flake8-return
+  "RUF", # Ruff rules
+  "PL",  # Pylint-inspired rules
+]
 ignore = [
-    "ANN",
-    "D",
-    "RUF",
-    "UP007",
-    "UP",
-    "TD002",
-    "TD003",
-    "A003",
-    "EXE",
-    "ERA",
-    "FIX002",
-    "PLR0913",
+    "W191", # Tabs (use formatter to normalize)
+    "B904",
+    "B008",
     "PLR2004",
-    "PGH003",
-    "INP001",
-    "DTZ005",
-    "S501",
-    "TRY401",
-    "EM101",
-    "FBT001",
-    "FBT002",
-    "BLE001",
-    "COM812",
-    "G004",
-    "FBT003",
-    "S104",
-    "S608",
-    "TRY400",
-    "B009",
-    "N805",
-    "PGH004",
-    "TRY003",
-    "PLR0912",
-    "PLR0911",
+    "RUF012",
 ]
 
 
