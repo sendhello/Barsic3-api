@@ -27,7 +27,7 @@ class ReportConfigService:
     async def get_report_names(self) -> list[str]:
         return [ReportName.model_validate(report_name_).title for report_name_ in await ReportNameModel.get_all()]
 
-    async def get_report_groups(self, report_name: str) -> list[ReportGroup]:
+    async def get_report_groups(self, report_name: str, exclude: list[str] = None) -> list[ReportGroup]:
         report_ = await ReportNameModel.get_by_title(report_name)
         if report_ is None:
             raise HTTPException(
@@ -36,6 +36,9 @@ class ReportConfigService:
             )
 
         report = ReportNameDetail.model_validate(report_)
+        if exclude:
+            report.groups = [group for group in report.groups if group.title not in exclude]
+
         return report.groups
 
     async def get_report_elements(self, report_name: str) -> list[ReportElement]:
@@ -67,8 +70,7 @@ class ReportConfigService:
     async def get_report_tree(self, report_name: str) -> dict[str, dict | list[str]]:
         """Получение дерева групп отчета, где в листьях находятся названия элементов."""
 
-        report_groups = await self.get_report_groups(report_name)
-        group_ids = {group.id for group in report_groups}
+        report_groups = await self.get_report_groups(report_name, exclude=["Не учитывать"])
 
         children_by_parent: dict[UUID | None, list[ReportGroup]] = {}
         elements_by_group: dict[UUID, list[str]] = {}

@@ -346,6 +346,7 @@ class WorkerService:
 
         attendance_report = {}
         date_from, date_to = self._period_cutting(date_from, date_to)
+        await self._check_undistributed_services(report_name="attendance")
 
         logger.info(f"Try build attendance report from {date_from} to {date_to}")
         current_date = date_from
@@ -443,6 +444,26 @@ class WorkerService:
             })
 
         return result
+
+    async def _check_undistributed_services(self, report_name: str) -> None:
+        all_tariffs = []
+        organizations = self._bars_service.get_organisations()
+        for organization in organizations:
+            organization_tariffs = self._bars_service.get_tariffs(organization.super_account_id)
+            all_tariffs.extend([tariff.name for tariff in organization_tariffs])
+
+        all_tariffs.append("Смайл")
+        distributed_tariffs = await self._report_config_service.get_report_elements(report_name)
+        distributed_tariff_names = {tariff.title for tariff in distributed_tariffs}
+        new_tariffs = sorted(set(all_tariffs) - distributed_tariff_names)
+
+        if new_tariffs:
+            error_message = f"Найдены нераспределенные тарифы в отчете {report_name}: {new_tariffs}"
+            logger.error(error_message)
+            raise HTTPException(
+                status_code=409,
+                detail=error_message,
+            )
 
     async def _get_cached_attendance_report_for_month(
         self,

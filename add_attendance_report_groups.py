@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_REPORT_NAME = "attendance"
 DEFAULT_DELIMITER = " / "
-DEFAULT_JSON_PATH = Path(__file__).resolve().parent / "new_report_groups.json"
+DEFAULT_JSON_PATH = Path(__file__).resolve().parent / "attendance_report_groups.json"
 
 
 @dataclass
