@@ -2,13 +2,12 @@ import logging
 from calendar import monthrange
 from collections import defaultdict
 from datetime import date, datetime, timedelta
-from typing import Optional, List, Dict, Any, Union, Tuple, Set, Iterable, AsyncIterable, AsyncIterator
+from typing import Any
+
 import gspread
 import gspread_formatting as gf
 from fastapi import HTTPException
 
-from schemas.bars import TotalReport
-from schemas.total_report import DBName, Company
 from core.settings import settings
 from db.mssql import MsSqlDatabase
 from legacy import functions
@@ -16,8 +15,10 @@ from legacy.barsicreport2 import BarsicReport2Service, get_legacy_service
 from legacy.to_google_sheets import get_letter_column_name
 from repositories.google import GoogleRepository, get_google_repo
 from repositories.yandex import YandexRepository, get_yandex_repo
+from schemas.bars import TotalReport
 from schemas.google_report_ids import GoogleReportIdCreate
 from schemas.report_cache import ReportCacheCreate
+from schemas.total_report import DBName
 from services.bars import BarsService, get_bars_service
 from services.report_config import ReportConfigService, get_report_config_service
 from services.reports import ReportService, get_report_service
@@ -334,7 +335,6 @@ class WorkerService:
 
         return result
 
-
     async def create_attendance_report(
         self,
         date_from: datetime,
@@ -343,7 +343,6 @@ class WorkerService:
         save_to_google: bool,
         use_cache: bool = True,
     ) -> dict:
-
         attendance_report = {}
         date_from, date_to = self._period_cutting(date_from, date_to)
         await self._check_undistributed_services(report_name="attendance")
@@ -351,18 +350,22 @@ class WorkerService:
         logger.info(f"Try build attendance report from {date_from} to {date_to}")
         current_date = date_from
         while current_date < date_to and (
-                current_date.month == date_to.month or current_date + timedelta(days=1) == date_to
+            current_date.month == date_to.month or current_date + timedelta(days=1) == date_to
         ):
             report_type = "attendance"
             if use_cache:
-                current_attendance_report = await self._report_service.get_report_by_date(report_type, current_date.date())
+                current_attendance_report = await self._report_service.get_report_by_date(
+                    report_type, current_date.date()
+                )
             else:
                 current_attendance_report = None
                 await self._report_service.delete_report(report_type, current_date.date())
 
             if current_attendance_report is None:
                 report_config = await self._report_config_service.get_report_tree(report_type)
-                companies = [company for company in self._legacy_service.get_companies() if company.db_name == DBName.AQUA]
+                companies = [
+                    company for company in self._legacy_service.get_companies() if company.db_name == DBName.AQUA
+                ]
 
                 total_report = None
                 for company in companies:
@@ -379,7 +382,9 @@ class WorkerService:
                     else:
                         total_report += company_total_report
 
-                customer_count = self._bars_service.get_customer_count(date_from=current_date, date_to=current_date + timedelta(days=1))
+                customer_count = self._bars_service.get_customer_count(
+                    date_from=current_date, date_to=current_date + timedelta(days=1)
+                )
 
                 report_data = self._create_attendance_report(
                     total_report=total_report,
@@ -413,10 +418,12 @@ class WorkerService:
         if save_to_yandex:
             links = self._yandex_repo.sync_to_yadisk([report_path], date_from)
             link = links[0].publish().get_meta()
-            result.update({
-                "yandex_public_url": link.public_url,
-                "yandex_download_link": link.get_download_link(),
-            })
+            result.update(
+                {
+                    "yandex_public_url": link.public_url,
+                    "yandex_download_link": link.get_download_link(),
+                }
+            )
 
         if save_to_google:
             google_report = await self._get_cached_attendance_report_for_month(
@@ -439,9 +446,11 @@ class WorkerService:
                     version=1,
                 )
             )
-            result.update({
-                "google_report": report_path,
-            })
+            result.update(
+                {
+                    "google_report": report_path,
+                }
+            )
 
         return result
 
@@ -484,10 +493,10 @@ class WorkerService:
         return month_report
 
     def _create_attendance_report(
-            self,
-            total_report: TotalReport,
-            report_config: dict[str, Any],
-            customer_count: int,
+        self,
+        total_report: TotalReport,
+        report_config: dict[str, Any],
+        customer_count: int,
     ):
         """Создает отчет по посещаемости."""
 
@@ -504,7 +513,9 @@ class WorkerService:
                         if total_report_map.get(element):
                             h2[h3_header] += total_report_map[element].good_amount
 
-        result.setdefault("Количество посещений", {}).setdefault("Количество посещений / Количество посещений", {}).setdefault("Количество посещений / Количество посещений / Количество посещений", customer_count)
+        result.setdefault("Количество посещений", {}).setdefault(
+            "Количество посещений / Количество посещений", {}
+        ).setdefault("Количество посещений / Количество посещений / Количество посещений", customer_count)
 
         return result
 

@@ -81,9 +81,7 @@ class ReportConfigService:
             elements_ = await ReportElementModel.get_by_group_id(report_group_id=group.id)
             elements_by_group[group.id] = [ReportElement.model_validate(el).title for el in elements_]
 
-        root_groups = [
-            group for group in report_groups if group.parent_id is None
-        ]
+        root_groups = [group for group in report_groups if group.parent_id is None]
 
         def build_group_tree(group: ReportGroup) -> dict | list[str]:
             nested_groups = children_by_parent.get(group.id, [])
@@ -134,7 +132,7 @@ class ReportConfigService:
             await GoogleReportIdModel.create(**google_doc_id_dto)
 
         except IntegrityError:
-            raise HTTPException(  # noqa: B904
+            raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="GoogleReportId with such title already exists",
             )

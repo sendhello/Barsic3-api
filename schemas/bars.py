@@ -1,10 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Self
 from uuid import UUID
 
-from dns.grange import from_text
-
-from typing import Self
 from pydantic import Field, field_validator
 
 from .base import Model
@@ -85,14 +83,13 @@ class TotalReport(Model):
         )
 
     def __add__(self, other: Self) -> Self:
-
         for other_element in other.elements:
             is_updated = False
             for self_element in self.elements:
                 if (
-                        other_element.name == self_element.name
-                        and other_element.view_string == self_element.view_string
-                        and other_element.super_name == self_element.super_name
+                    other_element.name == self_element.name
+                    and other_element.view_string == self_element.view_string
+                    and other_element.super_name == self_element.super_name
                 ):
                     self_element.good_amount += other_element.good_amount
                     self_element.amount += other_element.amount

@@ -151,9 +151,7 @@ async def _apply_structure(
 
             for level3, elements in level3_map.items():
                 if not isinstance(elements, list):
-                    raise ValueError(
-                        f"Invalid structure under '{level1} -> {level2} -> {level3}': expected list."
-                    )
+                    raise ValueError(f"Invalid structure under '{level1} -> {level2} -> {level3}': expected list.")
 
                 level3_path = (level1, level2, level3)
                 level3_title = _make_title(list(level3_path), delimiter)
@@ -169,9 +167,7 @@ async def _apply_structure(
 
                 for element_title in elements:
                     if not isinstance(element_title, str):
-                        raise ValueError(
-                            f"Invalid element under '{level1} -> {level2} -> {level3}': expected string."
-                        )
+                        raise ValueError(f"Invalid element under '{level1} -> {level2} -> {level3}': expected string.")
                     await _ensure_element(session, level3_group.id, element_title, stats)
 
 

@@ -5,8 +5,9 @@ import csv
 import logging
 import os
 import tempfile
-from datetime import datetime, date as dt_date
-from typing import Any, AsyncIterator, Tuple
+from collections.abc import AsyncIterator
+from datetime import datetime
+from typing import Any
 
 import yadisk
 from openpyxl import load_workbook
@@ -38,7 +39,7 @@ def _item_path(parent: str, item: Any) -> str:
 async def walk_all(
     client: yadisk.AsyncClient,
     root: str,
-) -> AsyncIterator[Tuple[str, Any]]:
+) -> AsyncIterator[tuple[str, Any]]:
     """
     Yield: (full_path, item_resource)
     """
@@ -148,7 +149,10 @@ async def main():
             writer.writeheader()
             writer.writerows(result)
 
-        remote_csv_path = f"{report_path.rstrip('/')}/result_from_{start_date.strftime('%Y-%m-%d')}_to_{end_date.strftime('%Y-%m-%d')}.csv"
+        remote_csv_path = (
+            f"{report_path.rstrip('/')}"
+            f"/result_from_{start_date.strftime('%Y-%m-%d')}_to_{end_date.strftime('%Y-%m-%d')}.csv"
+        )
         await client.upload("result.csv", remote_csv_path, overwrite=True)
         logger.info("CSV загружен на Яндекс.Диск: %s", remote_csv_path)
 

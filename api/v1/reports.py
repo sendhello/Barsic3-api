@@ -2,7 +2,7 @@ import logging
 from datetime import date, datetime, timedelta
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from constants import gen_db_name_enum
 from core.settings import settings

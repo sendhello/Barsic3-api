@@ -5,8 +5,8 @@ from decimal import Decimal
 
 from fastapi.exceptions import HTTPException
 from openpyxl import Workbook
-from openpyxl.utils import get_column_letter
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.utils import get_column_letter
 from starlette import status
 from yadisk import AsyncYaDisk, YaDisk
 from yadisk.objects import SyncResourceLinkObject
@@ -531,11 +531,7 @@ class YandexRepository:
         attendance_start_col = 3
         swimming_col = None
         swim_order_index = level1_order.index(swimming_section)
-        swim_insert_pos = sum(
-            1
-            for metric in attendance_metrics
-            if order_level1(metric[0])[0] < swim_order_index
-        )
+        swim_insert_pos = sum(1 for metric in attendance_metrics if order_level1(metric[0])[0] < swim_order_index)
 
         metric_column_map: dict[tuple[str, str, str], int] = {}
         current_col = attendance_start_col
@@ -646,9 +642,7 @@ class YandexRepository:
             for col in range(1, last_col + 1):
                 cell = ws.cell(row=row, column=col)
                 cell.font = ReportStyle.h3 if row in {2, 3} else ReportStyle.font_bold
-                if col in special_vertical_cols:
-                    cell.alignment = metric_header_align
-                elif row == 4 and col in grouped_metric_columns:
+                if col in special_vertical_cols or (row == 4 and col in grouped_metric_columns):
                     cell.alignment = metric_header_align
                 else:
                     cell.alignment = header_align
@@ -681,8 +675,7 @@ class YandexRepository:
         ws.freeze_panes = "A5"
 
         period_end = (date_to - timedelta(days=1)).date() if date_to.time() == datetime.min.time() else date_to.date()
-        if period_end < date_from.date():
-            period_end = date_from.date()
+        period_end = max(period_end, date_from.date())
 
         current_day = date_from.date()
         row = 5
@@ -722,7 +715,9 @@ class YandexRepository:
                 ws.cell(row=row, column=swimming_col).value = swim_value
 
             if attendance_end_col >= attendance_start_col:
-                ws.cell(row=row, column=2).value = (
+                ws.cell(
+                    row=row, column=2
+                ).value = (
                     f"=SUM({get_column_letter(attendance_start_col)}{row}:{get_column_letter(attendance_end_col)}{row})"
                 )
             elif customer_count is not None:
@@ -731,7 +726,9 @@ class YandexRepository:
                 ws.cell(row=row, column=2).value = 0
 
             if purchase_metrics:
-                ws.cell(row=row, column=sales_col).value = (
+                ws.cell(
+                    row=row, column=sales_col
+                ).value = (
                     f"=SUM({get_column_letter(purchase_start_col)}{row}:{get_column_letter(purchase_end_col)}{row})"
                 )
             else:
@@ -748,12 +745,7 @@ class YandexRepository:
 
         period_name = date_from.strftime("%Y-%m")
 
-        path = (
-            settings.local_folder
-            + settings.report_path
-            + period_name
-            + f" Отчет посещаемости.xlsx"
-        )
+        path = settings.local_folder + settings.report_path + period_name + " Отчет посещаемости.xlsx"
         logger.info(f"Сохранение отчета по посещаемости за {period_name} в {path}")
         path = self.create_path(path, date_from)
         self.save_file(path, wb)
@@ -1675,7 +1667,7 @@ class YandexRepository:
         try:
             file.save(path)
         except PermissionError as e:
-            logger.error(f'Файл "{path}" занят другим процессом.\n{repr(e)}')
+            logger.error(f'Файл "{path}" занят другим процессом.\n{e!r}')
 
     def create_path_yadisk(self, path, date_from):
         """Проверяет наличие указанного пути в Яндекс Диске.

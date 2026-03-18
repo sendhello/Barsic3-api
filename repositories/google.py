@@ -36,7 +36,7 @@ class GoogleRepository:
             google_doc.share(email, "user", "reader")
 
     @staticmethod
-    def _to_number(value: int | float | Decimal) -> int | float:
+    def _to_number(value: float | Decimal) -> int | float:
         if isinstance(value, Decimal):
             if value == value.to_integral():
                 return int(value)
@@ -222,12 +222,13 @@ class GoogleRepository:
 
         level1_by_col = {col: metric[0] for metric, col in metric_column_map.items()}
         period_end = (date_to - timedelta(days=1)).date() if date_to.time() == datetime.min.time() else date_to.date()
-        if period_end < date_from.date():
-            period_end = date_from.date()
+        period_end = max(period_end, date_from.date())
         days_count = (period_end - date_from.date()).days + 1
         total_rows = 4 + days_count
         last_col_letter = get_column_letter(last_col)
-        manual_metric_columns = sorted(col for metric, col in metric_column_map.items() if metric[0] in manual_fill_sections)
+        manual_metric_columns = sorted(
+            col for metric, col in metric_column_map.items() if metric[0] in manual_fill_sections
+        )
 
         report_name = "Отчет по количеству в разрезе дня"
         period_name = date_from.strftime("%Y-%m")
@@ -237,7 +238,9 @@ class GoogleRepository:
             try:
                 google_doc = client.open_by_key(google_doc_id)
             except Exception:
-                logger.exception("Не удалось открыть attendance Google-документ по id=%s. Создаем новый.", google_doc_id)
+                logger.exception(
+                    "Не удалось открыть attendance Google-документ по id=%s. Создаем новый.", google_doc_id
+                )
 
         if google_doc is None:
             google_doc = client.create(f"Отчет по количеству в разрезе дня ({period_name})")
@@ -440,7 +443,9 @@ class GoogleRepository:
         hotel_level2_width = int(level3_width * 1.5)
         corp_level2_width = int(level3_width * 1.2)
         hotel_level2_columns = sorted(col for metric, col in metric_column_map.items() if metric[1] == "гости отеля")
-        corp_level2_columns = sorted(col for metric, col in metric_column_map.items() if metric[1] == "корпоративные гости")
+        corp_level2_columns = sorted(
+            col for metric, col in metric_column_map.items() if metric[1] == "корпоративные гости"
+        )
 
         resize_requests = [
             {

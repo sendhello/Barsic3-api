@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from pyodbc import Connection, connect
 
@@ -17,7 +16,7 @@ class MsSqlDatabase:
         self._database = None
         self._user = user
         self._password = password
-        self._connection: Optional[Connection] = None
+        self._connection: Connection | None = None
 
     @property
     def _driver(self) -> str:
