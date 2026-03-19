@@ -291,26 +291,26 @@ class BarsicReport2Service:
             )
         all_sum = [
             "Итого по отчету",
-            Decimal(0.0),
-            Decimal(0.0),
-            Decimal(0.0),
-            Decimal(0.0),
-            Decimal(0.0),
-            Decimal(0.0),
-            Decimal(0.0),
+            Decimal("0.0"),
+            Decimal("0.0"),
+            Decimal("0.0"),
+            Decimal("0.0"),
+            Decimal("0.0"),
+            Decimal("0.0"),
+            Decimal("0.0"),
         ]
-        for typpe in report:
+        for _, lines in report.items():
             type_sum = [
                 "Итого",
-                Decimal(0.0),
-                Decimal(0.0),
-                Decimal(0.0),
-                Decimal(0.0),
-                Decimal(0.0),
-                Decimal(0.0),
-                Decimal(0.0),
+                Decimal("0.0"),
+                Decimal("0.0"),
+                Decimal("0.0"),
+                Decimal("0.0"),
+                Decimal("0.0"),
+                Decimal("0.0"),
+                Decimal("0.0"),
             ]
-            for line in report[typpe]:
+            for line in lines:
                 i = 0
                 while True:
                     i += 1
@@ -319,7 +319,9 @@ class BarsicReport2Service:
                         all_sum[i] += line[i]
                     except IndexError:
                         break
-            report[typpe].append(type_sum)
+
+            lines.append(type_sum)
+
         report["Итого"] = [all_sum]
         report["Дата"] = [[date_from, date_to]]
         if database == settings.mssql_database1:

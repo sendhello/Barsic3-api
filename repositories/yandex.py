@@ -140,7 +140,7 @@ class YandexRepository:
         report,
         date_from,
         date_to,
-        goods: list[str] = None,
+        goods: list[str] | None = None,
         hide_zero=False,
     ):
         """Сохраняет отчет по количеству клиентов за день в Excel"""

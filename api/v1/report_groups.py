@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 @router.get("/")
 async def get_report_groups(
     paginate: Annotated[PaginateQueryParams, Depends(PaginateQueryParams)],
-    report_name_id: Annotated[UUID, Query(description="ID наименования отчета")] = None,
+    report_name_id: Annotated[UUID, Query(description="ID наименования отчета")] | None = None,
 ) -> list[ReportGroup]:
     if report_name_id is not None:
         return await ReportGroupModel.get_by_report_name_id(report_name_id=report_name_id)

@@ -27,7 +27,7 @@ class ReportConfigService:
     async def get_report_names(self) -> list[str]:
         return [ReportName.model_validate(report_name_).title for report_name_ in await ReportNameModel.get_all()]
 
-    async def get_report_groups(self, report_name: str, exclude: list[str] = None) -> list[ReportGroup]:
+    async def get_report_groups(self, report_name: str, exclude: list[str] | None = None) -> list[ReportGroup]:
         report_ = await ReportNameModel.get_by_title(report_name)
         if report_ is None:
             raise HTTPException(

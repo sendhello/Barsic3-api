@@ -98,8 +98,8 @@ class BarsService:
 
     def get_customer_count(
         self,
-        date_from: datetime = None,
-        date_to: datetime = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ):
         if date_from:
             if date_to:
