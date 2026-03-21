@@ -63,8 +63,10 @@ end_date = datetime.now()
 
 async def main():
     tariffs = set()
+    # dates - dates of tariffs in reports
     dates = []
     result = []
+    appear_data = {}
 
     tariff_config = {}
     skipped_tariffs = []
@@ -111,18 +113,29 @@ async def main():
                     wb = load_workbook(tmp.name, data_only=True)
                     ws = wb.active
                     result_line = {}
+                    current_date = None
                     for row in ws.iter_rows(min_row=1):
                         tariff_field = row[1].value if len(row) > 1 else None
                         date_field = row[4].value if len(row) > 4 else None
                         count_field = row[9].value if len(row) > 9 else None
                         sum_field = row[11].value if len(row) > 11 else None
-                        if tariff_field and isinstance(count_field, int) and isinstance(sum_field, int):
+                        if date_field and current_date is None:
+                            current_date = date_field
+
+                        if (
+                            tariff_field
+                            and isinstance(count_field, int)
+                            and isinstance(sum_field, int | float)
+                            and current_date
+                        ):
                             tariffs.add(tariff_field)
+                            appear_data.setdefault(tariff_field, []).append(datetime.strptime(current_date, "%d.%m.%Y"))
 
                             for group, tariff_collection in tariff_config.items():
+                                result_line.setdefault(group, [0, 0.0])
                                 if tariff_field in tariff_collection:
-                                    result_line.setdefault(group, 0)
-                                    result_line[group] += count_field
+                                    result_line[group][0] += count_field
+                                    result_line[group][1] += sum_field
                                     try:
                                         skipped_tariffs.remove(tariff_field)
                                     except ValueError:
@@ -136,14 +149,26 @@ async def main():
                     if len(result_line) < 2:
                         continue
 
-                    result.append(result_line)
+                    new_line = {}
+                    for group, value in result_line.items():
+                        if isinstance(value, str | int | float):
+                            new_line[group] = value
+                            continue
 
+                        count, summ = value
+                        new_line[f"{group} (кол)"] = count
+                        new_line[f"{group} (ср)"] = round(summ / count, 2) if count > 0 else 0
+
+                    result.append(new_line)
+
+        # Sort result by date
         result = sorted(result, key=lambda x: datetime.strptime(x.get("Дата"), "%d.%m.%Y"))
         for line in result:
             for group in tariff_config:
                 if group not in line:
-                    line[group] = 0
+                    line[group] = (0, 0.0, 0.0)
 
+        # Save result to CSV
         with open("result.csv", "w", newline="", encoding="utf-8") as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=result[0].keys())
             writer.writeheader()
@@ -151,17 +176,38 @@ async def main():
 
         remote_csv_path = (
             f"{report_path.rstrip('/')}"
-            f"/result_from_{start_date.strftime('%Y-%m-%d')}_to_{end_date.strftime('%Y-%m-%d')}.csv"
+            f"/result_with_average_sum_from_{start_date.strftime('%Y-%m-%d')}_to_{end_date.strftime('%Y-%m-%d')}.csv"
         )
         await client.upload("result.csv", remote_csv_path, overwrite=True)
         logger.info("CSV загружен на Яндекс.Диск: %s", remote_csv_path)
 
+        # Save skipped tariffs to txt
         file_name = f"skipped_tariffs_from_{start_date.strftime('%Y-%m-%d')}_to_{end_date.strftime('%Y-%m-%d')}.txt"
         remote_path = f"{report_path.rstrip('/')}/{file_name}"
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8") as tmp_txt:
             tmp_txt.write("\n".join(skipped_tariffs))
             tmp_txt.flush()
             await client.upload(tmp_txt.name, remote_path, overwrite=True)
+
+        # Save appear data for tariffs to CSV
+        appear_data_for_csv = [
+            {
+                "Тариф": tariff,
+                "Дата первой покупки": min(dates).date() if dates else "-",
+                "Дата последней покупки": max(dates).date() if dates else "-",
+            }
+            for tariff, dates in appear_data.items()
+        ]
+        file_name = (
+            f"appear_data_of_tariffs_from_{start_date.strftime('%Y-%m-%d')}_to_{end_date.strftime('%Y-%m-%d')}.csv"
+        )
+        remote_path = f"{report_path.rstrip('/')}/{file_name}"
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=appear_data_for_csv[0].keys())
+            writer.writeheader()
+            writer.writerows(appear_data_for_csv)
+            csvfile.flush()
+            await client.upload(csvfile.name, remote_path, overwrite=True)
 
         # tariffs_list = sorted(map(str, tariffs))
         # file_name = f"tariffs from {start_date.strftime('%Y-%m-%d')} ({len(tariffs_list)}).txt"
