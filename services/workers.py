@@ -335,6 +335,19 @@ class WorkerService:
 
         return result
 
+    def _create_report_period(
+        self, date_from: datetime, date_to: datetime, use_cache: bool = False
+    ) -> list[tuple[datetime, bool]]:
+        """Create a list of tuples representing the report period with cache usage flags."""
+
+        date_from, date_to = self._period_cutting(date_from, date_to)
+        period = []
+        for _date in range(1, date_to.day + 1):
+            is_use_cache = use_cache if _date >= date_from.day and _date <= date_to.day else True
+            period.append((datetime(date_from.year, date_from.month, _date), is_use_cache))
+
+        return period
+
     async def create_attendance_report(
         self,
         date_from: datetime,
@@ -344,16 +357,13 @@ class WorkerService:
         use_cache: bool = True,
     ) -> dict:
         attendance_report = {}
-        date_from, date_to = self._period_cutting(date_from, date_to)
         await self._check_undistributed_services(report_name="attendance")
 
-        logger.info(f"Try build attendance report from {date_from} to {date_to}")
-        current_date = date_from
-        while current_date < date_to and (
-            current_date.month == date_to.month or current_date + timedelta(days=1) == date_to
-        ):
+        logger.info(f"Building attendance report from {date_from} to {date_to}...")
+        period = self._create_report_period(date_from, date_to, use_cache=use_cache)
+        for current_date, is_use_cache in period:
             report_type = "attendance"
-            if use_cache:
+            if is_use_cache:
                 current_attendance_report = await self._report_service.get_report_by_date(
                     report_type, current_date.date()
                 )
@@ -403,8 +413,8 @@ class WorkerService:
 
         report_path = self._yandex_repo.save_attendance_report(
             report=attendance_report,
-            date_from=date_from,
-            date_to=date_to,
+            date_from=period[0][0],
+            date_to=period[-1][0] + timedelta(days=1),
         )
 
         result = {
@@ -434,8 +444,8 @@ class WorkerService:
             existed_google_report = await self._report_config_service.get_attendance_doc_id_by_date(date_from)
             report_path, google_doc_id = self._google_repo.save_attendance_report(
                 report=google_report,
-                date_from=date_from,
-                date_to=date_to,
+                date_from=period[0][0],
+                date_to=period[-1][0] + timedelta(days=1),
                 google_doc_id=existed_google_report.doc_id if existed_google_report is not None else None,
             )
             await self._report_config_service.save_google_report_id(
@@ -530,6 +540,14 @@ class WorkerService:
                 date(date_from.year, date_from.month, days_in_month),
                 datetime.max.time(),
             )
+        elif date_from.month == date_to.month:
+            pass
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="date_from and date_to should be in the same month or in adjacent months",
+            )
+
         return date_from, date_to
 
 
