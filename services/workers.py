@@ -340,9 +340,9 @@ class WorkerService:
     ) -> list[tuple[datetime, bool]]:
         """Create a list of tuples representing the report period with cache usage flags."""
 
-        date_from, date_to = self._period_cutting(date_from, date_to)
+        date_from, date_to = self._period_cut_to_one_month(date_from, date_to)
         period = []
-        for _date in range(1, date_to.day + 1):
+        for _date in range(1, date_to.day):
             is_use_cache = use_cache if _date >= date_from.day and _date <= date_to.day else True
             period.append((datetime(date_from.year, date_from.month, _date), is_use_cache))
 
@@ -408,8 +408,6 @@ class WorkerService:
                 )
                 await self._report_service.save_report(current_attendance_report)
             attendance_report[current_date.date()] = current_attendance_report
-
-            current_date += timedelta(days=1)
 
         report_path = self._yandex_repo.save_attendance_report(
             report=attendance_report,
@@ -547,6 +545,17 @@ class WorkerService:
                 status_code=400,
                 detail="date_from and date_to should be in the same month or in adjacent months",
             )
+
+        return date_from, date_to
+
+    @staticmethod
+    def _period_cut_to_one_month(date_from: datetime, date_to: datetime) -> tuple[datetime, datetime]:
+        """Cut date_to to the end of a date_from month if date_from and date_to are in different months,
+        because the report is built by month
+        """
+        if date_to.month > date_from.month:
+            days_in_month = monthrange(date_from.year, date_from.month)[1]
+            date_to = datetime(date_from.year, date_from.month, days_in_month) + timedelta(days=1)
 
         return date_from, date_to
 
