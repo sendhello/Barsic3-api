@@ -342,8 +342,10 @@ class WorkerService:
 
         date_from, date_to = self._period_cut_to_one_month(date_from, date_to)
         period = []
-        for _date in range(1, date_to.day):
-            is_use_cache = use_cache if _date >= date_from.day and _date <= date_to.day else True
+        date_from_month_max_day = monthrange(date_from.year, date_from.month)[1]
+        last_day = date_from_month_max_day + 1 if date_to.month > date_from.month else date_to.day
+        for _date in range(1, last_day):
+            is_use_cache = use_cache if _date >= date_from.day else True
             period.append((datetime(date_from.year, date_from.month, _date), is_use_cache))
 
         return period
@@ -560,7 +562,7 @@ class WorkerService:
         return date_from, date_to
 
 
-def get_worker_service():
+def get_worker_service() -> WorkerService:
     bars_srv = MsSqlDatabase(
         server=settings.mssql_server,
         user=settings.mssql_user,
