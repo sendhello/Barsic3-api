@@ -12,7 +12,7 @@ from fastapi.exceptions import HTTPException
 from oauth2client.service_account import ServiceAccountCredentials
 from starlette import status
 
-from constants import FREE_TARIFFS, GOOGLE_DOC_VERSION
+from constants import FREE_TARIFFS, GOOGLE_DOC_VERSION, MAIN_COMPANY_ID
 from core.settings import settings
 from db.mssql import MsSqlDatabase
 from gateways.telegram import TelegramBot, get_telegram_bot
@@ -31,7 +31,7 @@ from sql.customer_count import CURRENT_CUSTOMER_COUNT_SQL
 logger = logging.getLogger("barsicreport2")
 
 
-AQUA_COMPANIES_IDS = (36, 7203673, 7203674, 13240081, 15826592, 16049033)
+AQUA_COMPANIES_IDS = (MAIN_COMPANY_ID, 36, 7203673, 7203674, 13240081, 15826592, 16049033)
 
 
 class BarsicReport2Service:

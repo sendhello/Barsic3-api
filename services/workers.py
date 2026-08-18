@@ -8,6 +8,7 @@ import gspread
 import gspread_formatting as gf
 from fastapi import HTTPException
 
+from constants import MAIN_COMPANY_ID
 from core.settings import settings
 from db.mssql import MsSqlDatabase
 from legacy import functions
@@ -94,7 +95,7 @@ class WorkerService:
                     database=settings.mssql_database1,
                 )
                 for org in org_list1:
-                    if org[0] == 36:
+                    if org[0] == MAIN_COMPANY_ID:
                         org1 = (org[0], org[2])
 
                 self._bars_srv.set_database(settings.mssql_database1)
