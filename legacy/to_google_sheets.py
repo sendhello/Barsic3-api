@@ -481,25 +481,45 @@ def create_new_google_doc(
     ss.prepare_setColumnWidth(57, 65)
     ss.prepare_setColumnWidth(58, 120)
     ss.prepare_setColumnWidth(59, 100)
-    # Билеты КОРП
+    # Душ впечатлений ФАКТ
     ss.prepare_setColumnWidth(60, 65)
     ss.prepare_setColumnWidth(61, 120)
     ss.prepare_setColumnWidth(62, 100)
-    # Прочее
+    # Аквазона ФАКТ
     ss.prepare_setColumnWidth(63, 65)
     ss.prepare_setColumnWidth(64, 120)
+    ss.prepare_setColumnWidth(65, 100)
+    # Улетный праздник ПЛАН
+    ss.prepare_setColumnWidth(66, 65)
+    ss.prepare_setColumnWidth(67, 120)
+    ss.prepare_setColumnWidth(68, 100)
+    # Улетный праздник ФАКТ
+    ss.prepare_setColumnWidth(69, 65)
+    ss.prepare_setColumnWidth(70, 120)
+    ss.prepare_setColumnWidth(71, 100)
+    # Улетный праздник LASTYEAR
+    ss.prepare_setColumnWidth(72, 65)
+    ss.prepare_setColumnWidth(73, 120)
+    ss.prepare_setColumnWidth(74, 100)
+    # Билеты КОРП
+    ss.prepare_setColumnWidth(75, 65)
+    ss.prepare_setColumnWidth(76, 120)
+    ss.prepare_setColumnWidth(77, 100)
+    # Прочее
+    ss.prepare_setColumnWidth(78, 65)
+    ss.prepare_setColumnWidth(79, 120)
     # Online Продажи
-    ss.prepare_setColumnWidth(64, 65)
-    ss.prepare_setColumnWidth(66, 120)
-    ss.prepare_setColumnWidth(67, 100)
+    ss.prepare_setColumnWidth(80, 65)
+    ss.prepare_setColumnWidth(81, 120)
+    ss.prepare_setColumnWidth(82, 100)
     # Нулевые
-    ss.prepare_setColumnWidth(68, 65)
-    ss.prepare_setColumnWidth(69, 120)
-    ss.prepare_setColumnWidth(70, 100)
+    ss.prepare_setColumnWidth(83, 65)
+    ss.prepare_setColumnWidth(84, 120)
+    ss.prepare_setColumnWidth(85, 100)
     # Сумма безнал
-    ss.prepare_setColumnWidth(71, 120)
+    ss.prepare_setColumnWidth(86, 120)
     # Онлайн прочее
-    ss.prepare_setColumnWidth(72, 120)
+    ss.prepare_setColumnWidth(87, 120)
 
     # Объединение ячеек
 
@@ -559,23 +579,33 @@ def create_new_google_doc(
     ss.prepare_mergeCells("BC1:BE1")
     # Фишпиллинг LASTYEAR
     ss.prepare_mergeCells("BF1:BH1")
-    # Билеты КОРП
+    # Душ впечатлений ФАКТ
     ss.prepare_mergeCells("BI1:BK1")
+    # Аквазона ФАКТ
+    ss.prepare_mergeCells("BL1:BN1")
+    # Улетный праздник ПЛАН
+    ss.prepare_mergeCells("BO1:BQ1")
+    # Улетный праздник ФАКТ
+    ss.prepare_mergeCells("BR1:BT1")
+    # Улетный праздник LASTYEAR
+    ss.prepare_mergeCells("BU1:BW1")
+    # Билеты КОРП
+    ss.prepare_mergeCells("BX1:BZ1")
     # Прочее
-    ss.prepare_mergeCells("BL1:BM1")
+    ss.prepare_mergeCells("CA1:CB1")
     # Online Продажи
-    ss.prepare_mergeCells("BN1:BP1")
+    ss.prepare_mergeCells("CC1:CE1")
     # Нулевые
-    ss.prepare_mergeCells("BQ1:BS1")
+    ss.prepare_mergeCells("CF1:CH1")
     # Сумма безнал
-    ss.prepare_mergeCells("BT1:BT2")
+    ss.prepare_mergeCells("CI1:CI2")
     # Онлайн прочее
-    ss.prepare_mergeCells("BU1:BU2")
+    ss.prepare_mergeCells("CJ1:CJ2")
 
     # Задание параметров группе ячеек
     # Жирный, по центру
     ss.prepare_setCellsFormat(
-        "A1:BU2",
+        "A1:CJ2",
         {"horizontalAlignment": "CENTER", "textFormat": {"bold": True}},
     )
     # ss.prepare_setCellsFormat('E4:E8', {'numberFormat': {'pattern': '[h]:mm:ss', 'type': 'TIME'}},
@@ -583,7 +613,7 @@ def create_new_google_doc(
 
     # Заполнение таблицы
     ss.prepare_setValues(
-        "A1:BU2",
+        "A1:CJ2",
         [
             [
                 "Дата",
@@ -648,6 +678,22 @@ def create_new_google_doc(
                 "",
                 "",
                 f"Фишпиллинг {data_report} "
+                f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
+                "",
+                "",
+                "Душ впечатлений ФАКТ",
+                "",
+                "",
+                "Аквазона ФАКТ",
+                "",
+                "",
+                "Улетный праздник ПЛАН",
+                "",
+                "",
+                "Улетный праздник ФАКТ",
+                "",
+                "",
+                f"Улетный праздник {data_report} "
                 f"{datetime.strftime(finreport_dict['Дата'][0] - relativedelta(years=1), '%Y')}",
                 "",
                 "",
@@ -726,14 +772,38 @@ def create_new_google_doc(
                 "Кол-во",
                 "Сумма",
                 "Средний чек",
+                # Душ впечатлений ФАКТ
                 "Кол-во",
                 "Сумма",
                 "Средний чек",
-                "Кол-во",
-                "Сумма",
+                # Аквазона ФАКТ
                 "Кол-во",
                 "Сумма",
                 "Средний чек",
+                # Улетный праздник ПЛАН
+                "Кол-во",
+                "Сумма",
+                "Средний чек",
+                # Улетный праздник ФАКТ
+                "Кол-во",
+                "Сумма",
+                "Средний чек",
+                # Улетный праздник LASTYEAR
+                "Кол-во",
+                "Сумма",
+                "Средний чек",
+                # Билеты КОРП
+                "Кол-во",
+                "Сумма",
+                "Средний чек",
+                # Прочее
+                "Кол-во",
+                "Сумма",
+                # Online Продажи
+                "Кол-во",
+                "Сумма",
+                "Средний чек",
+                # Нулевые
                 "Кол-во",
                 "Сумма",
                 "Средний чек",
@@ -747,7 +817,7 @@ def create_new_google_doc(
 
     # Цвет фона ячеек
     ss.prepare_setCellsFormat(
-        "A1:BU2",
+        "A1:CJ2",
         {"backgroundColor": functions.htmlColorToJSON("#f7cb4d")},
         fields="userEnteredFormat.backgroundColor",
     )
@@ -838,17 +908,21 @@ def create_new_google_doc(
     ss.prepare_setColumnWidth(15, 120)
     ss.prepare_setColumnWidth(16, 100)
     # Aренда полотенец ПЛАН
-    ss.prepare_setColumnWidth(14, 65)
-    ss.prepare_setColumnWidth(15, 120)
-    ss.prepare_setColumnWidth(16, 100)
-    # Фишпиллинг ПЛАН
-    ss.prepare_setColumnWidth(14, 65)
-    ss.prepare_setColumnWidth(15, 120)
-    ss.prepare_setColumnWidth(16, 100)
-    # Пляж ПЛАН
     ss.prepare_setColumnWidth(17, 65)
     ss.prepare_setColumnWidth(18, 120)
     ss.prepare_setColumnWidth(19, 100)
+    # Фишпиллинг ПЛАН
+    ss.prepare_setColumnWidth(20, 65)
+    ss.prepare_setColumnWidth(21, 120)
+    ss.prepare_setColumnWidth(22, 100)
+    # Пляж ПЛАН
+    ss.prepare_setColumnWidth(23, 65)
+    ss.prepare_setColumnWidth(24, 120)
+    ss.prepare_setColumnWidth(25, 100)
+    # Улетный праздник ПЛАН
+    ss.prepare_setColumnWidth(26, 65)
+    ss.prepare_setColumnWidth(27, 120)
+    ss.prepare_setColumnWidth(28, 100)
 
     # Объединение ячеек
 
@@ -880,11 +954,13 @@ def create_new_google_doc(
     ss.prepare_mergeCells("U1:W1")
     # Пляж ПЛАН
     ss.prepare_mergeCells("X1:Z1")
+    # Улетный праздник ПЛАН
+    ss.prepare_mergeCells("AA1:AC1")
 
     # Задание параметров группе ячеек
     # Жирный, по центру
     ss.prepare_setCellsFormat(
-        "A1:Z2",
+        "A1:AC2",
         {"horizontalAlignment": "CENTER", "textFormat": {"bold": True}},
     )
     # ss.prepare_setCellsFormat('E4:E8', {'numberFormat': {'pattern': '[h]:mm:ss', 'type': 'TIME'}},
@@ -892,7 +968,7 @@ def create_new_google_doc(
 
     # Заполнение таблицы
     ss.prepare_setValues(
-        "A1:Z2",
+        "A1:AC2",
         [
             [
                 "Дата",
@@ -919,6 +995,9 @@ def create_new_google_doc(
                 "",
                 "",
                 "Пляж ПЛАН",
+                "",
+                "",
+                "Улетный праздник ПЛАН",
                 "",
                 "",
             ],
@@ -949,6 +1028,10 @@ def create_new_google_doc(
                 "Трафик",
                 "Общая сумма",
                 "Средний чек",
+                # Улетный праздник ПЛАН
+                "Кол-во",
+                "Сумма",
+                "Средний чек",
             ],
         ],
         "ROWS",
@@ -957,7 +1040,7 @@ def create_new_google_doc(
 
     # Цвет фона ячеек
     ss.prepare_setCellsFormat(
-        "A1:Z2",
+        "A1:AC2",
         {"backgroundColor": functions.htmlColorToJSON("#f7cb4d")},
         fields="userEnteredFormat.backgroundColor",
     )
@@ -994,7 +1077,7 @@ def create_new_google_doc(
     sheet2_line = 3
     while dateline < enddate:
         ss.prepare_setValues(
-            f"A{sheet2_line}:Z{sheet2_line}",
+            f"A{sheet2_line}:AC{sheet2_line}",
             [
                 [
                     datetime.strftime(dateline, "%d.%m.%Y"),
@@ -1025,6 +1108,10 @@ def create_new_google_doc(
                     "",
                     "",
                     f"=IFERROR(Y{sheet2_line}/X{sheet2_line};0)",
+                    # Улетный праздник ПЛАН
+                    "",
+                    "",
+                    f"=IFERROR(AB{sheet2_line}/AA{sheet2_line};0)",
                 ]
             ],
             "ROWS",
@@ -1032,7 +1119,7 @@ def create_new_google_doc(
 
         # Задание форматы вывода строки
         ss.prepare_setCellsFormats(
-            f"A{sheet2_line}:Z{sheet2_line}",
+            f"A{sheet2_line}:AC{sheet2_line}",
             [
                 [
                     {
@@ -1120,13 +1207,55 @@ def create_new_google_doc(
                             "pattern": "#,##0.00[$ ₽]",
                         }
                     },
+                    # Фишпиллинг ПЛАН
+                    {"numberFormat": {}},
+                    {
+                        "numberFormat": {
+                            "type": "CURRENCY",
+                            "pattern": "#,##0.00[$ ₽]",
+                        }
+                    },
+                    {
+                        "numberFormat": {
+                            "type": "CURRENCY",
+                            "pattern": "#,##0.00[$ ₽]",
+                        }
+                    },
+                    # Пляж ПЛАН
+                    {"numberFormat": {}},
+                    {
+                        "numberFormat": {
+                            "type": "CURRENCY",
+                            "pattern": "#,##0.00[$ ₽]",
+                        }
+                    },
+                    {
+                        "numberFormat": {
+                            "type": "CURRENCY",
+                            "pattern": "#,##0.00[$ ₽]",
+                        }
+                    },
+                    # Улетный праздник ПЛАН
+                    {"numberFormat": {}},
+                    {
+                        "numberFormat": {
+                            "type": "CURRENCY",
+                            "pattern": "#,##0.00[$ ₽]",
+                        }
+                    },
+                    {
+                        "numberFormat": {
+                            "type": "CURRENCY",
+                            "pattern": "#,##0.00[$ ₽]",
+                        }
+                    },
                 ]
             ],
         )
         # Цвет фона ячеек
         if sheet2_line % 2 != 0:
             ss.prepare_setCellsFormat(
-                f"A{sheet2_line}:Z{sheet2_line}",
+                f"A{sheet2_line}:AC{sheet2_line}",
                 {"backgroundColor": functions.htmlColorToJSON("#fef8e3")},
                 fields="userEnteredFormat.backgroundColor",
             )
@@ -1145,7 +1274,7 @@ def create_new_google_doc(
 
     # ИТОГО
     ss.prepare_setValues(
-        f"A{sheet2_line}:Z{sheet2_line}",
+        f"A{sheet2_line}:AC{sheet2_line}",
         [
             [
                 "ИТОГО",
@@ -1174,6 +1303,10 @@ def create_new_google_doc(
                 f"=SUM(X3:X{sheet2_line - 1})",
                 f"=SUM(Y3:Y{sheet2_line - 1})",
                 f"=IFERROR(Y{sheet2_line}/X{sheet2_line};0)",
+                # Улетный праздник ПЛАН
+                f"=SUM(AA3:AA{sheet2_line - 1})",
+                f"=SUM(AB3:AB{sheet2_line - 1})",
+                f"=IFERROR(AB{sheet2_line}/AA{sheet2_line};0)",
             ]
         ],
         "ROWS",
@@ -1181,7 +1314,7 @@ def create_new_google_doc(
 
     # Задание форматы вывода строки
     ss.prepare_setCellsFormats(
-        f"A{sheet2_line}:Z{sheet2_line}",
+        f"A{sheet2_line}:AC{sheet2_line}",
         [
             [
                 {
@@ -1323,12 +1456,78 @@ def create_new_google_doc(
                     "horizontalAlignment": "RIGHT",
                     "textFormat": {"bold": True},
                 },
+                # Фишпиллинг ПЛАН
+                {
+                    "numberFormat": {},
+                    "horizontalAlignment": "RIGHT",
+                    "textFormat": {"bold": True},
+                },
+                {
+                    "numberFormat": {
+                        "type": "CURRENCY",
+                        "pattern": "#,##0.00[$ ₽]",
+                    },
+                    "horizontalAlignment": "RIGHT",
+                    "textFormat": {"bold": True},
+                },
+                {
+                    "numberFormat": {
+                        "type": "CURRENCY",
+                        "pattern": "#,##0.00[$ ₽]",
+                    },
+                    "horizontalAlignment": "RIGHT",
+                    "textFormat": {"bold": True},
+                },
+                # Пляж ПЛАН
+                {
+                    "numberFormat": {},
+                    "horizontalAlignment": "RIGHT",
+                    "textFormat": {"bold": True},
+                },
+                {
+                    "numberFormat": {
+                        "type": "CURRENCY",
+                        "pattern": "#,##0.00[$ ₽]",
+                    },
+                    "horizontalAlignment": "RIGHT",
+                    "textFormat": {"bold": True},
+                },
+                {
+                    "numberFormat": {
+                        "type": "CURRENCY",
+                        "pattern": "#,##0.00[$ ₽]",
+                    },
+                    "horizontalAlignment": "RIGHT",
+                    "textFormat": {"bold": True},
+                },
+                # Улетный праздник ПЛАН
+                {
+                    "numberFormat": {},
+                    "horizontalAlignment": "RIGHT",
+                    "textFormat": {"bold": True},
+                },
+                {
+                    "numberFormat": {
+                        "type": "CURRENCY",
+                        "pattern": "#,##0.00[$ ₽]",
+                    },
+                    "horizontalAlignment": "RIGHT",
+                    "textFormat": {"bold": True},
+                },
+                {
+                    "numberFormat": {
+                        "type": "CURRENCY",
+                        "pattern": "#,##0.00[$ ₽]",
+                    },
+                    "horizontalAlignment": "RIGHT",
+                    "textFormat": {"bold": True},
+                },
             ]
         ],
     )
     # Цвет фона ячеек
     ss.prepare_setCellsFormat(
-        f"A{sheet2_line}:Z{sheet2_line}",
+        f"A{sheet2_line}:AC{sheet2_line}",
         {"backgroundColor": functions.htmlColorToJSON("#fce8b2")},
         fields="userEnteredFormat.backgroundColor",
     )

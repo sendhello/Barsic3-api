@@ -94,9 +94,14 @@ class WorkerService:
                 org_list1 = self._legacy_service.list_organisation(
                     database=settings.mssql_database1,
                 )
-                for org in org_list1:
-                    if org[0] == MAIN_COMPANY_ID:
-                        org1 = (org[0], org[2])
+                org1 = next(((org[0], org[2]) for org in org_list1 if org[0] == MAIN_COMPANY_ID), None)
+                if org1 is None:
+                    error_message = (
+                        f"Основная организация (id={MAIN_COMPANY_ID}) не найдена в базе "
+                        f"{settings.mssql_database1}. Отчет не может быть сформирован."
+                    )
+                    logger.error(error_message)
+                    raise HTTPException(status_code=409, detail=error_message)
 
                 self._bars_srv.set_database(settings.mssql_database1)
                 with self._bars_srv as connect:

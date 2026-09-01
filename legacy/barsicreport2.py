@@ -1,6 +1,7 @@
 import contextlib
 import logging
 import re
+from collections import defaultdict
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -26,12 +27,36 @@ from services.bars import BarsService, get_bars_service
 from services.report_config import ReportConfigService, get_report_config_service
 from services.rk import RKService, get_rk_service
 from services.settings import SettingsService, get_settings_service
+from sql.cashdesk import CASH_DESK_MONEY_BY_COMPANY_SQL
 from sql.customer_count import CURRENT_CUSTOMER_COUNT_SQL
 
 logger = logging.getLogger("barsicreport2")
 
 
-AQUA_COMPANIES_IDS = (MAIN_COMPANY_ID, 36, 7203673, 7203674, 13240081, 15826592, 16049033)
+# 36 — архивное ООО «ПАРК СЕРВИС», остается в списке ради отчетов за периоды до 14.08.2026
+AQUA_COMPANIES_IDS = (MAIN_COMPANY_ID, 36, 7203674, 13240081, 15826592, 16049033)
+
+# Группы конфига, которые не являются статьями выручки и не участвуют в контрольной сумме.
+# «Не учитывать» в финансовый отчет вообще не попадает.
+NON_REVENUE_GROUPS = ("Дата", "ИТОГО", "Не учитывать")
+
+# Ключ, под которым в финансовом отчете хранится контрольная сумма по группам.
+# Не должен совпадать с названием группы в конфиге GoogleReport.
+CONTROL_SUM_KEY = "Контрольная сумма"
+
+
+def get_control_total_sum(fin_report: dict) -> float:
+    """Возвращает суммарную выручку по всем группам финансового отчета.
+
+    Считается по данным Барса до того, как в отчет подмешиваются внешние источники
+    (Смайл из R-Keeper, онлайн-продажи из Битрикса, бонусы из отчета по кассам),
+    поэтому обязана совпадать с итоговой суммой отчета Барса. Расхождение означает
+    ошибку в конфиге: услуга не попала ни в одну группу либо попала сразу в несколько.
+    """
+    return round(
+        sum(value[1] for group, value in fin_report.items() if group not in NON_REVENUE_GROUPS),
+        2,
+    )
 
 
 class BarsicReport2Service:
@@ -45,6 +70,7 @@ class BarsicReport2Service:
 
         self.count_sql_error = 0
         self.org_for_finreport = {}
+        self.fin_report_config: dict[str, list[str]] = {}
         self.orgs = []
         self.new_agentservice = []
         self.agentorgs = []
@@ -113,6 +139,21 @@ class BarsicReport2Service:
             for id_, name in aqua_companies_map.items()
             if id_ in AQUA_COMPANIES_IDS
         ]
+
+        # Основная организация должна быть первой: по ней именуются отчеты и берутся сводные показатели.
+        # Порядок выдачи SuperAccount из базы не гарантирован, поэтому ставим ее в начало явно.
+        if not any(company.id == MAIN_COMPANY_ID for company in companies):
+            error_message = (
+                f"Основная организация (id={MAIN_COMPANY_ID}) не найдена в базе "
+                f"{settings.mssql_database1}. Отчеты не могут быть сформированы."
+            )
+            logger.error(error_message)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=error_message,
+            )
+
+        companies.sort(key=lambda company: company.id != MAIN_COMPANY_ID)
 
         if settings.add_beach_report:
             beach_companies_db = self.list_organisation(database=settings.mssql_database2)
@@ -226,6 +267,30 @@ class BarsicReport2Service:
             cursor.execute(f"exec sp_reportCashDeskMoney @from='{date_from}', @to='{date_to}'")
             return cursor.fetchall()
 
+    def cash_report_request_by_company(
+        self,
+        database,
+        date_from,
+        date_to,
+        company_id: int,
+    ):
+        """Возвращает суммовой отчет за период только по кассам указанной организации."""
+
+        date_from = date_from.strftime("%Y%m%d 00:00:00")
+        date_to = date_to.strftime("%Y%m%d 00:00:00")
+
+        self.bars_srv.set_database(database)
+        with self.bars_srv as connect:
+            cursor = connect.cursor()
+            cursor.execute(
+                CASH_DESK_MONEY_BY_COMPANY_SQL.format(
+                    date_from=date_from,
+                    date_to=date_to,
+                    company_id=company_id,
+                )
+            )
+            return cursor.fetchall()
+
     def service_point_request(
         self,
         database,
@@ -251,16 +316,28 @@ class BarsicReport2Service:
         database,
         date_from,
         date_to,
+        company: Company | None = None,
     ):
         """
         Преобразует запросы из базы в суммовой отчет
+
+        Если передана company, отчет строится только по кассам этой организации,
+        иначе - по всем кассам базы разом.
         :return: dict
         """
-        cash_report = self.cash_report_request(
-            database=database,
-            date_from=date_from,
-            date_to=date_to,
-        )
+        if company is None:
+            cash_report = self.cash_report_request(
+                database=database,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        else:
+            cash_report = self.cash_report_request_by_company(
+                database=database,
+                date_from=date_from,
+                date_to=date_to,
+                company_id=company.id,
+            )
         service_point = self.service_point_request(
             database=database,
         )
@@ -324,8 +401,10 @@ class BarsicReport2Service:
 
         report["Итого"] = [all_sum]
         report["Дата"] = [[date_from, date_to]]
-        if database == settings.mssql_database1:
-            report["Организация"] = [[companies[0].id]]
+        if company is not None:
+            report["Организация"] = [[company.name]]
+        elif database == settings.mssql_database1:
+            report["Организация"] = [[companies[0].name]]
         elif database == settings.mssql_database2:
             beach_company = next(company for company in companies if company.db_name == DBName.BEACH)
             report["Организация"] = [[beach_company.name]]
@@ -335,6 +414,7 @@ class BarsicReport2Service:
         """Форминует финансовый отчет в установленном формате"""
 
         logger.info("Формирование финансового отчета")
+        self.fin_report_config = fin_report_config
         fin_report = {}
         little_children_count = 0
 
@@ -349,7 +429,12 @@ class BarsicReport2Service:
                             fin_report[org][1] = itog_report_aqua[serv][1]
 
                         elif serv == "Депозит":
-                            fin_report[org][1] += itog_report_aqua[serv][1]
+                            # Депозит суммируется по всем организациям, как и остальные услуги,
+                            # но без количества: в колонке количества Барс отдает ту же сумму.
+                            for itog_report in self.itog_reports:
+                                deposit = itog_report.get(serv)
+                                if deposit and deposit[1]:
+                                    fin_report[org][1] += deposit[1]
 
                         elif serv == "Организация":
                             pass
@@ -368,6 +453,9 @@ class BarsicReport2Service:
                     except TypeError:
                         pass
 
+        # Считается до подмешивания внешних источников, пока в отчете только данные Барса
+        fin_report[CONTROL_SUM_KEY] = [0, get_control_total_sum(fin_report)]
+
         total_customer_count = customer_count + little_children_count
         fin_report["Кол-во проходов"] = [total_customer_count, 0.00]
 
@@ -384,6 +472,39 @@ class BarsicReport2Service:
             float(total_cashdesk_report[6] - total_cashdesk_report[7]),
         )
         return fin_report
+
+    def find_group_config_issues(self) -> list[str]:
+        """Ищет услуги, из-за которых сумма по группам расходится с итоговой суммой отчета.
+
+        Расхождение дает услуга с выручкой, которая не отнесена ни к одной группе
+        (в том числе лежащая в «Не учитывать») либо отнесена сразу к нескольким.
+        """
+        groups_by_service = defaultdict(list)
+        for group, services in self.fin_report_config.items():
+            for service in services:
+                groups_by_service[service].append(group)
+
+        amounts = defaultdict(float)
+        for itog_report in self.itog_reports:
+            for service, row in itog_report.items():
+                if service == "Итого по отчету" or not isinstance(row[1], int | float):
+                    continue
+                amounts[service] += row[1]
+
+        issues = []
+        for service, amount in sorted(amounts.items(), key=lambda item: -abs(item[1])):
+            if not amount:
+                continue
+
+            groups = [group for group in groups_by_service.get(service, []) if group not in NON_REVENUE_GROUPS]
+            if not groups:
+                where = groups_by_service.get(service)
+                where = f"лежит в группе «{where[0]}»" if where else "нет ни в одной группе"
+                issues.append(f"{service!r} ({amount}) не попадает в отчет: {where}")
+            elif len(groups) > 1:
+                issues.append(f"{service!r} ({amount}) учтена дважды: группы {', '.join(groups)}")
+
+        return issues
 
     def create_fin_report_last_year(self, fin_report_config: dict[str, Any], customer_count: int = 0) -> dict:
         """Форминует финансовый отчет за прошлый год в установленном формате."""
@@ -402,7 +523,12 @@ class BarsicReport2Service:
                             fin_report_last_year[org][0] = itog_report_aqua_lastyear[serv][0]
                             fin_report_last_year[org][1] = itog_report_aqua_lastyear[serv][1]
                         elif serv == "Депозит":
-                            fin_report_last_year[org][1] += itog_report_aqua_lastyear[serv][1]
+                            # Депозит суммируется по всем организациям, как и остальные услуги,
+                            # но без количества: в колонке количества Барс отдает ту же сумму.
+                            for itog_report in self.itog_reports_lastyear:
+                                deposit = itog_report.get(serv)
+                                if deposit and deposit[1]:
+                                    fin_report_last_year[org][1] += deposit[1]
 
                         elif serv == "Организация":
                             pass
@@ -421,6 +547,9 @@ class BarsicReport2Service:
 
                     except TypeError:
                         pass
+
+        # Считается до подмешивания внешних источников, пока в отчете только данные Барса
+        fin_report_last_year[CONTROL_SUM_KEY] = [0, get_control_total_sum(fin_report_last_year)]
 
         total_customer_count = customer_count + customers_with_free_tariffs
         fin_report_last_year["Кол-во проходов"] = [total_customer_count, 0.00]
@@ -512,9 +641,9 @@ class BarsicReport2Service:
         Формирование и заполнение google-таблицы
         """
         logger.info("Сохранение Финансового отчета в Google-таблицах...")
-        self.sheet_width = 73
+        self.sheet_width = 88
         self.sheet2_width = 3
-        self.sheet3_width = 26
+        self.sheet3_width = 29
         self.sheet4_width = 3
         self.sheet5_width = 3
         self.sheet6_width = 16
@@ -681,34 +810,25 @@ class BarsicReport2Service:
         ]
         self.nex_line = self.start_line
 
-        control_total_sum = sum(
-            [
-                fin_report["Билеты аквапарка"][1],
-                fin_report["Общепит"][1],
-                fin_report["Билеты аквапарка КОРП"][1],
-                fin_report["Прочее"][1],
-                fin_report["Сопутствующие товары"][1],
-                fin_report["Депозит"][1],
-                fin_report["Штраф"][1],
-                fin_report["Online Продажи"][1],
-                fin_report["Фотоуслуги"][1],
-                fin_report["УЛËТSHOP"][1],
-                fin_report["Аренда полотенец"][1],
-                fin_report["Фишпиллинг"][1],
-                fin_report["Нулевые"][1],
-            ]
-        )
+        control_total_sum = fin_report[CONTROL_SUM_KEY][1]
+        total_sum = fin_report["ИТОГО"][1]
 
-        if fin_report["ИТОГО"][1] != control_total_sum:
+        if abs(total_sum - control_total_sum) >= 0.01:
+            issues = self.find_group_config_issues()
+            details = (
+                "Услуги, требующие проверки:\n" + "\n".join(f"  - {issue}" for issue in issues)
+                if issues
+                else "Рекомендуется проверить правильно ли разделены услуги по группам."
+            )
             logger.error("Несоответствие данных: Сумма услуг не равна итоговой сумме")
             logger.info(
-                f"Несоответствие данных: Сумма услуг по группам + депозит ({control_total_sum}) "
-                f"не равна итоговой сумме ({fin_report['ИТОГО'][1]}). \n"
-                f"Рекомендуется проверить правильно ли разделены услуги по группам.",
+                f"Несоответствие данных: Сумма услуг по группам ({control_total_sum}) "
+                f"не равна итоговой сумме отчета ({total_sum}), "
+                f"расхождение {round(control_total_sum - total_sum, 2)}.\n{details}",
             )
 
         ss.prepare_setValues(
-            f"A{self.nex_line}:BU{self.nex_line}",
+            f"A{self.nex_line}:CJ{self.nex_line}",
             [
                 [
                     datetime.strftime(fin_report["Дата"][0], "%d.%m.%Y"),
@@ -718,7 +838,7 @@ class BarsicReport2Service:
                     f"{fin_report_last_year['Кол-во проходов'][0]}",
                     f"='План'!E{self.nex_line}",
                     f"={str(fin_report['ИТОГО'][1]).replace('.', ',')}"
-                    f"-I{self.nex_line}+AL{self.nex_line}+BT{self.nex_line}+BU{self.nex_line}+'Смайл'!C{self.nex_line}-BR{self.nex_line}",
+                    f"-I{self.nex_line}+AL{self.nex_line}+CI{self.nex_line}+CJ{self.nex_line}+'Смайл'!C{self.nex_line}-CG{self.nex_line}",
                     f"=IFERROR(G{self.nex_line}/D{self.nex_line};0)",
                     f"={str(fin_report['MaxBonus'][1]).replace('.', ',')}",
                     f"={str(fin_report_last_year['ИТОГО'][1]).replace('.', ',')}"
@@ -779,19 +899,39 @@ class BarsicReport2Service:
                     fin_report_last_year["Фишпиллинг"][0],
                     fin_report_last_year["Фишпиллинг"][1],
                     f"=IFERROR(BG{self.nex_line}/BF{self.nex_line};0)",
+                    # Душ впечатлений ФАКТ
+                    fin_report["Душ впечатлений"][0],
+                    fin_report["Душ впечатлений"][1],
+                    f"=IFERROR(BJ{self.nex_line}/BI{self.nex_line};0)",
+                    # Аквазона ФАКТ
+                    fin_report["Аквазона"][0],
+                    fin_report["Аквазона"][1],
+                    f"=IFERROR(BM{self.nex_line}/BL{self.nex_line};0)",
+                    # Улетный праздник ПЛАН
+                    f"='План'!AA{self.nex_line}",
+                    f"='План'!AB{self.nex_line}",
+                    f"=IFERROR(BP{self.nex_line}/BO{self.nex_line};0)",
+                    # Улетный праздник ФАКТ
+                    fin_report["Улетный праздник"][0],
+                    fin_report["Улетный праздник"][1],
+                    f"=IFERROR(BS{self.nex_line}/BR{self.nex_line};0)",
+                    # Улетный праздник LASTYEAR
+                    fin_report_last_year["Улетный праздник"][0],
+                    fin_report_last_year["Улетный праздник"][1],
+                    f"=IFERROR(BV{self.nex_line}/BU{self.nex_line};0)",
                     # Билеты аквапарка КОРП
                     fin_report["Билеты аквапарка КОРП"][0],
                     fin_report["Билеты аквапарка КОРП"][1],
-                    f"=IFERROR(BJ{self.nex_line}/BI{self.nex_line};0)",
+                    f"=IFERROR(BY{self.nex_line}/BX{self.nex_line};0)",
                     fin_report["Прочее"][0] + fin_report["Сопутствующие товары"][0],
                     fin_report["Прочее"][1] + fin_report["Сопутствующие товары"][1],
                     fin_report["Online Продажи"][0],
                     fin_report["Online Продажи"][1],
-                    f"=IFERROR(BO{self.nex_line}/BN{self.nex_line};0)",
+                    f"=IFERROR(CD{self.nex_line}/CC{self.nex_line};0)",
                     # Нулевые
                     fin_report["Нулевые"][0],
                     fin_report["Нулевые"][1],
-                    f"=IFERROR(BR{self.nex_line}/BQ{self.nex_line};0)",
+                    f"=IFERROR(CG{self.nex_line}/CF{self.nex_line};0)",
                     0,
                     0,
                 ]
@@ -801,7 +941,7 @@ class BarsicReport2Service:
 
         # Задание форматы вывода строки
         ss.prepare_setCellsFormats(
-            f"A{self.nex_line}:BU{self.nex_line}",
+            f"A{self.nex_line}:CJ{self.nex_line}",
             [
                 [
                     {
@@ -870,6 +1010,27 @@ class BarsicReport2Service:
                     {"numberFormat": {}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Душ впечатлений ФАКТ
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Аквазона ФАКТ
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Улетный праздник ПЛАН
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Улетный праздник ФАКТ
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Улетный праздник LASTYEAR
+                    {"numberFormat": {}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
+                    # Билеты аквапарка КОРП
                     {"numberFormat": {}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
                     {"numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"}},
@@ -894,7 +1055,7 @@ class BarsicReport2Service:
         # Цвет фона ячеек
         if self.nex_line % 2 != 0:
             ss.prepare_setCellsFormat(
-                f"A{self.nex_line}:BU{self.nex_line}",
+                f"A{self.nex_line}:CJ{self.nex_line}",
                 {"backgroundColor": functions.htmlColorToJSON("#fef8e3")},
                 fields="userEnteredFormat.backgroundColor",
             )
@@ -933,7 +1094,7 @@ class BarsicReport2Service:
                 pass
 
         ss.prepare_setValues(
-            f"A{height_table}:BU{height_table}",
+            f"A{height_table}:CJ{height_table}",
             [
                 [
                     "ИТОГО",
@@ -996,19 +1157,40 @@ class BarsicReport2Service:
                     f"=SUM(BF3:BF{height_table - 1})",
                     f"=SUM(BG3:BG{height_table - 1})",
                     f"=IFERROR(ROUND(BG{height_table}/BF{height_table};2);0)",
+                    # Душ впечатлений ФАКТ
                     f"=SUM(BI3:BI{height_table - 1})",
                     f"=SUM(BJ3:BJ{height_table - 1})",
                     f"=IFERROR(ROUND(BJ{height_table}/BI{height_table};2);0)",
+                    # Аквазона ФАКТ
                     f"=SUM(BL3:BL{height_table - 1})",
                     f"=SUM(BM3:BM{height_table - 1})",
-                    f"=SUM(BN3:BN{height_table - 1})",
+                    f"=IFERROR(ROUND(BM{height_table}/BL{height_table};2);0)",
+                    # Улетный праздник ПЛАН
                     f"=SUM(BO3:BO{height_table - 1})",
-                    f"=IFERROR(ROUND(BO{height_table}/BN{height_table};2);0)",
-                    f"=SUM(BQ3:BQ{height_table - 1})",
+                    f"=SUM(BP3:BP{height_table - 1})",
+                    f"=IFERROR(ROUND(BP{height_table}/BO{height_table};2);0)",
+                    # Улетный праздник ФАКТ
                     f"=SUM(BR3:BR{height_table - 1})",
-                    f"=IFERROR(ROUND(BR{height_table}/BQ{height_table};2);0)",
-                    f"=SUM(BT3:BT{height_table - 1})",
+                    f"=SUM(BS3:BS{height_table - 1})",
+                    f"=IFERROR(ROUND(BS{height_table}/BR{height_table};2);0)",
+                    # Улетный праздник LASTYEAR
                     f"=SUM(BU3:BU{height_table - 1})",
+                    f"=SUM(BV3:BV{height_table - 1})",
+                    f"=IFERROR(ROUND(BV{height_table}/BU{height_table};2);0)",
+                    # Билеты аквапарка КОРП
+                    f"=SUM(BX3:BX{height_table - 1})",
+                    f"=SUM(BY3:BY{height_table - 1})",
+                    f"=IFERROR(ROUND(BY{height_table}/BX{height_table};2);0)",
+                    f"=SUM(CA3:CA{height_table - 1})",
+                    f"=SUM(CB3:CB{height_table - 1})",
+                    f"=SUM(CC3:CC{height_table - 1})",
+                    f"=SUM(CD3:CD{height_table - 1})",
+                    f"=IFERROR(ROUND(CD{height_table}/CC{height_table};2);0)",
+                    f"=SUM(CF3:CF{height_table - 1})",
+                    f"=SUM(CG3:CG{height_table - 1})",
+                    f"=IFERROR(ROUND(CG{height_table}/CF{height_table};2);0)",
+                    f"=SUM(CI3:CI{height_table - 1})",
+                    f"=SUM(CJ3:CJ{height_table - 1})",
                 ]
             ],
             "ROWS",
@@ -1040,7 +1222,7 @@ class BarsicReport2Service:
 
         # Задание формата вывода строки
         ss.prepare_setCellsFormats(
-            f"A{height_table}:BU{height_table}",
+            f"A{height_table}:CJ{height_table}",
             [
                 [
                     {"textFormat": {"bold": True}},
@@ -1259,6 +1441,67 @@ class BarsicReport2Service:
                         "horizontalAlignment": "RIGHT",
                         "textFormat": {"bold": True},
                     },
+                    # Душ впечатлений ФАКТ
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    # Аквазона ФАКТ
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    # Улетный праздник ПЛАН
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    # Улетный праздник ФАКТ
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    # Улетный праздник LASTYEAR
+                    {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    {
+                        "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
+                        "horizontalAlignment": "RIGHT",
+                        "textFormat": {"bold": True},
+                    },
+                    # Билеты аквапарка КОРП
                     {"horizontalAlignment": "RIGHT", "textFormat": {"bold": True}},
                     {
                         "numberFormat": {"type": "CURRENCY", "pattern": "#0[$ ₽]"},
@@ -1355,7 +1598,7 @@ class BarsicReport2Service:
 
         # Цвет фона ячеек
         ss.prepare_setCellsFormat(
-            f"A{height_table}:BU{height_table}",
+            f"A{height_table}:CJ{height_table}",
             {"backgroundColor": functions.htmlColorToJSON("#fce8b2")},
             fields="userEnteredFormat.backgroundColor",
         )
@@ -2434,8 +2677,9 @@ class BarsicReport2Service:
             to_yandex.append(self._yandex_repo.save_organisation_total(self.itog_report_beach, date_from))
 
         # check_cashreport_xls:
-        if self.cashdesk_report_org1["Итого"][0][1]:
-            to_yandex.append(self._yandex_repo.save_cashdesk_report(self.cashdesk_report_org1, date_from))
+        for cashdesk_report in self.cashdesk_reports:
+            if cashdesk_report["Итого"][0][1]:
+                to_yandex.append(self._yandex_repo.save_cashdesk_report(cashdesk_report, date_from))
         if settings.add_beach_report and self.cashdesk_report_org2["Итого"][0][1]:
             to_yandex.append(self._yandex_repo.save_cashdesk_report(self.cashdesk_report_org2, date_from))
         # check_client_count_total_xls:
@@ -2455,6 +2699,7 @@ class BarsicReport2Service:
         """Выполнить отчеты"""
 
         self.itog_report_beach = None
+        self.cashdesk_reports = []
         self.report_bitrix = (0, 0)
         self.report_bitrix_lastyear = (0, 0)
         self.smile_report = self._rk_service.get_smile_report(
@@ -2522,12 +2767,25 @@ class BarsicReport2Service:
                     date_to=date_to,
                 )
 
+            # Сводный отчет по всем кассам аквапарка - используется в сводке для мессенджера
             self.cashdesk_report_org1 = self.cashdesk_report(
                 database=settings.mssql_database1,
                 date_from=date_from,
                 date_to=date_to,
                 companies=companies,
             )
+            # Отдельный суммовой отчет по каждой организации аквапарка
+            self.cashdesk_reports = [
+                self.cashdesk_report(
+                    database=settings.mssql_database1,
+                    date_from=date_from,
+                    date_to=date_to,
+                    companies=companies,
+                    company=company,
+                )
+                for company in companies
+                if company.db_name == DBName.AQUA
+            ]
             self.cashdesk_report_org1_lastyear = self.cashdesk_report(
                 database=settings.mssql_database1,
                 date_from=date_from - relativedelta(years=1),
