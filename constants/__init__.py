@@ -1,7 +1,7 @@
 from .enums import MssqlDriverType, gen_db_name_enum, gen_report_name_enum
 
 ANONYMOUS = "anonymous"
-GOOGLE_DOC_VERSION = 14
+GOOGLE_DOC_VERSION = 15
 GOOGLE_SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
