@@ -1,6 +1,27 @@
+from collections.abc import Iterable
+
+
+def name_like_filter(column: str, names: Iterable[str]) -> str:
+    """Собирает OR-цепочку `column LIKE N'%name%'` для поиска по подстроке в названии.
+
+    Если список названий пуст, возвращает всегда ложное условие, чтобы `NOT EXISTS`
+    с таким фильтром ничего не отсеивал.
+    """
+    conditions = []
+    for name in names:
+        escaped_name = name.replace("'", "''")
+        conditions.append(f"{column} LIKE N'%{escaped_name}%'")
+
+    if not conditions:
+        return "1 = 0"
+
+    return " OR ".join(conditions)
+
+
 # Количество проходов в Аквазону за период
-# Расчитывается количество проходов на вход в Аквазону через турникеты,
-# при этом не учитываются идентификаторы сотрудников
+# Проходом считается транзакция на турникете (ServicePoint.Type = 1), в которой склад зоны
+# (AccountStock со StockType = 41 и категорией Аквазоны) списывается с аккаунта организации на клиента.
+# Не учитываются идентификаторы сотрудников и проходы по услугам из NOT_COUNTED_SERVICE_NAMES.
 PERIOD_CUSTOMERS_SQL = """
     SELECT mt.[MasterTransactionId]
         ,[TransTime]
@@ -15,16 +36,36 @@ PERIOD_CUSTOMERS_SQL = """
         ,td.StockInfoIdFrom
         ,td.StockInfoIdTo
         ,td.Amount
-    FROM [AquaPark_Ulyanovsk].[dbo].[MasterTransaction] mt
-        LEFT JOIN TransactionDetail td ON mt.MasterTransactionId = td.MasterTransactionId
-    WHERE mt.ServicePointId = 1  -- Турникет
-        AND td.StockInfoIdFrom = 523  -- Вход в зону
-        -- AND StockInfoIdTo = 523  -- Выход из в зоны
-        AND mt.TransTime > '{date_from}' AND mt.TransTime < '{date_to}'
+    FROM [MasterTransaction] mt
+        JOIN [TransactionDetail] td ON td.MasterTransactionId = mt.MasterTransactionId
+        -- Только турникеты, независимо от организации и конкретной точки обслуживания
+        JOIN [ServicePoint] sp ON sp.ServicePointId = mt.ServicePointId AND sp.Type = 1
+        -- Вход в зону: склад зоны уходит с аккаунта организации клиенту
+        JOIN [AccountStock] af ON af.AccountStockId = td.StockInfoIdFrom
+            AND af.CategoryId = {zone_category_id}
+            AND af.StockType = 41
+        JOIN [SuperAccount] org ON org.SuperAccountId = af.SuperAccountId AND org.Type = 1
+    WHERE mt.TransTime > '{date_from}' AND mt.TransTime < '{date_to}'
         AND mt.SuperAccountTo IN (
             SELECT SuperAccountId
-            FROM [AquaPark_Ulyanovsk].[dbo].[SuperAccount] sa
+            FROM [SuperAccount] sa
             WHERE sa.IsStuff <> 1
+        )
+        -- Отдельные турникеты услуг, не считающихся входом в Аквазону
+        AND NOT EXISTS (
+            SELECT 1
+            FROM [ServicePoint] spx
+            WHERE spx.ServicePointId = mt.ServicePointId
+                AND ({service_point_name_filter})
+        )
+        -- Транзакции, в которых участвует услуга, не считающаяся входом в Аквазону
+        AND NOT EXISTS (
+            SELECT 1
+            FROM [TransactionDetail] tdx
+                JOIN [AccountStock] ax ON ax.AccountStockId IN (tdx.StockInfoIdFrom, tdx.StockInfoIdTo)
+                JOIN [Category] cx ON cx.CategoryId = ax.CategoryId
+            WHERE tdx.MasterTransactionId = mt.MasterTransactionId
+                AND ({category_name_filter})
         )
     ORDER BY mt.TransTime ASC
 """
@@ -32,16 +73,36 @@ PERIOD_CUSTOMERS_SQL = """
 
 PERIOD_CUSTOMER_COUNT_SQL = """
     SELECT COUNT(DISTINCT mt.[MasterTransactionId])
-    FROM [AquaPark_Ulyanovsk].[dbo].[MasterTransaction] mt
-        LEFT JOIN TransactionDetail td ON mt.MasterTransactionId = td.MasterTransactionId
-    WHERE mt.ServicePointId = 1  -- Турникет
-        AND td.StockInfoIdFrom = 523  -- Вход в зону
-        -- AND StockInfoIdTo = 523  -- Выход из в зоны
-        AND mt.TransTime > '{date_from}' AND mt.TransTime < '{date_to}'
+    FROM [MasterTransaction] mt
+        JOIN [TransactionDetail] td ON td.MasterTransactionId = mt.MasterTransactionId
+        -- Только турникеты, независимо от организации и конкретной точки обслуживания
+        JOIN [ServicePoint] sp ON sp.ServicePointId = mt.ServicePointId AND sp.Type = 1
+        -- Вход в зону: склад зоны уходит с аккаунта организации клиенту
+        JOIN [AccountStock] af ON af.AccountStockId = td.StockInfoIdFrom
+            AND af.CategoryId = {zone_category_id}
+            AND af.StockType = 41
+        JOIN [SuperAccount] org ON org.SuperAccountId = af.SuperAccountId AND org.Type = 1
+    WHERE mt.TransTime > '{date_from}' AND mt.TransTime < '{date_to}'
         AND mt.SuperAccountTo IN (
             SELECT SuperAccountId
-            FROM [AquaPark_Ulyanovsk].[dbo].[SuperAccount] sa
+            FROM [SuperAccount] sa
             WHERE sa.IsStuff <> 1
+        )
+        -- Отдельные турникеты услуг, не считающихся входом в Аквазону
+        AND NOT EXISTS (
+            SELECT 1
+            FROM [ServicePoint] spx
+            WHERE spx.ServicePointId = mt.ServicePointId
+                AND ({service_point_name_filter})
+        )
+        -- Транзакции, в которых участвует услуга, не считающаяся входом в Аквазону
+        AND NOT EXISTS (
+            SELECT 1
+            FROM [TransactionDetail] tdx
+                JOIN [AccountStock] ax ON ax.AccountStockId IN (tdx.StockInfoIdFrom, tdx.StockInfoIdTo)
+                JOIN [Category] cx ON cx.CategoryId = ax.CategoryId
+            WHERE tdx.MasterTransactionId = mt.MasterTransactionId
+                AND ({category_name_filter})
         )
 """
 

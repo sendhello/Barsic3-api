@@ -2,11 +2,16 @@ from datetime import datetime
 
 from pyodbc import ProgrammingError, Row
 
+from constants import AQUAZONE_CATEGORY_ID, NOT_COUNTED_SERVICE_NAMES
 from core.settings import settings
 from db.mssql import MsSqlDatabase
 from repositories.base import BaseRepository
 from sql.category import GET_TARIFFS_SQL
-from sql.customer_count import CURRENT_CUSTOMER_COUNT_SQL, PERIOD_CUSTOMER_COUNT_SQL
+from sql.customer_count import (
+    CURRENT_CUSTOMER_COUNT_SQL,
+    PERIOD_CUSTOMER_COUNT_SQL,
+    name_like_filter,
+)
 from sql.get_companies import GET_COMPANIES_SQL
 from sql.sp_report_totals_v2 import (
     SP_REPORT_TOTALS_V2_OLD_VERSION_SQL,
@@ -124,6 +129,9 @@ class BarsRepository(BaseRepository):
         sql = PERIOD_CUSTOMER_COUNT_SQL.format(
             date_from=_date_from,
             date_to=_date_to,
+            zone_category_id=AQUAZONE_CATEGORY_ID,
+            service_point_name_filter=name_like_filter("spx.Name", NOT_COUNTED_SERVICE_NAMES),
+            category_name_filter=name_like_filter("cx.Name", NOT_COUNTED_SERVICE_NAMES),
         )
         res = self._fetchone(sql)
         return res[0]

@@ -1077,12 +1077,19 @@ class YandexRepository:
         ws[column[10] + self.row].alignment = ReportStyle.align_top
         ws[column[12] + self.row].alignment = ReportStyle.align_top
 
-        groups = [
+        # Служебные группы, которые выводятся отдельно (шапка и итоговая строка), а не в теле отчета
+        service_groups = ("Организация", "ID организации", "Итого по отчету", "")
+        # Порядок вывода известных групп. Все остальные группы из Барса (например "Прокат")
+        # дописываются следом: если их не вывести, их суммы не попадут в контрольную сумму отчета.
+        known_groups = [
             "Депозит",
             "Карты",
             "Услуги",
             "Товары",
             "Платные зоны",
+        ]
+        groups = known_groups + [
+            group for group in organisation_total if group not in known_groups and group not in service_groups
         ]
         all_count = 0
         all_sum = 0

@@ -26,12 +26,14 @@ from services.bars import BarsService, get_bars_service
 from services.report_config import ReportConfigService, get_report_config_service
 from services.rk import RKService, get_rk_service
 from services.settings import SettingsService, get_settings_service
+from sql.cashdesk import CASH_DESK_MONEY_BY_COMPANY_SQL
 from sql.customer_count import CURRENT_CUSTOMER_COUNT_SQL
 
 logger = logging.getLogger("barsicreport2")
 
 
-AQUA_COMPANIES_IDS = (MAIN_COMPANY_ID, 36, 7203673, 7203674, 13240081, 15826592, 16049033)
+# 36 — архивное ООО «ПАРК СЕРВИС», остается в списке ради отчетов за периоды до 14.08.2026
+AQUA_COMPANIES_IDS = (MAIN_COMPANY_ID, 36, 7203674, 13240081, 15826592, 16049033)
 
 
 class BarsicReport2Service:
@@ -113,6 +115,21 @@ class BarsicReport2Service:
             for id_, name in aqua_companies_map.items()
             if id_ in AQUA_COMPANIES_IDS
         ]
+
+        # Основная организация должна быть первой: по ней именуются отчеты и берутся сводные показатели.
+        # Порядок выдачи SuperAccount из базы не гарантирован, поэтому ставим ее в начало явно.
+        if not any(company.id == MAIN_COMPANY_ID for company in companies):
+            error_message = (
+                f"Основная организация (id={MAIN_COMPANY_ID}) не найдена в базе "
+                f"{settings.mssql_database1}. Отчеты не могут быть сформированы."
+            )
+            logger.error(error_message)
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=error_message,
+            )
+
+        companies.sort(key=lambda company: company.id != MAIN_COMPANY_ID)
 
         if settings.add_beach_report:
             beach_companies_db = self.list_organisation(database=settings.mssql_database2)
@@ -226,6 +243,30 @@ class BarsicReport2Service:
             cursor.execute(f"exec sp_reportCashDeskMoney @from='{date_from}', @to='{date_to}'")
             return cursor.fetchall()
 
+    def cash_report_request_by_company(
+        self,
+        database,
+        date_from,
+        date_to,
+        company_id: int,
+    ):
+        """Возвращает суммовой отчет за период только по кассам указанной организации."""
+
+        date_from = date_from.strftime("%Y%m%d 00:00:00")
+        date_to = date_to.strftime("%Y%m%d 00:00:00")
+
+        self.bars_srv.set_database(database)
+        with self.bars_srv as connect:
+            cursor = connect.cursor()
+            cursor.execute(
+                CASH_DESK_MONEY_BY_COMPANY_SQL.format(
+                    date_from=date_from,
+                    date_to=date_to,
+                    company_id=company_id,
+                )
+            )
+            return cursor.fetchall()
+
     def service_point_request(
         self,
         database,
@@ -251,16 +292,28 @@ class BarsicReport2Service:
         database,
         date_from,
         date_to,
+        company: Company | None = None,
     ):
         """
         Преобразует запросы из базы в суммовой отчет
+
+        Если передана company, отчет строится только по кассам этой организации,
+        иначе - по всем кассам базы разом.
         :return: dict
         """
-        cash_report = self.cash_report_request(
-            database=database,
-            date_from=date_from,
-            date_to=date_to,
-        )
+        if company is None:
+            cash_report = self.cash_report_request(
+                database=database,
+                date_from=date_from,
+                date_to=date_to,
+            )
+        else:
+            cash_report = self.cash_report_request_by_company(
+                database=database,
+                date_from=date_from,
+                date_to=date_to,
+                company_id=company.id,
+            )
         service_point = self.service_point_request(
             database=database,
         )
@@ -324,8 +377,10 @@ class BarsicReport2Service:
 
         report["Итого"] = [all_sum]
         report["Дата"] = [[date_from, date_to]]
-        if database == settings.mssql_database1:
-            report["Организация"] = [[companies[0].id]]
+        if company is not None:
+            report["Организация"] = [[company.name]]
+        elif database == settings.mssql_database1:
+            report["Организация"] = [[companies[0].name]]
         elif database == settings.mssql_database2:
             beach_company = next(company for company in companies if company.db_name == DBName.BEACH)
             report["Организация"] = [[beach_company.name]]
@@ -2434,8 +2489,9 @@ class BarsicReport2Service:
             to_yandex.append(self._yandex_repo.save_organisation_total(self.itog_report_beach, date_from))
 
         # check_cashreport_xls:
-        if self.cashdesk_report_org1["Итого"][0][1]:
-            to_yandex.append(self._yandex_repo.save_cashdesk_report(self.cashdesk_report_org1, date_from))
+        for cashdesk_report in self.cashdesk_reports:
+            if cashdesk_report["Итого"][0][1]:
+                to_yandex.append(self._yandex_repo.save_cashdesk_report(cashdesk_report, date_from))
         if settings.add_beach_report and self.cashdesk_report_org2["Итого"][0][1]:
             to_yandex.append(self._yandex_repo.save_cashdesk_report(self.cashdesk_report_org2, date_from))
         # check_client_count_total_xls:
@@ -2455,6 +2511,7 @@ class BarsicReport2Service:
         """Выполнить отчеты"""
 
         self.itog_report_beach = None
+        self.cashdesk_reports = []
         self.report_bitrix = (0, 0)
         self.report_bitrix_lastyear = (0, 0)
         self.smile_report = self._rk_service.get_smile_report(
@@ -2522,12 +2579,25 @@ class BarsicReport2Service:
                     date_to=date_to,
                 )
 
+            # Сводный отчет по всем кассам аквапарка - используется в сводке для мессенджера
             self.cashdesk_report_org1 = self.cashdesk_report(
                 database=settings.mssql_database1,
                 date_from=date_from,
                 date_to=date_to,
                 companies=companies,
             )
+            # Отдельный суммовой отчет по каждой организации аквапарка
+            self.cashdesk_reports = [
+                self.cashdesk_report(
+                    database=settings.mssql_database1,
+                    date_from=date_from,
+                    date_to=date_to,
+                    companies=companies,
+                    company=company,
+                )
+                for company in companies
+                if company.db_name == DBName.AQUA
+            ]
             self.cashdesk_report_org1_lastyear = self.cashdesk_report(
                 database=settings.mssql_database1,
                 date_from=date_from - relativedelta(years=1),
